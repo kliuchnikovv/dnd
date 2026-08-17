@@ -31,6 +31,3 @@ func (g *Game) Compare(a, b store.FactID) TurnResult {
 // свидетельством. Рёбер в relations у него нет, поэтому он не мешает
 // корроборации и не считается за независимого свидетеля дважды.
 const ReasoningSource store.EntityID = "e_reasoning"
-
-// applyUnlocksFor заменяется полной реализацией в core/unlocks.go (Task 15).
-func (g *Game) applyUnlocksFor(store.FactID) {}

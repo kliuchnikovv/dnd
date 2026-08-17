@@ -42,6 +42,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 		if found {
 			if g.K.Learn(holder.FactID, holder.HolderID) {
 				res.Learned = append(res.Learned, Learned{holder.FactID, holder.HolderID})
+				g.applyUnlocksFor(holder.FactID)
 			}
 		}
 		return res
@@ -71,6 +72,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 	if found && resolution.Class >= OutcomeSuccess {
 		if g.K.Learn(holder.FactID, holder.HolderID) {
 			out.Learned = append(out.Learned, Learned{holder.FactID, holder.HolderID})
+			g.applyUnlocksFor(holder.FactID)
 		}
 	}
 	return out
@@ -86,8 +88,13 @@ func (g *Game) validate(in Intent, def VerbDef) (TurnResult, bool) {
 			return refuse("этого нет в текущей локации"), true
 		}
 	}
-	if in.Args.Node != "" && !g.DB.Adjacent(g.Node, in.Args.Node) {
-		return refuse("туда отсюда не пройти"), true
+	if in.Args.Node != "" {
+		if !g.DB.Adjacent(g.Node, in.Args.Node) {
+			return refuse("туда отсюда не пройти"), true
+		}
+		if g.nodeLocked(in.Args.Node) && !g.Unlocked("node", string(in.Args.Node)) {
+			return refuse("туда пока незачем идти"), true
+		}
 	}
 	for _, f := range in.Args.Facts {
 		if !g.K.Knows(f) {
@@ -123,6 +130,9 @@ func (g *Game) holderFor(in Intent) (store.FactHolder, bool) {
 			continue
 		}
 		if !g.requirementsMet(h.Gate) {
+			continue
+		}
+		if h.Latent && !g.Unlocked("topic", string(h.FactID)) {
 			continue
 		}
 		return h, true

@@ -43,6 +43,8 @@ type Game struct {
 	truth   accusation.Truth
 	tokens  []TokenGrant
 	flavour map[string]string
+
+	unlocked map[string]bool
 }
 
 func NewGame(cfg Config) *Game {
@@ -53,6 +55,7 @@ func NewGame(cfg Config) *Game {
 		Disposition: map[store.EntityID]int{},
 		Debts:       map[store.EntityID]int{},
 		truth:       cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
+		unlocked:    map[string]bool{},
 	}
 }
 
