@@ -1,0 +1,51 @@
+{
+  "id": "minimal",
+  "archetype": "murder",
+  "start": "n_quay",
+  "actor": "pc",
+  "character": {
+    "id": "pc",
+    "grit": 3,
+    "sheet": {
+      "archetype": "inspector",
+      "attrs": {"body": 0, "edge": 1, "mind": 3, "will": 0},
+      "tags": [{"name": "портовый", "verbs": ["question", "search"]}],
+      "abilities": ["read_room"]
+    }
+  },
+  "locations": [
+    {"id": "n_quay", "name": "Пристань", "adjacent": ["n_forge"], "tags": ["rain"]},
+    {"id": "n_forge", "name": "Кузница", "adjacent": ["n_quay"], "tags": ["indoors"]}
+  ],
+  "entities": [
+    {"id": "e_toke", "name": "Токе", "kind": "npc", "voice": "сухой", "node": "n_quay"},
+    {"id": "e_body", "name": "Тело Халдена", "kind": "thing", "node": "n_quay"}
+  ],
+  "relations": [],
+  "facts": [
+    {"id": "f_ligature", "key": "След шнура на шее", "kind": "concept"}
+  ],
+  "fact_holders": [
+    {"fact_id": "f_ligature", "holder_id": "e_body", "mandatory": true, "latent": false,
+     "gate": {"verbs": ["examine"], "threshold": "normal", "requires": []}}
+  ],
+  "fact_unlocks": [],
+  "contradictions": [],
+  "clocks": [
+    {"id": "c_suspicion", "name": "Подозрение", "segments": 6, "tick_policy": "on_cost",
+     "on_fill": {"flavour_key": "clock.suspicion.filled", "hostile_to": ["e_toke"]}}
+  ],
+  "accusation_tokens": [
+    {"slot": "who", "token": "toke", "fact": "f_ligature"},
+    {"slot": "how", "token": "cord", "fact": "f_ligature"},
+    {"slot": "when", "token": "night", "fact": "f_ligature"},
+    {"slot": "why", "token": "audit", "fact": "f_ligature"}
+  ],
+  "truth": {"who": "toke", "how": "cord", "when": "night", "why": "audit"},
+  "start_facts": [{"fact": "f_ligature", "from": "e_body"}],
+  "flavour": {
+    "look.n_quay": "Дождь бьёт по доскам пристани.",
+    "examine.e_body.f_ligature": "На шее — узкая борозда.",
+    "clock.suspicion.filled": "Город закрылся."
+  }
+}
