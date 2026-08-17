@@ -71,6 +71,3 @@ func classify(margin int) core.Outcome {
 		return core.OutcomeFail
 	}
 }
-
-// costFor заменяется полной таблицей в rules/threshold/cost.go (Task 11).
-func costFor(core.VerbClass, core.Outcome, int) []core.CostKind { return nil }
