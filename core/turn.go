@@ -171,7 +171,7 @@ func (g *Game) SceneView(in Intent) SceneView {
 }
 
 func (g *Game) nodeTags(n store.NodeID) []string {
-	return nil // теги приходят из дела в Task 14
+	return g.DB.Locations[n].Tags
 }
 
 func (g *Game) hostileCount() int {

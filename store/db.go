@@ -14,6 +14,8 @@ type DB struct {
 	Clocks     map[ClockID]*Clock
 	Characters map[CharacterID]*Character
 	Knowledge  []Knowledge
+
+	Contradictions []Contradiction
 }
 
 func NewDB() *DB {

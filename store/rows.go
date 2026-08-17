@@ -58,6 +58,7 @@ type Location struct {
 	ID       NodeID   `json:"id"`
 	Name     string   `json:"name"`
 	Adjacent []NodeID `json:"adjacent"`
+	Tags     []string `json:"tags"` // dark, rain, crowd, indoors — читаются правилами
 }
 
 type Relation struct {
@@ -98,4 +99,13 @@ type Character struct {
 	Sheet json.RawMessage `json:"sheet"` // непрозрачен для ядра
 	Harm  int             `json:"harm"`
 	Grit  int             `json:"grit"`
+}
+
+// Contradiction — пара фактов, чьё сопоставление открывает третий факт.
+// Отношение симметрично: порядок аргументов compare роли не играет.
+type Contradiction struct {
+	A          FactID `json:"a"`
+	B          FactID `json:"b"`
+	Reveals    FactID `json:"reveals"`
+	FlavourKey string `json:"flavour_key"`
 }
