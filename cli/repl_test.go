@@ -53,6 +53,30 @@ func TestUnknownCommandDoesNotStopTheRun(t *testing.T) {
 	}
 }
 
+// TestScriptedAccuseConsumesItsSlotLines регрессионный тест на общий сканер:
+// Session.accuse() раньше заводил свой bufio.Scanner поверх того же s.In, что
+// уже читал Run(), и это заставляло accuse() терять все четыре строки со
+// значениями слотов (первый Scan() в Run() вычерпывал остаток скрипта в свой
+// внутренний буфер). Скрипт ниже гонит `accuse` через реальный REPL-цикл и
+// проверяет, что все четыре ответа дошли и обвинение подтвердилось.
+func TestScriptedAccuseConsumesItsSlotLines(t *testing.T) {
+	g := renderGame(t)
+	in := strings.NewReader("accuse\ntoke\ncord\nnight\naudit\nquit\n")
+	var out bytes.Buffer
+	if err := NewSession(g, in, &out).Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Обвинение верно.") {
+		t.Errorf("верное обвинение не распознано: %q", got)
+	}
+	for _, slot := range []string{"who:", "how:", "when:", "why:"} {
+		if !strings.Contains(got, slot) {
+			t.Errorf("слот %q не был запрошен: %q", slot, got)
+		}
+	}
+}
+
 func TestSameSeedSameTranscript(t *testing.T) {
 	// Пара (seed, скрипт) полностью задаёт вывод — это и есть харнесс.
 	script := "look\nexamine body\nfacts\nquit\n"

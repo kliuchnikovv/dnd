@@ -18,6 +18,7 @@ type Session struct {
 	In   io.Reader
 	Out  io.Writer
 	r    Render
+	sc   *bufio.Scanner
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
@@ -26,9 +27,9 @@ func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
 
 func (s *Session) Run() error {
 	fmt.Fprint(s.Out, s.r.Scene(s.Game))
-	sc := bufio.NewScanner(s.In)
-	for sc.Scan() {
-		cmd, err := Parse(sc.Text())
+	s.sc = bufio.NewScanner(s.In)
+	for s.sc.Scan() {
+		cmd, err := Parse(s.sc.Text())
 		if err != nil {
 			fmt.Fprintf(s.Out, "нельзя: %v\n", err)
 			continue
@@ -37,7 +38,7 @@ func (s *Session) Run() error {
 			return nil
 		}
 	}
-	return sc.Err()
+	return s.sc.Err()
 }
 
 func (s *Session) dispatch(cmd Command) bool {
@@ -82,7 +83,6 @@ func (s *Session) accuse() {
 		{"who", &form.Who}, {"how", &form.How},
 		{"when", &form.When}, {"why", &form.Why},
 	}
-	sc := bufio.NewScanner(s.In)
 	for _, slot := range slots {
 		avail := g.AvailableTokens(slot.name)
 		if len(avail) == 0 {
@@ -94,10 +94,10 @@ func (s *Session) accuse() {
 			parts[i] = string(a)
 		}
 		fmt.Fprintf(s.Out, "%s: %s\n> ", slot.name, strings.Join(parts, " | "))
-		if !sc.Scan() {
+		if !s.sc.Scan() {
 			return
 		}
-		*slot.dst = store.Token(strings.TrimSpace(sc.Text()))
+		*slot.dst = store.Token(strings.TrimSpace(s.sc.Text()))
 	}
 	res := g.Accuse(form)
 	switch {

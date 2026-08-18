@@ -13,7 +13,7 @@ type Render struct{}
 func (Render) Scene(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
-	b.WriteString(g.Flavour("look."+string(g.Node)) + "\n")
+	fmt.Fprintf(&b, "%s\n", g.Flavour("look."+string(g.Node)))
 	for _, e := range g.DB.EntitiesAt(g.Node) {
 		fmt.Fprintf(&b, "  · %s (%s)\n", e.Name, e.ID)
 	}
@@ -35,7 +35,7 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 	}
 	var b strings.Builder
 	if t.FlavourKey != "" {
-		b.WriteString(g.Flavour(t.FlavourKey) + "\n")
+		fmt.Fprintf(&b, "%s\n", g.Flavour(t.FlavourKey))
 	}
 	if t.Res != nil {
 		b.WriteString(r.roll(*t.Res))
@@ -50,7 +50,7 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 		b.WriteString("  ~ помогло только наполовину\n")
 	}
 	for _, c := range t.Fired {
-		b.WriteString("  ⏱ " + g.Flavour(c.FlavourKey) + "\n")
+		fmt.Fprintf(&b, "  ⏱ %s\n", g.Flavour(c.FlavourKey))
 	}
 	return b.String()
 }
