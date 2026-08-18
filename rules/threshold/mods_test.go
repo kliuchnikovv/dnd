@@ -26,6 +26,8 @@ func TestSituationalCountsFactorsAndClamps(t *testing.T) {
 		{"укрытие", core.Intent{}, core.SceneView{Cover: true}, 2},
 		{"не обнаружен", core.Intent{}, core.SceneView{Undetected: true}, 2},
 		{"превосходство", core.Intent{}, core.SceneView{Allies: 3, Foes: 1}, 2},
+		{"нет противостояния — большинство не считается", core.Intent{}, core.SceneView{Allies: 1, Foes: 0}, 0},
+		{"нет противостояния при большом отряде", core.Intent{}, core.SceneView{Allies: 5, Foes: 0}, 0},
 		{"меньшинство", core.Intent{}, core.SceneView{Allies: 1, Foes: 3}, -2},
 		{"паритет", core.Intent{}, core.SceneView{Allies: 2, Foes: 2}, 0},
 		{"темнота", core.Intent{}, core.SceneView{NodeTags: []string{"dark"}}, -2},

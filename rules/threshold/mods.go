@@ -33,11 +33,15 @@ var adverseTags = []string{"dark", "rain", "crowd"}
 func Situational(in core.Intent, view core.SceneView) int {
 	sum := 0
 
-	switch {
-	case view.Allies > view.Foes:
-		sum += 2
-	case view.Allies < view.Foes:
-		sum -= 2
+	// Численное превосходство учитывается только при реальном противостоянии:
+	// без противников (Foes == 0) бонус/штраф большинства не применяется.
+	if view.Foes > 0 {
+		switch {
+		case view.Allies > view.Foes:
+			sum += 2
+		case view.Allies < view.Foes:
+			sum -= 2
+		}
 	}
 	if view.Cover {
 		sum += 2
