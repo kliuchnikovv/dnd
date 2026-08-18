@@ -23,7 +23,7 @@ func (s *System) Resolve(in core.Intent, view core.SceneView, d core.Dice) core.
 	sit := Situational(in, view)
 	th := ThresholdFor(view.GateThreshold)
 
-	die := d.D20()
+	die := d.Roll(1, 20)
 	total := die + attr + tag + sit
 	margin := total - th
 	class := classify(margin)

@@ -1,0 +1,59 @@
+# Прохождение «Гавани»: от находки тела Халдена до верного обвинения писаря
+# Токе. Сверено построчно с реальным выводом `go run ./cmd/dnd --case
+# cases/harbour/case.json --seed 3 --script cases/harbour/walkthrough.txt`.
+
+# Контора гильдии: гроссбух прячет подчистку и недостачу.
+move_zone guildhall
+examine ledger
+cross_reference ledger f_shortfall
+
+# Токе пока не расскажет о своей роли в гроссбухе — тема ещё спит.
+question toke f_toke_keeps_ledger
+
+# Склад теперь открыт (подчистка страницы это разблокировала): тело и замок.
+move_zone quay
+move_zone warehouse
+examine body
+examine body
+examine lock
+
+# Пристань: стражник и посыльный.
+move_zone quay
+question bern f_toke_has_key
+question nils f_toke_at_quay
+question bern f_toke_at_quay
+
+# Контора снова: книга приливов, и теперь Токе разговорчивее — свидетельство
+# о шнуре уже разблокировало его собственное признание про гроссбух.
+move_zone guildhall
+examine tidebook
+question toke f_toke_keeps_ledger
+
+# Кузница: вдова и кузнец (только через пристань — прямого пути нет).
+move_zone quay
+move_zone forge
+question sigrid f_halden_asked_audit
+question sigrid f_ivar_debt
+question sigrid f_shortfall
+question ivar f_ivar_alibi
+question ivar f_tide_night
+question ivar f_toke_at_quay
+
+# Пристань снова: докручиваем корроборацию для сильных источников.
+move_zone quay
+question bern f_seal_cord
+question bern f_lock_intact
+question bern f_tide_night
+question bern f_shortfall
+question nils f_toke_paid_debts
+
+# Токе утверждал, что не покидал контору и что гроссбух не трогает никто
+# кроме него — но его видели у склада. Сопоставляем.
+compare f_toke_at_quay f_toke_keeps_ledger
+
+accuse
+toke
+seal_cord
+night_before_tide
+audit_shortfall
+quit

@@ -101,9 +101,8 @@ type Resolution struct {
 }
 
 // Dice объявлен здесь, но реализован в пакете dice: core обязан оставаться
-// свободным от math/rand.
+// свободным от math/rand и от словаря конкретной игральной кости.
 type Dice interface {
-	D20() int
 	Roll(n, sides int) int
 }
 

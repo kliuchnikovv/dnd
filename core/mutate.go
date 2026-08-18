@@ -12,10 +12,12 @@ func (g *Game) applyMutations(ms []Mutation) {
 		switch m.Kind {
 		case MutResource:
 			if m.Target == "grit" && ch != nil {
-				ch.Grit += m.Delta
-				if ch.Grit < 0 {
-					ch.Grit = 0
+				cur := ch.Grit
+				cur = cur + m.Delta
+				if cur < 0 {
+					cur = 0
 				}
+				ch.Grit = cur
 			}
 		case MutHarm:
 			if c, ok := g.DB.Characters[store.CharacterID(m.Target)]; ok {
