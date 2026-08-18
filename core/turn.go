@@ -1,6 +1,10 @@
 package core
 
-import "github.com/kliuchnikovv/dnd/store"
+import (
+	"sort"
+
+	"github.com/kliuchnikovv/dnd/store"
+)
 
 type Learned struct {
 	Fact store.FactID
@@ -38,7 +42,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 
 	// Шаг 2: ветка без броска.
 	if !def.Rolls || (found && holder.Mandatory) {
-		res := TurnResult{FlavourKey: g.flavourKey(in)}
+		res := TurnResult{FlavourKey: g.flavourKeyFor(in, holder, found)}
 		if found {
 			if g.K.Learn(holder.FactID, holder.HolderID) {
 				res.Learned = append(res.Learned, Learned{holder.FactID, holder.HolderID})
@@ -55,7 +59,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 	resolution := g.Rules.Resolve(in, view, g.Dice)
 
 	// Шаг 5: применение.
-	out := TurnResult{Res: &resolution, Costs: resolution.Costs, FlavourKey: g.flavourKey(in)}
+	out := TurnResult{Res: &resolution, Costs: resolution.Costs, FlavourKey: g.flavourKeyFor(in, holder, found)}
 	g.applyMutations(resolution.Mutations)
 	out.Fired = g.executeCosts(resolution.Costs, in)
 	g.applyConsequences(out.Fired)
@@ -118,24 +122,67 @@ func (g *Game) validate(in Intent, def VerbDef) (TurnResult, bool) {
 
 // holderFor находит держателя, который может выдать запрошенный факт именно
 // этим глаголом при выполненных требованиях.
+//
+// Если тема задана (question/ask_about/cross_reference), путь topic-driven
+// не меняется: это единственная защита от угадывания — спросить можно
+// только о том, что уже в party_knowledge (проверяется в validate).
+//
+// Если темы нет (examine/search/stake_out/tail), глагол не спрашивает о
+// заранее известном — он ОБНАРУЖИВАЕТ факты у цели: перебираются все holders
+// в базе, чей HolderID совпадает с целью, и берётся первый, для которого
+// разрешён глагол, выполнены requires, снят латентный запрет и факт ещё не
+// известен парти. Порядок перебора детерминирован (сортировка по FactID),
+// поэтому повторные examine выдают факты в стабильной, предсказуемой
+// последовательности.
 func (g *Game) holderFor(in Intent) (store.FactHolder, bool) {
-	if in.Args.Topic == "" {
+	if in.Args.Topic != "" {
+		for _, h := range g.DB.HoldersOf(in.Args.Topic) {
+			if h.HolderID != in.Args.Target {
+				continue
+			}
+			if !gateAllows(h.Gate, in.Verb) {
+				continue
+			}
+			if !g.requirementsMet(h.Gate) {
+				continue
+			}
+			if h.Latent && !g.Unlocked("topic", string(h.FactID)) {
+				continue
+			}
+			return h, true
+		}
 		return store.FactHolder{}, false
 	}
-	for _, h := range g.DB.HoldersOf(in.Args.Topic) {
-		if h.HolderID != in.Args.Target {
-			continue
+
+	if in.Args.Target == "" {
+		return store.FactHolder{}, false
+	}
+
+	factIDs := make([]store.FactID, 0, len(g.DB.Holders))
+	for fid := range g.DB.Holders {
+		factIDs = append(factIDs, fid)
+	}
+	sort.Slice(factIDs, func(i, j int) bool { return factIDs[i] < factIDs[j] })
+
+	for _, fid := range factIDs {
+		for _, h := range g.DB.Holders[fid] {
+			if h.HolderID != in.Args.Target {
+				continue
+			}
+			if !gateAllows(h.Gate, in.Verb) {
+				continue
+			}
+			if !g.requirementsMet(h.Gate) {
+				continue
+			}
+			if h.Latent && !g.Unlocked("topic", string(h.FactID)) {
+				continue
+			}
+			if g.K.Knows(h.FactID) {
+				continue
+			}
+			return h, true
 		}
-		if !gateAllows(h.Gate, in.Verb) {
-			continue
-		}
-		if !g.requirementsMet(h.Gate) {
-			continue
-		}
-		if h.Latent && !g.Unlocked("topic", string(h.FactID)) {
-			continue
-		}
-		return h, true
 	}
 	return store.FactHolder{}, false
 }
@@ -192,6 +239,19 @@ func (g *Game) hostileCount() int {
 		}
 	}
 	return n
+}
+
+// flavourKeyFor выбирает ключ флейвора для результата хода. Если держатель
+// найден и участвует в выдаче факта, ключ строится из фактического
+// держателя и факта — так у каждого выданного факта своя проза, даже когда
+// глагол не задавал тему явно (examine/search/stake_out/tail). Если
+// держателя нет (look, move_zone, theorize и т.п.), используется прежний
+// откат на verb.target/verb.node.
+func (g *Game) flavourKeyFor(in Intent, holder store.FactHolder, found bool) string {
+	if found {
+		return string(in.Verb) + "." + string(holder.HolderID) + "." + string(holder.FactID)
+	}
+	return g.flavourKey(in)
 }
 
 func (g *Game) flavourKey(in Intent) string {
