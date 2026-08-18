@@ -33,6 +33,17 @@ func (g *Game) Apply(in Intent) TurnResult {
 		return refuse("неизвестное действие")
 	}
 
+	// theorize — заметка игрока, а не действие в мире: она не проходит
+	// валидацию мира (нет ни цели, ни узла, ни темы), не бросает кубик и не
+	// тикает часы.
+	if in.Verb == "theorize" {
+		if in.Args.Text == "" {
+			return refuse("гипотеза не может быть пустой")
+		}
+		g.Theories = append(g.Theories, in.Args.Text)
+		return TurnResult{FlavourKey: "theorize.recorded"}
+	}
+
 	// Шаг 1: валидация.
 	if r, bad := g.validate(in, def); bad {
 		return r

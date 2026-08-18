@@ -94,8 +94,16 @@ func (Render) Facts(g *core.Game) string {
 
 func (Render) State(g *core.Game) string {
 	ch := g.DB.Characters[g.Actor]
-	return fmt.Sprintf("узел: %s\nранения: %d/3\ngrit: %d\nпопыток обвинения: %d\n",
+	var b strings.Builder
+	fmt.Fprintf(&b, "узел: %s\nранения: %d/3\ngrit: %d\nпопыток обвинения: %d\n",
 		g.Node, ch.Harm, ch.Grit, g.Attempts)
+	if len(g.Theories) > 0 {
+		fmt.Fprintf(&b, "гипотезы:\n")
+		for i, th := range g.Theories {
+			fmt.Fprintf(&b, "  %d. %s\n", i+1, th)
+		}
+	}
+	return b.String()
 }
 
 func (Render) Clocks(g *core.Game) string {
@@ -117,6 +125,7 @@ cross_reference <факт> <запись> сверить
 stake_out <локация>             наблюдать
 theorize <текст>                зафиксировать гипотезу
 move_zone <узел>                перейти
+rest short|long                 короткий или длинный отдых
 accuse                          открыть форму обвинения
 facts                           известные факты с источниками и confidence
 state                           узел, часы, ранения, grit, попытки

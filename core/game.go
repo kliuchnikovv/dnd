@@ -40,6 +40,10 @@ type Game struct {
 	Disposition map[store.EntityID]int
 	Debts       map[store.EntityID]int
 
+	// Theories — гипотезы, зафиксированные глаголом theorize. Ядро их не
+	// оценивает и не тратит на них ход: это заметки игрока, а не факты.
+	Theories []string
+
 	truth   accusation.Truth
 	tokens  []TokenGrant
 	flavour map[string]string

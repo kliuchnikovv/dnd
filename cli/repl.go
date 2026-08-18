@@ -59,6 +59,15 @@ func (s *Session) dispatch(cmd Command) bool {
 		fmt.Fprint(s.Out, r.Turn(g, g.Compare(cmd.Facts[0], cmd.Facts[1])))
 	case CmdAccuse:
 		s.accuse()
+	case CmdRest:
+		kind := core.RestShort
+		if cmd.Text == "long" {
+			kind = core.RestLong
+		}
+		if clocks := g.RestPreview(kind); len(clocks) > 0 {
+			fmt.Fprintf(s.Out, "длинный отдых продвинет часы: %v\n", clocks)
+		}
+		fmt.Fprint(s.Out, r.Turn(g, g.Rest(kind)))
 	case CmdAction:
 		cmd.Intent.Actor = g.Actor
 		res := g.Apply(cmd.Intent)

@@ -22,6 +22,7 @@ const (
 	CmdClocks
 	CmdHelp
 	CmdQuit
+	CmdRest
 )
 
 type Command struct {
@@ -56,6 +57,11 @@ func Parse(line string) (Command, error) {
 		return Command{Kind: CmdAccuse}, nil
 	case "quit", "exit":
 		return Command{Kind: CmdQuit}, nil
+	case "rest":
+		if len(rest) != 1 || (rest[0] != "short" && rest[0] != "long") {
+			return Command{}, errors.New("rest требует short или long")
+		}
+		return Command{Kind: CmdRest, Text: rest[0]}, nil
 	case "compare":
 		if len(rest) != 2 {
 			return Command{}, errors.New("compare требует ровно два факта")
