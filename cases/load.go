@@ -71,6 +71,10 @@ func Parse(raw []byte) (*core.Config, error) {
 		tokens = append(tokens, core.TokenGrant{Slot: t.Slot, Token: t.Token, Fact: t.Fact})
 	}
 
+	if err := validateFile(f); err != nil {
+		return nil, err
+	}
+
 	return &core.Config{
 		DB:      db,
 		Truth:   accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
