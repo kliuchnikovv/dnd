@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseStructuredAction(t *testing.T) {
 	cmd, err := Parse("question ivar ledger")
@@ -155,8 +158,31 @@ func TestCommandsAreNotMistakenForSpeech(t *testing.T) {
 
 func TestEmptySpeechIsNotSpeech(t *testing.T) {
 	for _, line := range []string{`""`, `«»`, `—`, `- `} {
-		if said, ok := Speech(line); ok {
+		if said, _, ok := Speech(line); ok {
 			t.Errorf("%q принято за речь: %q", line, said)
+		}
+	}
+}
+
+// Кавычки не обязаны стоять в начале: «Обращаясь к Нильсу — "а ты ничего не
+// видел?"» это обычная запись, и остаток строки несёт адресата.
+func TestSpeechFoundInsideLineWithRemainder(t *testing.T) {
+	cases := []struct{ line, said, rest string }{
+		{`Обращаясь к Нильсу - "А ты ничего не видел?"`, "А ты ничего не видел?", "Обращаясь к Нильсу -"},
+		{`Берну: «что слышно?»`, "что слышно?", "Берну:"},
+		{`говорю "привет" и жду`, "привет", "говорю и жду"},
+	}
+	for _, c := range cases {
+		said, rest, ok := Speech(c.line)
+		if !ok {
+			t.Errorf("%q не распознано как речь", c.line)
+			continue
+		}
+		if said != c.said {
+			t.Errorf("%q -> сказано %q, ожидалось %q", c.line, said, c.said)
+		}
+		if strings.TrimSpace(rest) != strings.TrimSpace(c.rest) {
+			t.Errorf("%q -> остаток %q, ожидался %q", c.line, rest, c.rest)
 		}
 	}
 }

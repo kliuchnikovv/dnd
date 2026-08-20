@@ -408,3 +408,21 @@ func twoNPCGame(t *testing.T) *core.Game {
 	delete(g.DB.Entities, "e_toke")
 	return g
 }
+
+// Ровно тот ввод: адресат назван вне кавычек, вопрос внутри.
+func TestAddresseeFromTextOutsideQuotes(t *testing.T) {
+	g := twoNPCGame(t)
+	fv := &intentRecordingVoicer{}
+	var out bytes.Buffer
+	NewSession(g, strings.NewReader(`Обращаясь к Нильсу - "А ты ничего не видел?"`+"\nquit\n"), &out).
+		WithVoicer(fv).Run()
+	if fv.last.Args.Target != "e_nils" {
+		t.Errorf("адресат %q, ожидался e_nils", fv.last.Args.Target)
+	}
+	if fv.last.Args.Text != "А ты ничего не видел?" {
+		t.Errorf("сказано %q", fv.last.Args.Text)
+	}
+	if strings.Contains(out.String(), "о чём именно спросить") {
+		t.Errorf("речь ушла в question вместо say: %q", out.String())
+	}
+}

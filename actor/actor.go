@@ -35,58 +35,115 @@ type Situation struct {
 	Verb string
 	// PlayerText — фраза игрока, если он писал свободным текстом.
 	PlayerText string
-	// Known — темы, уже известные парти. Нужны, чтобы NPC мог сослаться на
-	// общее знание и не выдал того, чего парти не слышала.
-	Known []string
+	// Known — материал: факты, на которые персонажу разрешено ссылаться.
+	// Всё, чего здесь нет, персонаж сообщить не может.
+	Known []Known
 	// Frame — авторская проза хода: реплика должна к ней примыкать, а не
 	// повторять её.
 	Frame string
 }
 
-const systemPrompt = `Ты озвучиваешь одного персонажа настольной игры. Верни РОВНО одну
-короткую реплику прямой речью — то, что он говорит вслух. Одна-две фразы.
+// Move — закрытый набор того, что персонаж может сделать репликой.
+//
+// Это не украшение, а несущая конструкция. Свободная реплика с запретом
+// «не выдумывай» дважды подряд выдумала фермера Олсена, книгу учёта
+// магистрата и удвоенные дежурства. Запрет в промпте не держит; закрытый
+// набор ходов не оставляет места, где выдумывать.
+type Move string
 
-Чего делать нельзя, ни при каких формулировках:
-- сообщать факты, улики, имена, числа, места и события, которых нет в списке
-  известного парти. Если не знаешь — персонаж уклоняется, отмалчивается или
-  переводит тему;
-- обещать предметы, деньги, услуги и доступ;
-- подтверждать или опровергать догадки игрока;
-- описывать действия, движения и последствия. Только речь.
+const (
+	MoveDeflect      Move = "deflect"       // уклониться, не сказав ничего нового
+	MoveAskBack      Move = "ask_back"      // переспросить, вернуть вопрос
+	MoveConfirmKnown Move = "confirm_known" // подтвердить ровно один известный факт
+	MoveRefuse       Move = "refuse"        // отказать
+	MoveSmalltalk    Move = "smalltalk"     // пустая любезность без содержания
+)
 
-Персонаж может отказать, огрызнуться, пошутить, спросить в ответ. Он говорит
-так, как описан его голос, и настолько тепло или холодно, насколько велико его
-расположение. Отвечай на том же языке, на котором написан голос персонажа.
+func moves() []string {
+	return []string{string(MoveDeflect), string(MoveAskBack),
+		string(MoveConfirmKnown), string(MoveRefuse), string(MoveSmalltalk)}
+}
 
-Верни JSON вида {"line": "..."} — без кавычек внутри line по краям.`
+const systemPrompt = `Ты озвучиваешь одного персонажа настольной игры.
 
-var schema = map[string]any{
-	"type":                 "object",
-	"additionalProperties": false,
-	"required":             []string{"line"},
-	"properties": map[string]any{
-		"line": map[string]any{"type": "string", "description": "одна-две фразы прямой речи"},
-	},
+Твоя работа — ФОРМУЛИРОВКА, а не содержание. Материал даётся ниже; сверх него
+персонаж не знает ничего и сообщить ничего не может.
+
+Сначала выбери ХОД:
+- confirm_known — подтвердить РОВНО ОДИН факт из списка известного. Укажи его
+  в поле fact. Реплика пересказывает только этот факт, ничего к нему не
+  добавляя;
+- deflect — уклониться: персонаж не знает или не хочет говорить;
+- ask_back — вернуть вопрос игроку;
+- refuse — отказать прямо;
+- smalltalk — любезность без содержания.
+
+Затем сформулируй реплику этим голосом. Одна-две фразы.
+
+Категорически запрещено, и это проверяется: любые имена, места, должности,
+числа, события и учреждения, которых нет в материале. Ни фермеров, ни книг
+учёта, ни моргов, ни удвоенных дежурств. Если сказать нечего — это deflect,
+и он совершенно нормален.
+
+Отвечай на том же языке, на котором написан голос персонажа.`
+
+func schemaFor(known []Known) map[string]any {
+	factField := map[string]any{"type": "string",
+		"description": "id подтверждаемого факта; только при move=confirm_known"}
+	if ids := knownIDs(known); len(ids) > 0 {
+		factField["enum"] = ids
+	}
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"move", "line"},
+		"properties": map[string]any{
+			"move": map[string]any{"type": "string", "enum": moves()},
+			"fact": factField,
+			"line": map[string]any{"type": "string", "description": "одна-две фразы прямой речи"},
+		},
+	}
+}
+
+// Known — единица материала: факт, на который персонажу разрешено ссылаться.
+type Known struct {
+	ID   string
+	Text string
+}
+
+func knownIDs(k []Known) []string {
+	out := make([]string, 0, len(k))
+	for _, x := range k {
+		out = append(out, x.ID)
+	}
+	return out
+}
+
+// LineGuard проверяет, не утверждает ли реплика того, чего нет в материале.
+// Отдельный интерфейс, потому что проверка стоит вызова и должна быть
+// отключаемой.
+type LineGuard interface {
+	Check(ctx context.Context, line string, material []string, req llm.Request) (bool, error)
 }
 
 type Actor struct {
-	gw     *llm.Gateway
-	schema string
+	gw    *llm.Gateway
+	guard LineGuard
 }
 
-func New(gw *llm.Gateway) *Actor {
-	raw, err := json.Marshal(schema)
-	if err != nil {
-		panic(err) // схема статична
-	}
-	return &Actor{gw: gw, schema: string(raw)}
+func New(gw *llm.Gateway) *Actor { return &Actor{gw: gw} }
+
+// WithGuard включает проверку реплики на выдумку.
+func (a *Actor) WithGuard(g LineGuard) *Actor {
+	a.guard = g
+	return a
 }
 
 // Line возвращает текст реплики без оформления. Пустая строка без ошибки
 // означает, что персонажу сейчас нечего сказать.
 func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Request) (string, error) {
 	req.Role = llm.RoleActor
-	req.Schema = a.schema
+	req.Schema = schemaJSON(sit.Known)
 	req.System = systemPrompt
 	req.Input = renderPrompt(s, sit)
 	if req.MaxTokens == 0 {
@@ -98,12 +155,101 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 		return "", err
 	}
 	var out struct {
+		Move string `json:"move"`
+		Fact string `json:"fact"`
 		Line string `json:"line"`
 	}
 	if err := json.Unmarshal([]byte(resp.Text), &out); err != nil {
 		return "", fmt.Errorf("actor: реплика не разобралась: %w", err)
 	}
-	return clean(out.Line), nil
+
+	move, line := Move(out.Move), clean(out.Line)
+	if !validMove(move) {
+		return template(MoveDeflect, sit), nil
+	}
+	// Подтверждать можно только то, что дано, и только по одному.
+	if move == MoveConfirmKnown && !knownHas(sit.Known, out.Fact) {
+		return template(MoveDeflect, sit), nil
+	}
+	if move != MoveConfirmKnown && out.Fact != "" {
+		return template(move, sit), nil
+	}
+	if line == "" || len([]rune(line)) > maxLine {
+		return template(move, sit), nil
+	}
+	if a.guard != nil {
+		ok, err := a.guard.Check(ctx, line, allowedMaterial(s, sit, out.Fact), req)
+		if err != nil || !ok {
+			// Реплика не прошла проверку — лучше бледно и правдиво, чем
+			// живо и с выдуманным фермером.
+			return template(move, sit), nil
+		}
+	}
+	return line, nil
+}
+
+// maxLine — здравый предел. Длинная реплика почти всегда означает, что
+// персонаж начал рассказывать то, чего не знает.
+const maxLine = 220
+
+func validMove(m Move) bool {
+	for _, v := range moves() {
+		if string(m) == v {
+			return true
+		}
+	}
+	return false
+}
+
+func knownHas(known []Known, id string) bool {
+	for _, k := range known {
+		if k.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// template — безопасная реплика без модели. Нужна как дно: если проверка не
+// пройдена, игрок получает бледную, но честную фразу, а не выдумку.
+func template(m Move, sit Situation) string {
+	switch m {
+	case MoveConfirmKnown:
+		if len(sit.Known) > 0 {
+			return sit.Known[0].Text
+		}
+		return "Сказать нечего."
+	case MoveAskBack:
+		return "А вам зачем?"
+	case MoveRefuse:
+		return "Нет."
+	case MoveSmalltalk:
+		return "Служба идёт."
+	default:
+		return "Не могу сказать."
+	}
+}
+
+// allowedMaterial — всё, на что реплике разрешено опираться.
+func allowedMaterial(s Speaker, sit Situation, factID string) []string {
+	out := []string{s.Name, s.Voice}
+	if sit.PlayerText != "" {
+		out = append(out, sit.PlayerText)
+	}
+	for _, k := range sit.Known {
+		if factID == "" || k.ID == factID {
+			out = append(out, k.Text)
+		}
+	}
+	return out
+}
+
+func schemaJSON(known []Known) string {
+	b, err := json.Marshal(schemaFor(known))
+	if err != nil {
+		panic(err) // схема выводится из данных сцены, ошибка означает битый билд
+	}
+	return string(b)
 }
 
 // clean снимает обрамление, которое модель могла добавить сама. Оформлением
@@ -128,11 +274,11 @@ func renderPrompt(s Speaker, sit Situation) string {
 		fmt.Fprintf(&b, "Что уже описано: %s\n", sit.Frame)
 	}
 	if len(sit.Known) == 0 {
-		b.WriteString("Парти пока ничего не знает — сослаться не на что.\n")
+		b.WriteString("Материала нет: сослаться не на что, остаётся deflect.\n")
 	} else {
-		b.WriteString("Парти уже знает (только на это и можно ссылаться):\n")
+		b.WriteString("Материал — только это и можно подтверждать:\n")
 		for _, k := range sit.Known {
-			b.WriteString("  - " + k + "\n")
+			b.WriteString("  " + k.ID + " — " + k.Text + "\n")
 		}
 	}
 	return b.String()
@@ -166,12 +312,13 @@ func SpeakerFor(g *core.Game, id store.EntityID) (Speaker, bool) {
 	}, true
 }
 
-// KnownTopics — то, на что персонажу разрешено ссылаться: ровно банк тем парти.
-func KnownTopics(g *core.Game) []string {
-	var out []string
+// KnownTopics — материал персонажа: ровно банк тем парти, с идентификаторами,
+// чтобы подтверждение было привязано к конкретному факту.
+func KnownTopics(g *core.Game) []Known {
+	var out []Known
 	for _, f := range g.K.TopicBank() {
 		if key := g.DB.Facts[f].Key; key != "" {
-			out = append(out, key)
+			out = append(out, Known{ID: string(f), Text: key})
 		}
 	}
 	return out

@@ -29,34 +29,53 @@ type Command struct {
 	Kind   CommandKind
 	Intent core.Intent
 	Facts  []store.FactID
-	Text   string
+	// Text — остаток строки вне прямой речи либо аргумент бесструктурных
+	// команд. Для речи в нём лежит указание адресата.
+	Text string
 }
 
 var ErrUnknownVerb = errors.New("неизвестное действие")
 
-// SpeechPrefixes — по чему опознаётся прямая речь игрока. Кавычки и тире это
-// договор, а не догадка: игрок сам помечает, что отыгрывает персонажа, и на
-// разбор такой строки не тратится ни один вызов модели.
-var SpeechPrefixes = []string{"\"", "«", "—", "-", "'"}
+// speechPairs — парные обрамления прямой речи. Игрок сам помечает, что
+// отыгрывает персонажа, и на разбор такой строки не тратится вызов модели.
+var speechPairs = [][2]string{{`"`, `"`}, {"«", "»"}, {"'", "'"}, {"“", "”"}}
 
-// Speech распознаёт прямую речь и возвращает сказанное без обрамления.
-func Speech(line string) (string, bool) {
+// speechDashes — речь через тире: в этой форме репликой считается вся строка.
+var speechDashes = []string{"—", "–", "-"}
+
+// Speech выделяет прямую речь и остаток строки.
+//
+// Кавычки ищутся ГДЕ УГОДНО, а не только в начале: «Обращаясь к Нильсу —
+// "а ты ничего не видел?"» это обычная запись, и остаток нужен, чтобы понять,
+// к кому обращаются.
+func Speech(line string) (said, rest string, ok bool) {
 	line = strings.TrimSpace(line)
-	for _, p := range SpeechPrefixes {
-		if !strings.HasPrefix(line, p) {
+	for _, pair := range speechPairs {
+		open := strings.Index(line, pair[0])
+		if open < 0 {
 			continue
 		}
-		said := strings.TrimSpace(strings.TrimPrefix(line, p))
-		said = strings.TrimSuffix(said, "»")
-		said = strings.TrimSuffix(said, "\"")
-		said = strings.TrimSuffix(said, "'")
-		said = strings.TrimSpace(said)
-		if said == "" {
-			return "", false
+		tail := line[open+len(pair[0]):]
+		close := strings.Index(tail, pair[1])
+		if close < 0 {
+			continue
 		}
-		return said, true
+		said = strings.TrimSpace(tail[:close])
+		if said == "" {
+			continue
+		}
+		rest = strings.Join(strings.Fields(line[:open]+" "+tail[close+len(pair[1]):]), " ")
+		return said, rest, true
 	}
-	return "", false
+	for _, dash := range speechDashes {
+		if !strings.HasPrefix(line, dash) {
+			continue
+		}
+		if said = strings.TrimSpace(strings.TrimPrefix(line, dash)); said != "" {
+			return said, "", true
+		}
+	}
+	return "", "", false
 }
 
 // Parse разбирает одну строку ввода. Пустые строки и строки-комментарии дают
@@ -68,8 +87,8 @@ func Parse(line string) (Command, error) {
 	}
 	// Прямая речь опознаётся до всего остального: «Что нового?» в кавычках —
 	// это реплика персонажа, а не команда осмотреться.
-	if said, ok := Speech(line); ok {
-		return Command{Kind: CmdAction, Intent: core.Intent{
+	if said, rest, ok := Speech(line); ok {
+		return Command{Kind: CmdAction, Text: rest, Intent: core.Intent{
 			Verb: "say", Args: core.Args{Text: said},
 		}}, nil
 	}

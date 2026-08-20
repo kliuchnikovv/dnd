@@ -32,6 +32,7 @@ func main() {
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
+	guardLines := flag.Bool("guard-lines", true, "проверять реплики NPC на выдумку вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
 	capTurn := flag.Int("cap-turn", 4, "потолок вызовов модели на один ход: разбор до двух, озвучка один")
 	envFile := flag.String("env", ".env", "файл с переменными окружения; уже заданное окружение приоритетнее")
@@ -70,7 +71,8 @@ func main() {
 		gw := llm.NewGateway(
 			llm.NewRouter().
 				Route(llm.RoleIntentParser, target).
-				Route(llm.RoleActor, target),
+				Route(llm.RoleActor, target).
+				Route(llm.RoleCanonGuard, target),
 			llm.NewLedger(llm.Caps{
 				GlobalDailyMicro:   int64(*capDay * 1_000_000),
 				PerTurnCalls:       *capTurn,
@@ -83,7 +85,11 @@ func main() {
 		}
 		parser = intent.NewParser(gw)
 		session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
-		session.WithVoicer(&actor.GameVoicer{Actor: actor.New(gw), Game: game})
+		act := actor.New(gw)
+		if *guardLines {
+			act = act.WithGuard(actor.NewGuard(gw))
+		}
+		session.WithVoicer(&actor.GameVoicer{Actor: act, Game: game})
 		defer func() { reportMetrics(gw, parser) }()
 	}
 

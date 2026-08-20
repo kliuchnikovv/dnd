@@ -78,7 +78,7 @@ func (s *Session) dispatch(cmd Command) bool {
 		}
 		fmt.Fprint(s.Out, r.Turn(g, g.Rest(kind)))
 	case CmdAction:
-		s.applyIntent(cmd.Intent)
+		s.applyIntentWithHint(cmd.Intent, cmd.Text)
 	}
 	return false
 }
@@ -144,7 +144,7 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 // надёжного к правдоподобному: назван по имени, разговор уже идёт с ним,
 // он единственный в сцене. Без адресата реплика уходит в воздух — и это
 // худший исход, потому что игрок не понимает, сработало ли что-нибудь.
-func (s *Session) addressee(in *core.Intent) {
+func (s *Session) addressee(in *core.Intent, hint string) {
 	if in.Args.Target != "" {
 		return
 	}
@@ -152,8 +152,13 @@ func (s *Session) addressee(in *core.Intent) {
 		return
 	}
 	npcs := s.npcsHere()
-	if in.Args.Text != "" {
-		if id, ok := naming.Resolve(in.Args.Text, npcs); ok {
+	// Подсказка вне кавычек надёжнее самой реплики: в ней игрок как раз и
+	// называет, к кому обращается.
+	for _, source := range []string{hint, in.Args.Text} {
+		if source == "" {
+			continue
+		}
+		if id, ok := naming.Resolve(source, npcs); ok {
 			in.Args.Target = store.EntityID(id)
 			return
 		}
@@ -209,9 +214,13 @@ func (s *Session) remember(in core.Intent) {
 // applyIntent — единственный путь, которым интент доходит до движка. И
 // команда, и свободный текст идут через него: расхождение между двумя входами
 // было бы багом, который проявляется только в одном из режимов.
-func (s *Session) applyIntent(in core.Intent) {
+func (s *Session) applyIntent(in core.Intent) { s.applyIntentWithHint(in, "") }
+
+// applyIntentWithHint принимает подсказку об адресате из той части строки,
+// что осталась вне кавычек: «Обращаясь к Нильсу» стоит именно там.
+func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
 	in.Actor = s.Game.Actor
-	s.addressee(&in)
+	s.addressee(&in, hint)
 	if s.needsAddressee(in) {
 		// Спросить дешевле, чем промолчать: молчание игрок читает как
 		// поломку, а не как отсутствие адресата.

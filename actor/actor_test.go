@@ -44,7 +44,7 @@ func TestCleanStripsModelQuoting(t *testing.T) {
 }
 
 func TestLineIsQuotedByCodeNotModel(t *testing.T) {
-	a, _ := actorWith(t, `{"line":"«Я ничего не видел.»"}`)
+	a, _ := actorWith(t, `{"move":"deflect","line":"«Я ничего не видел.»"}`)
 	got, err := a.Line(context.Background(), Speaker{Name: "Берн", Voice: "сухой"},
 		Situation{Verb: "talk_to"}, llm.Request{})
 	if err != nil {
@@ -59,7 +59,7 @@ func TestLineIsQuotedByCodeNotModel(t *testing.T) {
 // промпт уходит ровно банк тем — и явное указание, что ссылаться больше не на что.
 func TestPromptCarriesOnlyKnownTopics(t *testing.T) {
 	g := harbour(t)
-	a, f := actorWith(t, `{"line":"Ничего."}`)
+	a, f := actorWith(t, `{"move":"deflect","line":"Ничего."}`)
 	sp, ok := SpeakerFor(g, "e_bern")
 	if !ok {
 		t.Fatal("у Берна нет голоса — фикстура сломана")
@@ -69,10 +69,9 @@ func TestPromptCarriesOnlyKnownTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	prompt := f.Calls()[0].Input
-	known := KnownTopics(g)
-	for _, k := range known {
-		if !strings.Contains(prompt, k) {
-			t.Errorf("в промпте нет известной темы %q", k)
+	for _, k := range KnownTopics(g) {
+		if !strings.Contains(prompt, k.Text) {
+			t.Errorf("в промпте нет известной темы %q", k.Text)
 		}
 	}
 	// Токены правильного ответа не должны попасть в промпт ни под каким видом.
@@ -81,9 +80,8 @@ func TestPromptCarriesOnlyKnownTopics(t *testing.T) {
 			t.Errorf("промпт содержит %q", leak)
 		}
 	}
-	if !strings.Contains(f.Calls()[0].System, "не сообщать факты") &&
-		!strings.Contains(f.Calls()[0].System, "сообщать факты") {
-		t.Error("в системном промпте нет запрета сообщать факты")
+	if !strings.Contains(f.Calls()[0].System, "Категорически запрещено") {
+		t.Error("в системном промпте нет запрета на выдумку")
 	}
 }
 
@@ -104,7 +102,7 @@ func TestSpeakerOnlyForNPCsWithVoice(t *testing.T) {
 func TestDispositionReachesPrompt(t *testing.T) {
 	g := harbour(t)
 	g.Disposition["e_bern"] = -3
-	a, f := actorWith(t, `{"line":"Отойдите."}`)
+	a, f := actorWith(t, `{"move":"refuse","line":"Отойдите."}`)
 	sp, _ := SpeakerFor(g, "e_bern")
 	a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
 	if !strings.Contains(f.Calls()[0].Input, "враждебное") {
@@ -122,7 +120,7 @@ func voicer(t *testing.T, g *core.Game, reply string) (*GameVoicer, *llm.Fake) {
 
 func TestVoiceOnSocialVerb(t *testing.T) {
 	g := harbour(t)
-	v, _ := voicer(t, g, `{"line":"Мокро сегодня."}`)
+	v, _ := voicer(t, g, `{"move":"smalltalk","line":"Мокро сегодня."}`)
 	got, err := v.Voice(context.Background(),
 		core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern"}}, core.TurnResult{})
 	if err != nil {
@@ -136,7 +134,7 @@ func TestVoiceOnSocialVerb(t *testing.T) {
 // Ход, выдавший факт, уже несёт авторскую реплику: вторая была бы шумом.
 func TestSilentWhenFactDelivered(t *testing.T) {
 	g := harbour(t)
-	v, f := voicer(t, g, `{"line":"не должно прозвучать"}`)
+	v, f := voicer(t, g, `{"move":"deflect","line":"не должно прозвучать"}`)
 	got, err := v.Voice(context.Background(),
 		core.Intent{Verb: "question", Args: core.Args{Target: "e_bern", Topic: "f_x"}},
 		core.TurnResult{Learned: []core.Learned{{Fact: "f_x", From: "e_bern"}}})
@@ -161,7 +159,7 @@ func TestSilentOnNonSocialVerbsAndThings(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			v, f := voicer(t, g, `{"line":"тишина"}`)
+			v, f := voicer(t, g, `{"move":"deflect","line":"тишина"}`)
 			got, _ := v.Voice(context.Background(), c.in, core.TurnResult{})
 			if got != "" {
 				t.Errorf("прозвучала реплика: %q", got)
@@ -172,3 +170,150 @@ func TestSilentOnNonSocialVerbsAndThings(t *testing.T) {
 		})
 	}
 }
+
+// --- закрытый набор ходов ---
+
+// Ход вне набора и подтверждение неизвестного факта — то, чем реплика
+// превращалась в выдумку. Оба случая падают в шаблон.
+func TestInvalidMoveFallsBackToTemplate(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	cases := map[string]string{
+		"ход вне набора":             `{"move":"рассказать_всё","line":"Фермер Олсен потерял скот."}`,
+		"подтверждение неизвестного": `{"move":"confirm_known","fact":"f_нет_такого","line":"Дежурства удвоили."}`,
+		"факт при неподходящем ходе": `{"move":"deflect","fact":"f_body_found","line":"Патрулируем по графику."}`,
+		"пустая реплика":             `{"move":"deflect","line":""}`,
+	}
+	for name, reply := range cases {
+		t.Run(name, func(t *testing.T) {
+			a, _ := actorWith(t, reply)
+			got, err := a.Line(context.Background(), sp,
+				Situation{Verb: "talk_to", Known: KnownTopics(g)}, llm.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(got, "Олсен") || strings.Contains(got, "Дежурства") ||
+				strings.Contains(got, "Патрулируем") {
+				t.Errorf("выдумка дошла до игрока: %q", got)
+			}
+			if got == "" {
+				t.Error("шаблон не подставился")
+			}
+		})
+	}
+}
+
+func TestConfirmKnownAcceptsFactFromMaterial(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	known := KnownTopics(g)
+	if len(known) == 0 {
+		t.Fatal("в деле нет стартовых фактов")
+	}
+	a, _ := actorWith(t, `{"move":"confirm_known","fact":"`+known[0].ID+
+		`","line":"Тело нашли на складе, всё верно."}`)
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", Known: known}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Тело нашли на складе, всё верно." {
+		t.Errorf("реплика %q", got)
+	}
+}
+
+// Слишком длинная реплика почти всегда означает рассказ о том, чего персонаж
+// не знает.
+func TestOverlongLineFallsBackToTemplate(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	long := strings.Repeat("много слов ", 40)
+	a, _ := actorWith(t, `{"move":"smalltalk","line":"`+long+`"}`)
+	got, _ := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
+	if len([]rune(got)) > maxLine {
+		t.Errorf("длинная реплика прошла: %d символов", len([]rune(got)))
+	}
+}
+
+// Схема несёт материал: подтвердить можно только перечисленное.
+func TestSchemaEnumeratesKnownFacts(t *testing.T) {
+	g := harbour(t)
+	props := schemaFor(KnownTopics(g))["properties"].(map[string]any)
+	fact := props["fact"].(map[string]any)
+	enum, ok := fact["enum"].([]string)
+	if !ok || len(enum) == 0 {
+		t.Fatal("у fact нет перечисления известных фактов")
+	}
+	moveEnum := props["move"].(map[string]any)["enum"].([]string)
+	if len(moveEnum) != 5 {
+		t.Errorf("ходов %d, ожидалось 5", len(moveEnum))
+	}
+}
+
+// --- проверка на выдумку ---
+
+type stubGuard struct {
+	ok       bool
+	err      error
+	material []string
+}
+
+func (g *stubGuard) Check(_ context.Context, _ string, material []string, _ llm.Request) (bool, error) {
+	g.material = material
+	return g.ok, g.err
+}
+
+func TestGuardRejectionFallsBackToTemplate(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"move":"smalltalk","line":"Дежурства удвоили с прошлой недели."}`)
+	a = a.WithGuard(&stubGuard{ok: false})
+
+	got, err := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "Дежурства") {
+		t.Errorf("проверка отклонила реплику, а игрок её увидел: %q", got)
+	}
+}
+
+// Сбой проверки трактуется как отказ: лучше бледно, чем с выдумкой.
+func TestGuardFailureIsTreatedAsRejection(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"move":"smalltalk","line":"Что-то содержательное."}`)
+	a = a.WithGuard(&stubGuard{err: errStub})
+
+	got, _ := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
+	if got == "Что-то содержательное." {
+		t.Error("реплика прошла, хотя проверка сорвалась")
+	}
+}
+
+func TestGuardGetsOnlyAllowedMaterial(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	known := KnownTopics(g)
+	sg := &stubGuard{ok: true}
+	a, _ := actorWith(t, `{"move":"confirm_known","fact":"`+known[0].ID+`","line":"Тело нашли."}`)
+	a = a.WithGuard(sg)
+	a.Line(context.Background(), sp, Situation{Verb: "talk_to",
+		PlayerText: "что за труп?", Known: known}, llm.Request{})
+
+	joined := strings.Join(sg.material, " | ")
+	if !strings.Contains(joined, known[0].Text) {
+		t.Errorf("в материал не попал подтверждаемый факт: %q", joined)
+	}
+	for _, leak := range []string{"seal_cord", "night_before_tide", "redacted"} {
+		if strings.Contains(joined, leak) {
+			t.Errorf("в материал попало %q", leak)
+		}
+	}
+}
+
+var errStub = errStubType{}
+
+type errStubType struct{}
+
+func (errStubType) Error() string { return "проверка недоступна" }
