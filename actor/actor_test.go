@@ -32,15 +32,14 @@ func harbour(t *testing.T) *core.Game {
 	return core.NewGame(*cfg)
 }
 
-func TestQuoteNormalisesPunctuation(t *testing.T) {
+// Модель иногда обрамляет реплику сама. Обрамление снимается здесь, а
+// ставится в презентации — чтобы речь NPC и речь игрока выглядели одинаково.
+func TestCleanStripsModelQuoting(t *testing.T) {
 	for _, in := range []string{`Дождь скоро кончится.`, `«Дождь скоро кончится.»`,
 		`"Дождь скоро кончится."`, `  Дождь скоро кончится.  `} {
-		if got := Quote(in); got != "— Дождь скоро кончится." {
-			t.Errorf("Quote(%q) = %q", in, got)
+		if got := clean(in); got != "Дождь скоро кончится." {
+			t.Errorf("clean(%q) = %q", in, got)
 		}
-	}
-	if Quote("   ") != "" {
-		t.Error("пустая реплика должна остаться пустой")
 	}
 }
 
@@ -51,8 +50,8 @@ func TestLineIsQuotedByCodeNotModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "— Я ничего не видел." {
-		t.Errorf("реплика %q — оформление должно ставить код", got)
+	if got != "Я ничего не видел." {
+		t.Errorf("реплика %q — обрамление модели должно быть снято", got)
 	}
 }
 
@@ -129,7 +128,7 @@ func TestVoiceOnSocialVerb(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "— Мокро сегодня." {
+	if got != "Мокро сегодня." {
 		t.Errorf("реплика %q", got)
 	}
 }

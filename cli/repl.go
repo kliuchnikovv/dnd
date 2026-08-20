@@ -23,6 +23,9 @@ type Session struct {
 	interp Interpreter
 	voicer Voicer
 	turn   int
+	// spokenTo — последний, к кому обращались. Разговор продолжается с тем же
+	// человеком: игроку не надо называть его в каждой реплике.
+	spokenTo store.EntityID
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
@@ -75,11 +78,7 @@ func (s *Session) dispatch(cmd Command) bool {
 		}
 		fmt.Fprint(s.Out, r.Turn(g, g.Rest(kind)))
 	case CmdAction:
-		cmd.Intent.Actor = g.Actor
-		s.addressee(&cmd.Intent)
-		res := g.Apply(cmd.Intent)
-		fmt.Fprint(s.Out, r.Turn(g, res))
-		s.afterAction(cmd.Intent, res)
+		s.applyIntent(cmd.Intent)
 	}
 	return false
 }
@@ -141,27 +140,104 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	}
 }
 
-// addressee подставляет собеседника прямой речи. Игрок, сказавший что-то
-// вслух, обращается к кому-то: к названному по имени либо к единственному
-// присутствующему. Без этого реплика уходит в воздух и персонаж не отвечает.
+// addressee подставляет собеседника прямой речи, перебирая три способа от
+// надёжного к правдоподобному: назван по имени, разговор уже идёт с ним,
+// он единственный в сцене. Без адресата реплика уходит в воздух — и это
+// худший исход, потому что игрок не понимает, сработало ли что-нибудь.
 func (s *Session) addressee(in *core.Intent) {
-	if in.Args.Target != "" || in.Args.Text == "" {
+	if in.Args.Target != "" {
 		return
 	}
 	if def, ok := core.Verbs[in.Verb]; !ok || def.Class != core.ClassNone {
 		return
 	}
-	var npcs []naming.Candidate
-	for _, e := range s.Game.DB.EntitiesAt(s.Game.Node) {
-		if e.Kind == store.EntityNPC {
-			npcs = append(npcs, naming.Candidate{ID: string(e.ID), Name: e.Name})
+	npcs := s.npcsHere()
+	if in.Args.Text != "" {
+		if id, ok := naming.Resolve(in.Args.Text, npcs); ok {
+			in.Args.Target = store.EntityID(id)
+			return
 		}
 	}
-	if id, ok := naming.Resolve(in.Args.Text, npcs); ok {
-		in.Args.Target = store.EntityID(id)
+	if s.spokenTo != "" && containsID(npcs, string(s.spokenTo)) {
+		in.Args.Target = s.spokenTo
 		return
 	}
 	if len(npcs) == 1 {
 		in.Args.Target = store.EntityID(npcs[0].ID)
 	}
+}
+
+// needsAddressee сообщает, что сказанное некому услышать. Тогда надо спросить,
+// а не промолчать.
+func (s *Session) needsAddressee(in core.Intent) bool {
+	if in.Args.Target != "" || in.Args.Text == "" {
+		return false
+	}
+	def, ok := core.Verbs[in.Verb]
+	return ok && def.Class == core.ClassNone && len(s.npcsHere()) > 0
+}
+
+func (s *Session) npcsHere() []naming.Candidate {
+	var out []naming.Candidate
+	for _, e := range s.Game.DB.EntitiesAt(s.Game.Node) {
+		if e.Kind == store.EntityNPC {
+			out = append(out, naming.Candidate{ID: string(e.ID), Name: e.Name})
+		}
+	}
+	return out
+}
+
+func containsID(list []naming.Candidate, id string) bool {
+	for _, c := range list {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// remember запоминает собеседника, чтобы следующая реплика ушла ему же.
+func (s *Session) remember(in core.Intent) {
+	if in.Args.Target == "" {
+		return
+	}
+	if e, ok := s.Game.DB.Entities[in.Args.Target]; ok && e.Kind == store.EntityNPC {
+		s.spokenTo = in.Args.Target
+	}
+}
+
+// applyIntent — единственный путь, которым интент доходит до движка. И
+// команда, и свободный текст идут через него: расхождение между двумя входами
+// было бы багом, который проявляется только в одном из режимов.
+func (s *Session) applyIntent(in core.Intent) {
+	in.Actor = s.Game.Actor
+	s.addressee(&in)
+	if s.needsAddressee(in) {
+		// Спросить дешевле, чем промолчать: молчание игрок читает как
+		// поломку, а не как отсутствие адресата.
+		var names []string
+		for _, c := range s.npcsHere() {
+			names = append(names, c.Name)
+		}
+		fmt.Fprintf(s.Out, "к кому ты обращаешься? здесь %s\n", strings.Join(names, ", "))
+		return
+	}
+	s.remember(in)
+	res := s.Game.Apply(in)
+	if said := spokenAloud(in); said != "" && !res.Refused {
+		// Реплика игрока показывается как реплика. Описание того, что он
+		// «сказал это вслух», на каждой фразе читается как шум.
+		fmt.Fprintln(s.Out, Spoken(said))
+	} else {
+		fmt.Fprint(s.Out, s.r.Turn(s.Game, res))
+	}
+	s.afterAction(in, res)
+}
+
+// spokenAloud возвращает сказанное игроком вслух, если ход этим и был.
+func spokenAloud(in core.Intent) string {
+	if in.Verb != "say" {
+		return ""
+	}
+	return strings.TrimSpace(in.Args.Text)
 }

@@ -82,8 +82,8 @@ func New(gw *llm.Gateway) *Actor {
 	return &Actor{gw: gw, schema: string(raw)}
 }
 
-// Line возвращает реплику в кавычках, готовую к печати. Пустая строка без
-// ошибки означает, что персонажу сейчас нечего сказать.
+// Line возвращает текст реплики без оформления. Пустая строка без ошибки
+// означает, что персонажу сейчас нечего сказать.
 func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Request) (string, error) {
 	req.Role = llm.RoleActor
 	req.Schema = a.schema
@@ -103,19 +103,17 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 	if err := json.Unmarshal([]byte(resp.Text), &out); err != nil {
 		return "", fmt.Errorf("actor: реплика не разобралась: %w", err)
 	}
-	return Quote(out.Line), nil
+	return clean(out.Line), nil
 }
 
-// Quote оформляет реплику прямой речью. Кавычки ставит код, а не модель:
-// иначе оформление плавает от вызова к вызову.
-func Quote(line string) string {
+// clean снимает обрамление, которое модель могла добавить сама. Оформлением
+// занимается презентация: реплика NPC и реплика игрока должны выглядеть
+// одинаково, а знать об этом должен один слой, а не два.
+func clean(line string) string {
 	line = strings.TrimSpace(line)
 	line = strings.Trim(line, "«»\"'")
 	line = strings.TrimSpace(line)
-	if line == "" {
-		return ""
-	}
-	return "— " + line
+	return line
 }
 
 func renderPrompt(s Speaker, sit Situation) string {

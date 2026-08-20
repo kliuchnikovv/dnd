@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
@@ -29,6 +30,16 @@ func (s *Session) WithVoicer(v Voicer) *Session {
 	return s
 }
 
+// Spoken оформляет прямую речь. Одно место на всю игру: реплика NPC и
+// реплика игрока должны выглядеть одинаково.
+func Spoken(line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return ""
+	}
+	return "— " + line
+}
+
 // speak печатает реплику, если персонаж заговорил. Сбой канала не должен
 // прерывать ход: озвучка необязательна, а ход уже закоммичен.
 func (s *Session) speak(in core.Intent, res core.TurnResult) {
@@ -41,6 +52,6 @@ func (s *Session) speak(in core.Intent, res core.TurnResult) {
 		return
 	}
 	if line != "" {
-		fmt.Fprintln(s.Out, line)
+		fmt.Fprintln(s.Out, Spoken(line))
 	}
 }

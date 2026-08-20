@@ -12,6 +12,7 @@ import (
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 func transcript(t *testing.T, seed int64, script string) string {
@@ -214,7 +215,7 @@ func (f *fakeVoicer) Voice(_ context.Context, _ core.Intent, _ core.TurnResult) 
 }
 
 func TestVoicerLinePrintedAfterTurn(t *testing.T) {
-	fv := &fakeVoicer{line: "— Мокро сегодня."}
+	fv := &fakeVoicer{line: "Мокро сегодня."}
 	g := renderGame(t)
 	var out bytes.Buffer
 	s := NewSession(g, strings.NewReader("talk_to toke\nquit\n"), &out).WithVoicer(fv)
@@ -228,7 +229,7 @@ func TestVoicerLinePrintedAfterTurn(t *testing.T) {
 
 // Отказ ход не тратит, значит и модель звать незачем.
 func TestVoicerNotCalledOnRefusal(t *testing.T) {
-	fv := &fakeVoicer{line: "— не должно прозвучать"}
+	fv := &fakeVoicer{line: "не должно прозвучать"}
 	g := renderGame(t)
 	var out bytes.Buffer
 	NewSession(g, strings.NewReader("talk_to призрак\nquit\n"), &out).WithVoicer(fv).Run()
@@ -271,7 +272,7 @@ func TestInterpretAndVoiceShareOneTurn(t *testing.T) {
 	var seen []string
 	fi := &fakeInterp{intent: &core.Intent{Verb: "talk_to",
 		Args: core.Args{Target: "e_toke"}}}
-	fv := &turnRecordingVoicer{seen: &seen, line: "— Да?"}
+	fv := &turnRecordingVoicer{seen: &seen, line: "Да?"}
 	g := renderGame(t)
 	var out bytes.Buffer
 	s := NewSession(g, strings.NewReader("поздороваться\nпоздороваться\nquit\n"), &out).
@@ -333,5 +334,77 @@ type intentRecordingVoicer struct{ last core.Intent }
 
 func (v *intentRecordingVoicer) Voice(_ context.Context, in core.Intent, _ core.TurnResult) (string, error) {
 	v.last = in
-	return "— Ничего нового.", nil
+	return "Ничего нового.", nil
+}
+
+// Ровно тот случай: в сцене двое, имени в реплике нет — раньше персонаж молчал
+// и игрок не понимал, сработало ли что-нибудь.
+func TestSpeechAsksWhenAddresseeAmbiguous(t *testing.T) {
+	g := twoNPCGame(t)
+	var out bytes.Buffer
+	fv := &intentRecordingVoicer{}
+	NewSession(g, strings.NewReader("«Что за труп?»\nquit\n"), &out).WithVoicer(fv).Run()
+	if !strings.Contains(out.String(), "к кому ты обращаешься") {
+		t.Errorf("вместо вопроса тишина: %q", out.String())
+	}
+	if fv.last.Verb != "" {
+		t.Error("ход дошёл до движка без адресата")
+	}
+}
+
+// Разговор продолжается с тем же человеком: назвав его однажды, игрок не
+// обязан повторять имя в каждой реплике.
+func TestConversationRemembersAddressee(t *testing.T) {
+	g := twoNPCGame(t)
+	var out bytes.Buffer
+	fv := &intentRecordingVoicer{}
+	NewSession(g, strings.NewReader("«Берн, что слышно?»\n«А труп?»\nquit\n"), &out).
+		WithVoicer(fv).Run()
+	if strings.Contains(out.String(), "к кому ты обращаешься") {
+		t.Errorf("вторая реплика потеряла собеседника: %q", out.String())
+	}
+	if fv.last.Args.Target != "e_bern" {
+		t.Errorf("вторая реплика ушла к %q, ожидался e_bern", fv.last.Args.Target)
+	}
+}
+
+// Знак вопроса не стоит вызова модели.
+func TestMeaninglessInputCostsNoModelCall(t *testing.T) {
+	fi := &fakeInterp{intent: &core.Intent{Verb: "look"}}
+	g := renderGame(t)
+	var out bytes.Buffer
+	NewSession(g, strings.NewReader("?\n...\nquit\n"), &out).WithInterpreter(fi).Run()
+	if len(fi.seen) != 0 {
+		t.Errorf("модель вызвана на мусорном вводе: %v", fi.seen)
+	}
+	if !strings.Contains(out.String(), "не понял") {
+		t.Errorf("игроку не сказано, что ввод не понят: %q", out.String())
+	}
+}
+
+// Свободный текст через модель обязан проходить тем же путём, что команда:
+// иначе адресат теряется в одном из режимов.
+func TestInterpretedSpeechAlsoGetsAddressee(t *testing.T) {
+	g := twoNPCGame(t)
+	fi := &fakeInterp{intent: &core.Intent{Verb: "say",
+		Args: core.Args{Text: "Берн, что слышно?"}}}
+	fv := &intentRecordingVoicer{}
+	var out bytes.Buffer
+	NewSession(g, strings.NewReader("скажу Берну пару слов\nquit\n"), &out).
+		WithInterpreter(fi).WithVoicer(fv).Run()
+	if fv.last.Args.Target != "e_bern" {
+		t.Errorf("адресат %q — свободный текст не прошёл разрешение", fv.last.Args.Target)
+	}
+}
+
+// twoNPCGame — сцена с двумя людьми: без неё двусмысленность не проверить.
+func twoNPCGame(t *testing.T) *core.Game {
+	t.Helper()
+	g := renderGame(t)
+	g.DB.Entities["e_bern"] = store.Entity{ID: "e_bern", Name: "Берн, стражник",
+		Kind: store.EntityNPC, Voice: "сухой", Node: g.Node}
+	g.DB.Entities["e_nils"] = store.Entity{ID: "e_nils", Name: "Нильс, посыльный",
+		Kind: store.EntityNPC, Voice: "торопливый", Node: g.Node}
+	delete(g.DB.Entities, "e_toke")
+	return g
 }
