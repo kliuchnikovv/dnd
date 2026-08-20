@@ -112,3 +112,51 @@ func TestParseRejectsWrongArity(t *testing.T) {
 		t.Error("compare с одним фактом принят")
 	}
 }
+
+// --- прямая речь ---
+
+// «Что нового?» разбиралось как look, хотя игрок говорил это вслух. Кавычки
+// снимают двусмысленность и не стоят ни одного вызова модели.
+func TestSpeechRecognisedByMarker(t *testing.T) {
+	cases := map[string]string{
+		`"Что нового?"`:       "Что нового?",
+		`«Что нового?»`:       "Что нового?",
+		`— Что нового?`:       "Что нового?",
+		`- Что нового?`:       "Что нового?",
+		`'Что нового?'`:       "Что нового?",
+		`«Берн, что слышно?»`: "Берн, что слышно?",
+	}
+	for line, want := range cases {
+		cmd, err := Parse(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if cmd.Kind != CmdAction || cmd.Intent.Verb != "say" {
+			t.Errorf("%q -> вид %v глагол %q, ожидалось действие say", line, cmd.Kind, cmd.Intent.Verb)
+			continue
+		}
+		if cmd.Intent.Args.Text != want {
+			t.Errorf("%q -> сказано %q, ожидалось %q", line, cmd.Intent.Args.Text, want)
+		}
+	}
+}
+
+func TestCommandsAreNotMistakenForSpeech(t *testing.T) {
+	for _, line := range []string{"look", "question ivar ledger", "facts", "quit"} {
+		cmd, err := Parse(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if cmd.Intent.Verb == "say" {
+			t.Errorf("команда %q принята за прямую речь", line)
+		}
+	}
+}
+
+func TestEmptySpeechIsNotSpeech(t *testing.T) {
+	for _, line := range []string{`""`, `«»`, `—`, `- `} {
+		if said, ok := Speech(line); ok {
+			t.Errorf("%q принято за речь: %q", line, said)
+		}
+	}
+}

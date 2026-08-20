@@ -299,3 +299,39 @@ func (v *turnRecordingVoicer) Voice(ctx context.Context, _ core.Intent, _ core.T
 	*v.seen = append(*v.seen, llm.TurnIDFrom(ctx))
 	return v.line, nil
 }
+
+// Реплика в воздух — не реплика: персонаж должен понимать, что обращаются к
+// нему, иначе он не ответит.
+func TestSpeechGetsAddresseeByName(t *testing.T) {
+	g := renderGame(t)
+	var out bytes.Buffer
+	fv := &intentRecordingVoicer{}
+	s := NewSession(g, strings.NewReader("«Токе, что слышно?»\nquit\n"), &out).WithVoicer(fv)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if fv.last.Args.Target != "e_toke" {
+		t.Errorf("собеседник %q, ожидался e_toke", fv.last.Args.Target)
+	}
+	if fv.last.Args.Text != "Токе, что слышно?" {
+		t.Errorf("сказанное %q", fv.last.Args.Text)
+	}
+}
+
+// Если в сцене один человек, обращение к нему очевидно и спрашивать нечего.
+func TestSpeechFallsBackToSoleNPC(t *testing.T) {
+	g := renderGame(t)
+	var out bytes.Buffer
+	fv := &intentRecordingVoicer{}
+	NewSession(g, strings.NewReader("«Что нового?»\nquit\n"), &out).WithVoicer(fv).Run()
+	if fv.last.Args.Target != "e_toke" {
+		t.Errorf("собеседник %q — в сцене один NPC, он и адресат", fv.last.Args.Target)
+	}
+}
+
+type intentRecordingVoicer struct{ last core.Intent }
+
+func (v *intentRecordingVoicer) Voice(_ context.Context, in core.Intent, _ core.TurnResult) (string, error) {
+	v.last = in
+	return "— Ничего нового.", nil
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/naming"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -75,6 +76,7 @@ func (s *Session) dispatch(cmd Command) bool {
 		fmt.Fprint(s.Out, r.Turn(g, g.Rest(kind)))
 	case CmdAction:
 		cmd.Intent.Actor = g.Actor
+		s.addressee(&cmd.Intent)
 		res := g.Apply(cmd.Intent)
 		fmt.Fprint(s.Out, r.Turn(g, res))
 		s.afterAction(cmd.Intent, res)
@@ -136,5 +138,30 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
 		s.Game.Node = in.Args.Node
 		fmt.Fprint(s.Out, s.r.Scene(s.Game))
+	}
+}
+
+// addressee подставляет собеседника прямой речи. Игрок, сказавший что-то
+// вслух, обращается к кому-то: к названному по имени либо к единственному
+// присутствующему. Без этого реплика уходит в воздух и персонаж не отвечает.
+func (s *Session) addressee(in *core.Intent) {
+	if in.Args.Target != "" || in.Args.Text == "" {
+		return
+	}
+	if def, ok := core.Verbs[in.Verb]; !ok || def.Class != core.ClassNone {
+		return
+	}
+	var npcs []naming.Candidate
+	for _, e := range s.Game.DB.EntitiesAt(s.Game.Node) {
+		if e.Kind == store.EntityNPC {
+			npcs = append(npcs, naming.Candidate{ID: string(e.ID), Name: e.Name})
+		}
+	}
+	if id, ok := naming.Resolve(in.Args.Text, npcs); ok {
+		in.Args.Target = store.EntityID(id)
+		return
+	}
+	if len(npcs) == 1 {
+		in.Args.Target = store.EntityID(npcs[0].ID)
 	}
 }

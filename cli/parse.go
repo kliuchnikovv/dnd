@@ -34,12 +34,44 @@ type Command struct {
 
 var ErrUnknownVerb = errors.New("неизвестное действие")
 
+// SpeechPrefixes — по чему опознаётся прямая речь игрока. Кавычки и тире это
+// договор, а не догадка: игрок сам помечает, что отыгрывает персонажа, и на
+// разбор такой строки не тратится ни один вызов модели.
+var SpeechPrefixes = []string{"\"", "«", "—", "-", "'"}
+
+// Speech распознаёт прямую речь и возвращает сказанное без обрамления.
+func Speech(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	for _, p := range SpeechPrefixes {
+		if !strings.HasPrefix(line, p) {
+			continue
+		}
+		said := strings.TrimSpace(strings.TrimPrefix(line, p))
+		said = strings.TrimSuffix(said, "»")
+		said = strings.TrimSuffix(said, "\"")
+		said = strings.TrimSuffix(said, "'")
+		said = strings.TrimSpace(said)
+		if said == "" {
+			return "", false
+		}
+		return said, true
+	}
+	return "", false
+}
+
 // Parse разбирает одну строку ввода. Пустые строки и строки-комментарии дают
 // CmdNone: скриптовый прогон читает те же файлы, что пишет человек.
 func Parse(line string) (Command, error) {
 	line = strings.TrimSpace(line)
 	if line == "" || strings.HasPrefix(line, "#") {
 		return Command{Kind: CmdNone}, nil
+	}
+	// Прямая речь опознаётся до всего остального: «Что нового?» в кавычках —
+	// это реплика персонажа, а не команда осмотреться.
+	if said, ok := Speech(line); ok {
+		return Command{Kind: CmdAction, Intent: core.Intent{
+			Verb: "say", Args: core.Args{Text: said},
+		}}, nil
 	}
 	fields := strings.Fields(line)
 	head, rest := fields[0], fields[1:]
