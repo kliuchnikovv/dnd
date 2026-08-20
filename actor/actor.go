@@ -41,6 +41,14 @@ type Situation struct {
 	// Frame — авторская проза хода: реплика должна к ней примыкать, а не
 	// повторять её.
 	Frame string
+	// Scene — обстановка: место, погода, кто рядом. Об этом персонаж говорит
+	// свободно, потому что это у всех на виду.
+	//
+	// Без обстановки в материале уклонение становится глухой стеной: нельзя
+	// сказать даже «мокро сегодня», потому что дождь формально не значится
+	// среди разрешённого. Проверка такую реплику отвергала, и персонаж
+	// отвечал шаблоном.
+	Scene []string
 }
 
 // Move — закрытый набор того, что персонаж может сделать репликой.
@@ -57,11 +65,13 @@ const (
 	MoveConfirmKnown Move = "confirm_known" // подтвердить ровно один известный факт
 	MoveRefuse       Move = "refuse"        // отказать
 	MoveSmalltalk    Move = "smalltalk"     // пустая любезность без содержания
+	MoveObserve      Move = "observe"       // сказать об обстановке, которая на виду
 )
 
 func moves() []string {
 	return []string{string(MoveDeflect), string(MoveAskBack),
-		string(MoveConfirmKnown), string(MoveRefuse), string(MoveSmalltalk)}
+		string(MoveConfirmKnown), string(MoveRefuse), string(MoveSmalltalk),
+		string(MoveObserve)}
 }
 
 const systemPrompt = `Ты озвучиваешь одного персонажа настольной игры.
@@ -69,21 +79,29 @@ const systemPrompt = `Ты озвучиваешь одного персонаж�
 Твоя работа — ФОРМУЛИРОВКА, а не содержание. Материал даётся ниже; сверх него
 персонаж не знает ничего и сообщить ничего не может.
 
+Материал двух видов, и правила у них разные:
+- ФАКТЫ ДЕЛА — подтверждать можно только их, по одному и по идентификатору;
+- ОБСТАНОВКА — место, погода, кто рядом, что видно. Об этом персонаж говорит
+  свободно: это у всех на глазах.
+
 Сначала выбери ХОД:
-- confirm_known — подтвердить РОВНО ОДИН факт из списка известного. Укажи его
-  в поле fact. Реплика пересказывает только этот факт, ничего к нему не
-  добавляя;
+- confirm_known — подтвердить РОВНО ОДИН факт дела. Укажи его в поле fact;
+- observe — сказать об обстановке: о погоде, о месте, о тех, кто рядом;
+- ask_back — вернуть вопрос игроку, спросить о его деле;
 - deflect — уклониться: персонаж не знает или не хочет говорить;
-- ask_back — вернуть вопрос игроку;
 - refuse — отказать прямо;
-- smalltalk — любезность без содержания.
+- smalltalk — короткая любезность.
 
 Затем сформулируй реплику этим голосом. Одна-две фразы.
 
-Категорически запрещено, и это проверяется: любые имена, места, должности,
-числа, события и учреждения, которых нет в материале. Ни фермеров, ни книг
-учёта, ни моргов, ни удвоенных дежурств. Если сказать нечего — это deflect,
-и он совершенно нормален.
+Важно про уклонение: «нечего сказать» не значит «скажи ничего». Уклоняясь,
+персонаж всё равно остаётся человеком — он ворчит о погоде, отшучивается,
+спрашивает в ответ. Глухая стена из служебных формулировок это плохая реплика,
+даже когда фактов нет.
+
+Запрещено, и это проверяется: имена, места, должности, числа, события и
+учреждения, которых нет ни в фактах, ни в обстановке. Ни фермеров, ни книг
+учёта, ни моргов, ни удвоенных дежурств.
 
 Отвечай на том же языке, на котором написан голос персонажа.`
 
@@ -220,19 +238,24 @@ func template(m Move, sit Situation) string {
 		}
 		return "Сказать нечего."
 	case MoveAskBack:
-		return "А вам зачем?"
+		return "А вам это зачем?"
 	case MoveRefuse:
-		return "Нет."
-	case MoveSmalltalk:
-		return "Служба идёт."
+		return "Нет. И не просите."
+	case MoveSmalltalk, MoveObserve:
+		if len(sit.Scene) > 1 {
+			return "Погода — сами видите какая."
+		}
+		return "Да так, служба идёт."
 	default:
-		return "Не могу сказать."
+		return "Тут я вам не помогу."
 	}
 }
 
 // allowedMaterial — всё, на что реплике разрешено опираться.
 func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	out := []string{s.Name, s.Voice}
+	// Обстановка разрешена всегда: она на виду и придумать её нельзя.
+	out = append(out, sit.Scene...)
 	if sit.PlayerText != "" {
 		out = append(out, sit.PlayerText)
 	}
@@ -273,10 +296,16 @@ func renderPrompt(s Speaker, sit Situation) string {
 	if sit.Frame != "" {
 		fmt.Fprintf(&b, "Что уже описано: %s\n", sit.Frame)
 	}
+	if len(sit.Scene) > 0 {
+		b.WriteString("Обстановка — об этом можно говорить свободно:\n")
+		for _, sc := range sit.Scene {
+			b.WriteString("  " + sc + "\n")
+		}
+	}
 	if len(sit.Known) == 0 {
-		b.WriteString("Материала нет: сослаться не на что, остаётся deflect.\n")
+		b.WriteString("Фактов дела нет: подтверждать нечего.\n")
 	} else {
-		b.WriteString("Материал — только это и можно подтверждать:\n")
+		b.WriteString("Факты дела — только это и можно подтверждать:\n")
 		for _, k := range sit.Known {
 			b.WriteString("  " + k.ID + " — " + k.Text + "\n")
 		}
@@ -356,6 +385,30 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		Verb:       string(in.Verb),
 		PlayerText: in.Args.Text,
 		Known:      KnownTopics(v.Game),
+		Scene:      SceneOf(v.Game, speaker.ID),
 		Frame:      v.Game.Flavour(res.FlavourKey),
 	}, v.Req)
+}
+
+// SceneOf собирает обстановку: то, что персонаж видит своими глазами и о чём
+// вправе говорить без разрешения. Придумать это нельзя — оно уже описано.
+func SceneOf(g *core.Game, speakerID string) []string {
+	loc := g.DB.Locations[g.Node]
+	out := []string{"Место: " + loc.Name}
+	if text := g.Flavour("look." + string(g.Node)); !strings.HasPrefix(text, "[") {
+		out = append(out, "Вокруг: "+text)
+	}
+	if len(loc.Tags) > 0 {
+		out = append(out, "Обстановка: "+strings.Join(loc.Tags, ", "))
+	}
+	var others []string
+	for _, e := range g.DB.EntitiesAt(g.Node) {
+		if string(e.ID) != speakerID && e.Kind == store.EntityNPC {
+			others = append(others, e.Name)
+		}
+	}
+	if len(others) > 0 {
+		out = append(out, "Рядом: "+strings.Join(others, ", "))
+	}
+	return out
 }

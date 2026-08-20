@@ -80,7 +80,7 @@ func TestPromptCarriesOnlyKnownTopics(t *testing.T) {
 			t.Errorf("промпт содержит %q", leak)
 		}
 	}
-	if !strings.Contains(f.Calls()[0].System, "Категорически запрещено") {
+	if !strings.Contains(f.Calls()[0].System, "Запрещено, и это проверяется") {
 		t.Error("в системном промпте нет запрета на выдумку")
 	}
 }
@@ -245,8 +245,8 @@ func TestSchemaEnumeratesKnownFacts(t *testing.T) {
 		t.Fatal("у fact нет перечисления известных фактов")
 	}
 	moveEnum := props["move"].(map[string]any)["enum"].([]string)
-	if len(moveEnum) != 5 {
-		t.Errorf("ходов %d, ожидалось 5", len(moveEnum))
+	if len(moveEnum) != 6 {
+		t.Errorf("ходов %d, ожидалось 6", len(moveEnum))
 	}
 }
 
@@ -317,3 +317,89 @@ var errStub = errStubType{}
 type errStubType struct{}
 
 func (errStubType) Error() string { return "проверка недоступна" }
+
+// --- обстановка как разрешённый материал ---
+
+// Без обстановки в материале проверка отвергала «мокро сегодня» как выдумку,
+// и персонаж отвечал шаблоном. Стена из служебных формулировок — прямое
+// следствие слишком узкого материала, а не характера.
+func TestSceneIsAllowedMaterial(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	sg := &stubGuard{ok: true}
+	a, _ := actorWith(t, `{"move":"observe","line":"Дождь третий день, вот и все новости."}`)
+	a = a.WithGuard(sg)
+
+	got, err := a.Line(context.Background(), sp, Situation{
+		Verb: "talk_to", Known: KnownTopics(g), Scene: SceneOf(g, "e_bern"),
+	}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Дождь третий день, вот и все новости." {
+		t.Errorf("реплика об обстановке не прошла: %q", got)
+	}
+	joined := strings.Join(sg.material, " | ")
+	if !strings.Contains(joined, "Пристань") {
+		t.Errorf("в материал не попало место: %q", joined)
+	}
+	if !strings.Contains(joined, "Дождь") {
+		t.Errorf("в материал не попало описание вокруг: %q", joined)
+	}
+}
+
+func TestSceneOfCarriesPlaceWeatherAndCompany(t *testing.T) {
+	g := harbour(t)
+	scene := SceneOf(g, "e_bern")
+	joined := strings.Join(scene, " | ")
+	for _, want := range []string{"Место:", "Вокруг:", "Рядом:"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("в обстановке нет %q: %q", want, joined)
+		}
+	}
+	// Говорящий не считает себя за компанию.
+	if strings.Contains(joined, "Берн") {
+		t.Errorf("персонаж перечислен рядом с собой: %q", joined)
+	}
+	// И правда дела в обстановку не попадает.
+	for _, leak := range []string{"seal_cord", "night_before_tide", "redacted"} {
+		if strings.Contains(joined, leak) {
+			t.Errorf("в обстановке %q", leak)
+		}
+	}
+}
+
+func TestObserveIsAValidMove(t *testing.T) {
+	props := schemaFor(nil)["properties"].(map[string]any)
+	enum := props["move"].(map[string]any)["enum"].([]string)
+	if len(enum) != 6 {
+		t.Errorf("ходов %d, ожидалось 6", len(enum))
+	}
+	var found bool
+	for _, m := range enum {
+		if m == string(MoveObserve) {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("хода observe нет в наборе")
+	}
+}
+
+// Промпт обязан различать факты дела и обстановку: правила у них разные.
+func TestPromptSeparatesFactsFromScene(t *testing.T) {
+	g := harbour(t)
+	a, f := actorWith(t, `{"move":"observe","line":"Мокро."}`)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a.Line(context.Background(), sp, Situation{
+		Verb: "talk_to", Known: KnownTopics(g), Scene: SceneOf(g, "e_bern"),
+	}, llm.Request{})
+
+	prompt := f.Calls()[0].Input
+	if !strings.Contains(prompt, "Обстановка — об этом можно говорить свободно") {
+		t.Errorf("обстановка не помечена как свободная: %q", prompt)
+	}
+	if !strings.Contains(prompt, "Факты дела — только это и можно подтверждать") {
+		t.Errorf("факты не помечены как ограниченные: %q", prompt)
+	}
+}
