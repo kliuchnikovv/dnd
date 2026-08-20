@@ -112,6 +112,11 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		if strings.HasPrefix(line, "github.com/kliuchnikovv/dnd") {
 			continue
 		}
+		// Транзитивные зависимости — дело SDK, а не наше решение. Инвариант
+		// касается того, на что мы подписались сами.
+		if strings.Contains(line, "// indirect") {
+			continue
+		}
 		ok := false
 		for _, a := range allowed {
 			if strings.HasPrefix(line, a) {

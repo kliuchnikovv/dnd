@@ -14,11 +14,12 @@ import (
 // Session гоняет один и тот же цикл и для интерактивного REPL, и для скрипта:
 // прогон воспроизводится парой (seed, файл команд).
 type Session struct {
-	Game *core.Game
-	In   io.Reader
-	Out  io.Writer
-	r    Render
-	sc   *bufio.Scanner
+	Game   *core.Game
+	In     io.Reader
+	Out    io.Writer
+	r      Render
+	sc     *bufio.Scanner
+	interp Interpreter
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
@@ -29,9 +30,10 @@ func (s *Session) Run() error {
 	fmt.Fprint(s.Out, s.r.Scene(s.Game))
 	s.sc = bufio.NewScanner(s.In)
 	for s.sc.Scan() {
-		cmd, err := Parse(s.sc.Text())
+		line := s.sc.Text()
+		cmd, err := Parse(line)
 		if err != nil {
-			fmt.Fprintf(s.Out, "нельзя: %v\n", err)
+			s.interpret(line, err)
 			continue
 		}
 		if done := s.dispatch(cmd); done {
@@ -72,13 +74,7 @@ func (s *Session) dispatch(cmd Command) bool {
 		cmd.Intent.Actor = g.Actor
 		res := g.Apply(cmd.Intent)
 		fmt.Fprint(s.Out, r.Turn(g, res))
-		// ЧАСТИЧНО по таксономии move — «попал + ухудшение позиции»: игрок
-		// доходит и платит. Требовать УСПЕХ значило бы брать цену прихода,
-		// не давая прийти.
-		if cmd.Intent.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
-			g.Node = cmd.Intent.Args.Node
-			fmt.Fprint(s.Out, r.Scene(g))
-		}
+		s.afterAction(cmd.Intent, res)
 	}
 	return false
 }
@@ -122,5 +118,19 @@ func (s *Session) accuse() {
 	}
 	for _, c := range res.Fired {
 		fmt.Fprintf(s.Out, "  ⏱ %s\n", g.Flavour(c.FlavourKey))
+	}
+}
+
+// afterAction — последствия действия, не выражаемые мутацией. Перемещение
+// живёт здесь, а не в ядре, и это известный шов: ядро резолвит бросок,
+// презентация меняет узел. Вынесено, чтобы структурированный ввод и
+// переводчик свободного текста вели себя одинаково.
+//
+// ЧАСТИЧНО по таксономии move — «попал + ухудшение позиции»: игрок доходит
+// и платит. Требовать УСПЕХ значило бы брать цену прихода, не давая прийти.
+func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
+	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
+		s.Game.Node = in.Args.Node
+		fmt.Fprint(s.Out, s.r.Scene(s.Game))
 	}
 }

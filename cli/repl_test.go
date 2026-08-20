@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -107,5 +109,92 @@ func TestPartialMoveStillArrives(t *testing.T) {
 	}
 	if g.Node == start {
 		t.Errorf("на ЧАСТИЧНО игрок остался в %s — цена взята без прихода", start)
+	}
+}
+
+// --- переводчик свободного текста ---
+
+type fakeInterp struct {
+	intent  *core.Intent
+	clarify string
+	err     error
+	seen    []string
+}
+
+func (f *fakeInterp) Interpret(_ context.Context, text string) (*core.Intent, string, error) {
+	f.seen = append(f.seen, text)
+	return f.intent, f.clarify, f.err
+}
+
+func runWith(t *testing.T, interp Interpreter, script string) (string, *core.Game) {
+	t.Helper()
+	g := renderGame(t)
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader(script), &out)
+	if interp != nil {
+		s.WithInterpreter(interp)
+	}
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	return out.String(), g
+}
+
+// Без переводчика поведение прежнее: структурированный ввод и отказ.
+func TestUnparsedInputStillRefusedWithoutInterpreter(t *testing.T) {
+	out, _ := runWith(t, nil, "поболтать с кузнецом о погоде\nquit\n")
+	if !strings.Contains(out, "нельзя") {
+		t.Errorf("нет отказа: %q", out)
+	}
+}
+
+func TestInterpreterTurnsFreeTextIntoAction(t *testing.T) {
+	fi := &fakeInterp{intent: &core.Intent{Verb: "look"}}
+	out, _ := runWith(t, fi, "оглядываюсь по сторонам\nquit\n")
+	if strings.Contains(out, "нельзя") {
+		t.Errorf("переводчик не подхватил ввод: %q", out)
+	}
+	if len(fi.seen) != 1 || fi.seen[0] != "оглядываюсь по сторонам" {
+		t.Errorf("переводчик получил %v", fi.seen)
+	}
+}
+
+// Структурированный ввод обязан идти напрямую: он детерминирован, и на нём
+// держится воспроизводимость. Переводчик к нему не привлекается.
+func TestStructuredInputBypassesInterpreter(t *testing.T) {
+	fi := &fakeInterp{intent: &core.Intent{Verb: "look"}}
+	runWith(t, fi, "look\nfacts\nstate\nquit\n")
+	if len(fi.seen) != 0 {
+		t.Errorf("переводчик вызван на структурированном вводе: %v", fi.seen)
+	}
+}
+
+func TestInterpreterClarificationIsShown(t *testing.T) {
+	fi := &fakeInterp{clarify: "К кузнецу или к стражнику?"}
+	out, _ := runWith(t, fi, "спрошу его\nquit\n")
+	if !strings.Contains(out, "К кузнецу или к стражнику?") {
+		t.Errorf("вопрос не показан: %q", out)
+	}
+}
+
+// Сбой канала не должен выглядеть как отказ мира.
+func TestInterpreterFailureIsDistinguishedFromRefusal(t *testing.T) {
+	fi := &fakeInterp{err: errors.New("потолок расхода")}
+	out, _ := runWith(t, fi, "что-нибудь непонятное\nquit\n")
+	if !strings.Contains(out, "переводчик недоступен") {
+		t.Errorf("сбой канала подан как отказ мира: %q", out)
+	}
+	if !strings.Contains(out, "потолок расхода") {
+		t.Errorf("причина сбоя скрыта: %q", out)
+	}
+}
+
+// Перемещение через переводчик обязано работать так же, как через команду.
+func TestInterpretedMoveChangesNode(t *testing.T) {
+	fi := &fakeInterp{intent: &core.Intent{Verb: "move_zone",
+		Args: core.Args{Node: "n_forge"}}}
+	_, g := runWith(t, fi, "пойду в кузницу\nquit\n")
+	if g.Node != "n_forge" {
+		t.Errorf("узел %q — переводчик и команда ведут себя по-разному", g.Node)
 	}
 }
