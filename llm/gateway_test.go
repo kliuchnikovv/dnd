@@ -1,0 +1,262 @@
+package llm
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
+
+func fixedClock(day string) func() time.Time {
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		panic(err)
+	}
+	return func() time.Time { return t }
+}
+
+func gw(t *testing.T, caps Caps, opts ...LedgerOption) (*Gateway, *Fake) {
+	t.Helper()
+	p := NewFake("fake", true)
+	r := NewRouter().
+		Route(RoleNarrator, Target{p, "claude-sonnet-5"}).
+		Route(RoleIntentParser, Target{p, "claude-haiku-4-5"})
+	opts = append([]LedgerOption{WithClock(fixedClock("2026-08-18"))}, opts...)
+	return NewGateway(r, NewLedger(caps, opts...)), p
+}
+
+func TestRoutesByRole(t *testing.T) {
+	g, p := gw(t, Caps{})
+	want := map[Role]string{
+		RoleNarrator:     "claude-sonnet-5",
+		RoleIntentParser: "claude-haiku-4-5",
+	}
+	for role, model := range want {
+		resp, err := g.Do(context.Background(), Request{Role: role, Input: "текст"})
+		if err != nil {
+			t.Fatalf("%s: %v", role, err)
+		}
+		if resp.Provider != "fake" {
+			t.Errorf("%s: провайдер %q", role, resp.Provider)
+		}
+		if resp.Model != model {
+			t.Errorf("%s ушла на модель %q, ожидалась %q", role, resp.Model, model)
+		}
+	}
+	if n := len(p.Calls()); n != len(want) {
+		t.Errorf("вызовов %d, ожидалось %d", n, len(want))
+	}
+}
+
+// Правило из §11.3: выход парсера мутирует состояние, поэтому провайдер без
+// гарантии схемы к этой роли не допускается — даже если он объявлен.
+func TestStateMutatingRoleRefusesNonStrictProvider(t *testing.T) {
+	loose := NewFake("loose", false)
+	r := NewRouter().Route(RoleIntentParser, Target{loose, "claude-haiku-4-5"})
+	g := NewGateway(r, NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
+
+	_, err := g.Do(context.Background(), Request{Role: RoleIntentParser, Input: "бью орка"})
+	if !errors.Is(err, ErrSchemaUnsafe) {
+		t.Fatalf("ошибка %v, ожидалась ErrSchemaUnsafe", err)
+	}
+	if len(loose.Calls()) != 0 {
+		t.Error("провайдер без гарантии схемы был вызван")
+	}
+}
+
+func TestNonMutatingRoleAcceptsNonStrictProvider(t *testing.T) {
+	loose := NewFake("loose", false)
+	r := NewRouter().Route(RoleNarrator, Target{loose, "claude-sonnet-5"})
+	g := NewGateway(r, NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
+
+	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "сцена"}); err != nil {
+		t.Fatalf("нарратор отвергнут: %v", err)
+	}
+}
+
+func TestUnroutedRoleFails(t *testing.T) {
+	g, _ := gw(t, Caps{})
+	_, err := g.Do(context.Background(), Request{Role: RoleWorldsmith, Input: "x"})
+	if !errors.Is(err, ErrNoProvider) {
+		t.Fatalf("ошибка %v, ожидалась ErrNoProvider", err)
+	}
+}
+
+func TestFallsBackOnProviderError(t *testing.T) {
+	bad := NewFake("bad", true).FailWith(errors.New("503"))
+	good := NewFake("good", true)
+	r := NewRouter().Route(RoleNarrator,
+		Target{bad, "claude-sonnet-5"}, Target{good, "claude-haiku-4-5"})
+	g := NewGateway(r, NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
+
+	resp, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "сцена"})
+	if err != nil {
+		t.Fatalf("фолбэк не сработал: %v", err)
+	}
+	if resp.Provider != "good" {
+		t.Errorf("ответ от %q, ожидался good", resp.Provider)
+	}
+	if len(bad.Calls()) != 1 {
+		t.Error("основная цель не была попробована")
+	}
+}
+
+func TestPerTurnCallCapStopsRegenerationLoop(t *testing.T) {
+	g, p := gw(t, Caps{PerTurnCalls: 2})
+	req := Request{Role: RoleNarrator, Input: "сцена", TurnID: "t1"}
+
+	for i := 0; i < 2; i++ {
+		if _, err := g.Do(context.Background(), req); err != nil {
+			t.Fatalf("вызов %d отвергнут: %v", i+1, err)
+		}
+	}
+	if _, err := g.Do(context.Background(), req); !errors.Is(err, ErrTurnCalls) {
+		t.Fatalf("третий вызов дал %v, ожидалась ErrTurnCalls", err)
+	}
+	if len(p.Calls()) != 2 {
+		t.Errorf("провайдер вызван %d раз, ожидалось 2 — отказ обязан быть бесплатным", len(p.Calls()))
+	}
+	// Другой ход не наказан за чужой цикл.
+	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "x", TurnID: "t2"}); err != nil {
+		t.Errorf("новый ход отвергнут: %v", err)
+	}
+}
+
+func TestPerUserAndPerPartyCaps(t *testing.T) {
+	g, _ := gw(t, Caps{PerUserDailyMicro: 1})
+	req := Request{Role: RoleNarrator, Input: "длинная сцена на много токенов", UserID: "u1"}
+	if _, err := g.Do(context.Background(), req); err != nil {
+		t.Fatalf("первый вызов отвергнут: %v", err)
+	}
+	if _, err := g.Do(context.Background(), req); !errors.Is(err, ErrUserBudget) {
+		t.Fatalf("второй вызов дал %v, ожидалась ErrUserBudget", err)
+	}
+	// Другой пользователь не задет.
+	req.UserID = "u2"
+	if _, err := g.Do(context.Background(), req); err != nil {
+		t.Errorf("другой пользователь отвергнут: %v", err)
+	}
+
+	g2, _ := gw(t, Caps{PerPartyDailyMicro: 1})
+	preq := Request{Role: RoleNarrator, Input: "длинная сцена на много токенов", PartyID: "p1"}
+	if _, err := g2.Do(context.Background(), preq); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g2.Do(context.Background(), preq); !errors.Is(err, ErrPartyBudget) {
+		t.Fatalf("парти: %v, ожидалась ErrPartyBudget", err)
+	}
+}
+
+// Глобальный потолок закрывает шлюз для всех: лучше час простоя, чем счёт
+// на порядок больше прогноза.
+func TestGlobalCapTripsKillSwitchForEveryone(t *testing.T) {
+	g, _ := gw(t, Caps{GlobalDailyMicro: 1})
+	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator,
+		Input: "длинная сцена на много токенов", UserID: "u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if !g.Stats().Killed {
+		t.Fatal("шлюз не закрылся после превышения глобального потолка")
+	}
+	_, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "x", UserID: "u2"})
+	if !errors.Is(err, ErrKillSwitch) {
+		t.Fatalf("другой пользователь получил %v, ожидалась ErrKillSwitch", err)
+	}
+}
+
+func TestManualKillSwitch(t *testing.T) {
+	p := NewFake("fake", true)
+	l := NewLedger(Caps{}, WithClock(fixedClock("2026-08-18")))
+	g := NewGateway(NewRouter().Route(RoleNarrator, Target{p, "claude-sonnet-5"}), l)
+	l.Kill()
+	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "x"}); !errors.Is(err, ErrKillSwitch) {
+		t.Fatalf("рубильник не сработал: %v", err)
+	}
+}
+
+func TestAlertFiresAtTwiceForecast(t *testing.T) {
+	var got [2]int64
+	fired := 0
+	g, _ := gw(t, Caps{ForecastDailyMicro: 1},
+		WithAlert(func(spent, forecast int64) { fired++; got = [2]int64{spent, forecast} }))
+	for i := 0; i < 3; i++ {
+		g.Do(context.Background(), Request{Role: RoleNarrator, Input: "длинная сцена на много токенов"})
+	}
+	if fired != 1 {
+		t.Fatalf("алерт сработал %d раз, ожидался ровно 1", fired)
+	}
+	if got[0] < 2*got[1] {
+		t.Errorf("алерт при расходе %d против прогноза %d", got[0], got[1])
+	}
+}
+
+func TestDayRolloverResetsBudgetsAndKillSwitch(t *testing.T) {
+	day := "2026-08-18"
+	p := NewFake("fake", true)
+	l := NewLedger(Caps{GlobalDailyMicro: 1}, WithClock(func() time.Time {
+		t0, _ := time.Parse("2006-01-02", day)
+		return t0
+	}))
+	g := NewGateway(NewRouter().Route(RoleNarrator, Target{p, "claude-sonnet-5"}), l)
+
+	g.Do(context.Background(), Request{Role: RoleNarrator, Input: "длинная сцена на много токенов"})
+	if !g.Stats().Killed {
+		t.Fatal("шлюз должен был закрыться")
+	}
+	day = "2026-08-19"
+	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "сцена"}); err != nil {
+		t.Fatalf("новые сутки не сняли потолок: %v", err)
+	}
+	// Потолок в один микродоллар взводит рубильник на любом вызове, поэтому
+	// проверять надо не Killed, а что счётчики суток обнулились.
+	if s := g.Stats(); s.Bits != 1 {
+		t.Errorf("битов после смены суток %d, ожидался 1 — счётчик не обнулился", s.Bits)
+	}
+}
+
+func TestCostAccountingIsExact(t *testing.T) {
+	// 1000 входных и 200 выходных токенов на sonnet: 1000*3 + 200*15 микро.
+	u := Usage{InputTokens: 1000, OutputTokens: 200}
+	cost, err := CostMicro("claude-sonnet-5", u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := int64(1000*3 + 200*15); cost != want {
+		t.Errorf("стоимость %d, ожидалось %d микродолларов", cost, want)
+	}
+	if _, err := CostMicro("нет-такой-модели", u); !errors.Is(err, ErrUnknownModel) {
+		t.Errorf("модель без цены дала %v, ожидалась ErrUnknownModel", err)
+	}
+}
+
+// Бит — вызов полного нарратора; в нём считается вся юнит-экономика.
+func TestCostPerBitCountsNarratorCallsOnly(t *testing.T) {
+	g, _ := gw(t, Caps{})
+	ctx := context.Background()
+	g.Do(ctx, Request{Role: RoleNarrator, Input: "сцена один"})
+	g.Do(ctx, Request{Role: RoleNarrator, Input: "сцена два"})
+	g.Do(ctx, Request{Role: RoleIntentParser, Input: "бью орка"})
+
+	s := g.Stats()
+	if s.Bits != 2 {
+		t.Errorf("битов %d, ожидалось 2 — парсер битом не является", s.Bits)
+	}
+	if s.CostPerBitMicro != s.SpentMicro/2 {
+		t.Errorf("стоимость бита %d при расходе %d", s.CostPerBitMicro, s.SpentMicro)
+	}
+	if len(s.ByRole) != 2 {
+		t.Errorf("расход разбит на %d ролей, ожидалось 2", len(s.ByRole))
+	}
+}
+
+func TestUnknownModelPriceDoesNotSilentlySpend(t *testing.T) {
+	p := NewFake("fake", true)
+	g := NewGateway(NewRouter().Route(RoleNarrator, Target{p, "модель-без-цены"}),
+		NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
+	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "x"}); !errors.Is(err, ErrUnknownModel) {
+		t.Fatalf("ошибка %v, ожидалась ErrUnknownModel", err)
+	}
+	if g.Stats().SpentMicro != 0 {
+		t.Error("расход учтён по модели без цены")
+	}
+}
