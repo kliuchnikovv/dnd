@@ -19,9 +19,9 @@ func compareGame() *Game {
 	})
 	return NewGame(Config{
 		DB: db, Rules: nilRules{}, Dice: nilDice{},
-		Truth: accusation.NewTruth("toke", "cord", "night", "audit"),
+		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{"compare.alibi_quay": "Одно из двух — ложь."},
-		Start: "n_quay", Actor: "pc",
+		Start:   "n_quay", Actor: "pc",
 	})
 }
 

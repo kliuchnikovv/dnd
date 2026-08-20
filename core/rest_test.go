@@ -14,7 +14,7 @@ func restGame() *Game {
 	db.Clocks["c_tide"] = &store.Clock{ID: "c_tide", Name: "Прилив", Segments: 6, TickPolicy: "on_cost"}
 	return NewGame(Config{
 		DB: db, Rules: nilRules{}, Dice: nilDice{},
-		Truth: accusation.NewTruth("toke", "cord", "night", "audit"),
+		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})
 }

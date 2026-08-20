@@ -7,7 +7,7 @@ import (
 
 // TokenGrant связывает токен слота обвинения с фактом, который его открывает.
 type TokenGrant struct {
-	Slot  string      // "who" | "how" | "when" | "why"
+	Slot  string // "who" | "how" | "when" | "why"
 	Token store.Token
 	Fact  store.FactID
 }
@@ -59,7 +59,7 @@ func NewGame(cfg Config) *Game {
 		Disposition: map[store.EntityID]int{},
 		Debts:       map[store.EntityID]int{},
 		truth:       cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
-		unlocked:    map[string]bool{},
+		unlocked: map[string]bool{},
 	}
 }
 
