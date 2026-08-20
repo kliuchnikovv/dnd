@@ -31,6 +31,20 @@ type File struct {
 	Contradictions []store.Contradiction `json:"contradictions"`
 	Clocks         []store.Clock         `json:"clocks"`
 
+	// Dossiers — дневники персонажей. В файле дела они пишутся одной записью
+	// на сущность; загрузчик раскладывает её на два слоя, потому что голос и
+	// знание мира объективны, а расположение и незакрытые дела — про
+	// конкретную парти.
+	Dossiers []struct {
+		Entity      store.EntityID `json:"entity"`
+		Voice       string         `json:"voice"`
+		Disposition int            `json:"disposition"`
+		KnowsAbout  []store.FactID `json:"knows_about"`
+		OpenThreads []string       `json:"open_threads"`
+		TalksAbout  []string       `json:"talks_about"`
+		Summary     string         `json:"summary"`
+	} `json:"dossiers"`
+
 	Tokens []struct {
 		Slot  string       `json:"slot"`
 		Token store.Token  `json:"token"`

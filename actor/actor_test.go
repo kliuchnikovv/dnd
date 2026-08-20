@@ -101,7 +101,7 @@ func TestSpeakerOnlyForNPCsWithVoice(t *testing.T) {
 
 func TestDispositionReachesPrompt(t *testing.T) {
 	g := harbour(t)
-	g.Disposition["e_bern"] = -3
+	g.D.Adjust("e_bern", -3)
 	a, f := actorWith(t, `{"move":"refuse","line":"Отойдите."}`)
 	sp, _ := SpeakerFor(g, "e_bern")
 	a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
@@ -245,8 +245,8 @@ func TestSchemaEnumeratesKnownFacts(t *testing.T) {
 		t.Fatal("у fact нет перечисления известных фактов")
 	}
 	moveEnum := props["move"].(map[string]any)["enum"].([]string)
-	if len(moveEnum) != 6 {
-		t.Errorf("ходов %d, ожидалось 6", len(moveEnum))
+	if len(moveEnum) != len(moves()) {
+		t.Errorf("ходов в схеме %d, в наборе %d", len(moveEnum), len(moves()))
 	}
 }
 
@@ -372,17 +372,18 @@ func TestSceneOfCarriesPlaceWeatherAndCompany(t *testing.T) {
 func TestObserveIsAValidMove(t *testing.T) {
 	props := schemaFor(nil)["properties"].(map[string]any)
 	enum := props["move"].(map[string]any)["enum"].([]string)
-	if len(enum) != 6 {
-		t.Errorf("ходов %d, ожидалось 6", len(enum))
-	}
-	var found bool
-	for _, m := range enum {
-		if m == string(MoveObserve) {
-			found = true
+	// Каждый ход из набора обязан быть в схеме: ход, которого модель не видит,
+	// существует только на бумаге.
+	for _, want := range moves() {
+		var found bool
+		for _, m := range enum {
+			if m == want {
+				found = true
+			}
 		}
-	}
-	if !found {
-		t.Error("хода observe нет в наборе")
+		if !found {
+			t.Errorf("хода %q нет в схеме", want)
+		}
 	}
 }
 

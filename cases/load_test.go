@@ -80,3 +80,25 @@ func TestBrokenJSONReportsPath(t *testing.T) {
 		t.Fatal("битый JSON загрузился")
 	}
 }
+
+// Кто держит факт, тот его знает. Выводится из fact_holders, а не пишется
+// руками: расхождение проявилось бы только в разговоре.
+func TestDossierKnowledgeDerivedFromHolders(t *testing.T) {
+	cfg, err := Load("testdata/minimal.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	world, ok := cfg.DB.WorldDossier("e_body")
+	if !ok {
+		t.Fatal("у держателя факта нет мирового дневника")
+	}
+	var found bool
+	for _, f := range world.KnowsAbout {
+		if f == "f_ligature" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("держатель не знает своего факта: %v", world.KnowsAbout)
+	}
+}

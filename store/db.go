@@ -14,6 +14,7 @@ type DB struct {
 	Clocks     map[ClockID]*Clock
 	Characters map[CharacterID]*Character
 	Knowledge  []Knowledge
+	Dossiers   map[DossierKey]*Dossier
 
 	Contradictions []Contradiction
 }
@@ -27,6 +28,7 @@ func NewDB() *DB {
 		Locations:  map[NodeID]Location{},
 		Clocks:     map[ClockID]*Clock{},
 		Characters: map[CharacterID]*Character{},
+		Dossiers:   map[DossierKey]*Dossier{},
 	}
 }
 
@@ -64,4 +66,22 @@ func (db *DB) EntitiesAt(n NodeID) []Entity {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// DossierFor возвращает дневник сущности для парти, создавая его при первом
+// обращении. Мировой слой (пустая парти) и отношенческий — разные строки.
+func (db *DB) DossierFor(e EntityID, party string) *Dossier {
+	key := DossierKey{EntityID: e, PartyID: party}
+	if d, ok := db.Dossiers[key]; ok {
+		return d
+	}
+	d := &Dossier{EntityID: e, PartyID: party, Kind: "npc"}
+	db.Dossiers[key] = d
+	return d
+}
+
+// WorldDossier возвращает мировой слой, если он есть.
+func (db *DB) WorldDossier(e EntityID) (*Dossier, bool) {
+	d, ok := db.Dossiers[DossierKey{EntityID: e}]
+	return d, ok
 }

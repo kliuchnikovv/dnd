@@ -12,8 +12,20 @@ type TokenGrant struct {
 	Fact  store.FactID
 }
 
+// party — идентификатор парти. Одиночная игра всё равно им пользуется:
+// отношенческий слой дневника ключуется парти с первого дня, чтобы кооп не
+// требовал миграции.
+func party(id string) string {
+	if id == "" {
+		return "party"
+	}
+	return id
+}
+
 type Config struct {
-	DB      *store.DB
+	DB *store.DB
+	// Party — чья это игра. Пусто означает одиночную парти по умолчанию.
+	Party   string
 	Rules   RuleSystem
 	Dice    Dice
 	Truth   accusation.Truth
@@ -37,8 +49,10 @@ type Game struct {
 	Attempts int
 	Detected bool
 
-	Disposition map[store.EntityID]int
-	Debts       map[store.EntityID]int
+	// D — дневники сущностей. Расположение живёт здесь и только здесь:
+	// держать его ещё и в Game значило бы иметь два места правды.
+	D     *Dossiers
+	Debts map[store.EntityID]int
 
 	// Theories — гипотезы, зафиксированные глаголом theorize. Ядро их не
 	// оценивает и не тратит на них ход: это заметки игрока, а не факты.
@@ -56,9 +70,9 @@ func NewGame(cfg Config) *Game {
 		DB: cfg.DB, Rules: cfg.Rules, Dice: cfg.Dice,
 		K: NewKnowledge(cfg.DB), C: NewClocks(cfg.DB),
 		Node: cfg.Start, Actor: cfg.Actor,
-		Disposition: map[store.EntityID]int{},
-		Debts:       map[store.EntityID]int{},
-		truth:       cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
+		D:     NewDossiers(cfg.DB, party(cfg.Party)),
+		Debts: map[store.EntityID]int{},
+		truth: cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
 		unlocked: map[string]bool{},
 	}
 }

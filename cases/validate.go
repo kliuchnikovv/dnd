@@ -141,6 +141,22 @@ func validateFile(f File) error {
 		}
 	}
 
+	for _, d := range f.Dossiers {
+		if !entities[d.Entity] {
+			add("дневник заведён на несуществующую сущность %s", d.Entity)
+		}
+		for _, k := range d.KnowsAbout {
+			if !facts[k] {
+				add("дневник %s знает несуществующий факт %s", d.Entity, k)
+			}
+		}
+		// Расположение вне разумных границ почти всегда опечатка: шкала
+		// читается словами, и за пределами этого диапазона слов нет.
+		if d.Disposition < -3 || d.Disposition > 3 {
+			add("у дневника %s расположение %d вне диапазона -3..3", d.Entity, d.Disposition)
+		}
+	}
+
 	if len(f.StartFacts) == 0 {
 		add("у дела нет стартовых фактов — первый ход некуда сделать")
 	}

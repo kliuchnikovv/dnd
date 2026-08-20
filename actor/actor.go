@@ -41,6 +41,16 @@ type Situation struct {
 	// Frame — авторская проза хода: реплика должна к ней примыкать, а не
 	// повторять её.
 	Frame string
+	// Talks — темы, которые персонаж поднимает сам. Это и есть топливо
+	// разговора: без него остаётся погода, и человек превращается в синоптика.
+	Talks []string
+	// Threads — незакрытое с парти: обещания, долги, угрозы. То, из чего у
+	// разговора появляется продолжение, а не повтор.
+	Threads []string
+	// KnowsSomething — персонаж знает нечто, чего парти не знает. Сказать что
+	// именно он не вправе, но «об этом я говорить не буду» честнее и живее
+	// глухого «не могу сказать».
+	KnowsSomething bool
 	// Scene — обстановка: место, погода, кто рядом. Об этом персонаж говорит
 	// свободно, потому что это у всех на виду.
 	//
@@ -66,12 +76,16 @@ const (
 	MoveRefuse       Move = "refuse"        // отказать
 	MoveSmalltalk    Move = "smalltalk"     // пустая любезность без содержания
 	MoveObserve      Move = "observe"       // сказать об обстановке, которая на виду
+	MoveVolunteer    Move = "volunteer"     // поднять свою тему из списка
+	MoveRaiseThread  Move = "raise_thread"  // напомнить о незакрытом деле
+	MoveHint         Move = "hint"          // дать понять, что знает, но не скажет
 )
 
 func moves() []string {
 	return []string{string(MoveDeflect), string(MoveAskBack),
 		string(MoveConfirmKnown), string(MoveRefuse), string(MoveSmalltalk),
-		string(MoveObserve)}
+		string(MoveObserve), string(MoveVolunteer), string(MoveRaiseThread),
+		string(MoveHint)}
 }
 
 const systemPrompt = `Ты озвучиваешь одного персонажа настольной игры.
@@ -87,6 +101,11 @@ const systemPrompt = `Ты озвучиваешь одного персонаж�
 Сначала выбери ХОД:
 - confirm_known — подтвердить РОВНО ОДИН факт дела. Укажи его в поле fact;
 - observe — сказать об обстановке: о погоде, о месте, о тех, кто рядом;
+- volunteer — поднять СВОЮ тему из списка «о чём заговорит сам». Предпочитай
+  этот ход, когда список непуст: человеку есть что сказать, и это живее погоды;
+- raise_thread — напомнить о незакрытом деле с этой парти;
+- hint — дать понять, что знает нечто, но говорить не станет. Что именно —
+  не называть;
 - ask_back — вернуть вопрос игроку, спросить о его деле;
 - deflect — уклониться: персонаж не знает или не хочет говорить;
 - refuse — отказать прямо;
@@ -241,6 +260,18 @@ func template(m Move, sit Situation) string {
 		return "А вам это зачем?"
 	case MoveRefuse:
 		return "Нет. И не просите."
+	case MoveVolunteer:
+		if len(sit.Talks) > 0 {
+			return sit.Talks[0]
+		}
+		return "Да так, служба идёт."
+	case MoveRaiseThread:
+		if len(sit.Threads) > 0 {
+			return sit.Threads[0]
+		}
+		return "Ладно, потом."
+	case MoveHint:
+		return "Кое-что знаю. Но не здесь и не сейчас."
 	case MoveSmalltalk, MoveObserve:
 		if len(sit.Scene) > 1 {
 			return "Погода — сами видите какая."
@@ -256,6 +287,8 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	out := []string{s.Name, s.Voice}
 	// Обстановка разрешена всегда: она на виду и придумать её нельзя.
 	out = append(out, sit.Scene...)
+	out = append(out, sit.Talks...)
+	out = append(out, sit.Threads...)
 	if sit.PlayerText != "" {
 		out = append(out, sit.PlayerText)
 	}
@@ -296,6 +329,21 @@ func renderPrompt(s Speaker, sit Situation) string {
 	if sit.Frame != "" {
 		fmt.Fprintf(&b, "Что уже описано: %s\n", sit.Frame)
 	}
+	if len(sit.Talks) > 0 {
+		b.WriteString("О чём заговорит сам:\n")
+		for _, t := range sit.Talks {
+			b.WriteString("  " + t + "\n")
+		}
+	}
+	if len(sit.Threads) > 0 {
+		b.WriteString("Незакрытое с этой парти:\n")
+		for _, t := range sit.Threads {
+			b.WriteString("  " + t + "\n")
+		}
+	}
+	if sit.KnowsSomething {
+		b.WriteString("Он знает нечто, чего парти не знает; называть это нельзя.\n")
+	}
 	if len(sit.Scene) > 0 {
 		b.WriteString("Обстановка — об этом можно говорить свободно:\n")
 		for _, sc := range sit.Scene {
@@ -332,12 +380,16 @@ func dispositionWord(d int) string {
 // сущность не может говорить: у предметов и записей голоса нет.
 func SpeakerFor(g *core.Game, id store.EntityID) (Speaker, bool) {
 	e, ok := g.DB.Entities[id]
-	if !ok || e.Kind != store.EntityNPC || strings.TrimSpace(e.Voice) == "" {
+	if !ok || e.Kind != store.EntityNPC {
+		return Speaker{}, false
+	}
+	voice := g.D.Voice(id)
+	if strings.TrimSpace(voice) == "" {
 		return Speaker{}, false
 	}
 	return Speaker{
-		ID: string(e.ID), Name: e.Name, Voice: e.Voice,
-		Disposition: g.Disposition[id],
+		ID: string(e.ID), Name: e.Name, Voice: voice,
+		Disposition: g.D.Disposition(id),
 	}, true
 }
 
@@ -382,11 +434,14 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		return "", nil
 	}
 	return v.Actor.Line(ctx, speaker, Situation{
-		Verb:       string(in.Verb),
-		PlayerText: in.Args.Text,
-		Known:      KnownTopics(v.Game),
-		Scene:      SceneOf(v.Game, speaker.ID),
-		Frame:      v.Game.Flavour(res.FlavourKey),
+		Verb:           string(in.Verb),
+		PlayerText:     in.Args.Text,
+		Known:          KnownTopics(v.Game),
+		Talks:          v.Game.D.TalksAbout(in.Args.Target),
+		Threads:        v.Game.D.OpenThreads(in.Args.Target),
+		KnowsSomething: knowsUnrevealed(v.Game, in.Args.Target),
+		Scene:          SceneOf(v.Game, speaker.ID),
+		Frame:          v.Game.Flavour(res.FlavourKey),
 	}, v.Req)
 }
 
@@ -411,4 +466,16 @@ func SceneOf(g *core.Game, speakerID string) []string {
 		out = append(out, "Рядом: "+strings.Join(others, ", "))
 	}
 	return out
+}
+
+// knowsUnrevealed сообщает, есть ли у сущности факт, которого парти не знает.
+// Само содержание не передаётся — только то, что оно есть: намёк живее
+// глухого отказа, а утечки не создаёт.
+func knowsUnrevealed(g *core.Game, id store.EntityID) bool {
+	for _, f := range g.D.View(id).KnowsAbout {
+		if !g.K.Knows(f) {
+			return true
+		}
+	}
+	return false
 }

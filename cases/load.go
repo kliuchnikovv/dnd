@@ -10,6 +10,10 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 )
 
+// defaultParty — та же строка, которой пользуется ядро для одиночной игры.
+// Ключ по парти закладывается с первого дня, чтобы кооп не требовал миграции.
+const defaultParty = "party"
+
 func Load(path string) (*core.Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -64,6 +68,32 @@ func Parse(raw []byte) (*core.Config, error) {
 			FactID: s.Fact, LearnedFrom: s.From,
 			Confidence: core.SourceConfidence, LearnedAt: i + 1,
 		})
+	}
+
+	// Кто держит факт, тот его знает. Выводится, а не пишется руками:
+	// расхождение между fact_holders и дневником было бы багом, который
+	// проявляется только в разговоре.
+	for _, h := range f.FactHolders {
+		world := db.DossierFor(h.HolderID, "")
+		world.Kind = "npc"
+		world.KnowsAbout = append(world.KnowsAbout, h.FactID)
+	}
+
+	// Дневник раскладывается на два слоя: объективное в мировой, отношение к
+	// парти — в отношенческий. Разделение обязательно, иначе при коопе знание
+	// разных парти склеится.
+	for _, d := range f.Dossiers {
+		world := db.DossierFor(d.Entity, "")
+		world.Kind = "npc"
+		world.Voice = d.Voice
+		world.KnowsAbout = append(world.KnowsAbout, d.KnowsAbout...)
+		world.TalksAbout = append(world.TalksAbout, d.TalksAbout...)
+
+		rel := db.DossierFor(d.Entity, defaultParty)
+		rel.Kind = "npc"
+		rel.Disposition = d.Disposition
+		rel.OpenThreads = append(rel.OpenThreads, d.OpenThreads...)
+		rel.Summary = d.Summary
 	}
 
 	var tokens []core.TokenGrant

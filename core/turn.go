@@ -240,7 +240,7 @@ func (g *Game) nodeTags(n store.NodeID) []string {
 func (g *Game) hostileCount() int {
 	n := 0
 	for _, e := range g.DB.EntitiesAt(g.Node) {
-		if g.Disposition[e.ID] <= -2 {
+		if g.D.Disposition(e.ID) <= -2 {
 			n++
 		}
 	}

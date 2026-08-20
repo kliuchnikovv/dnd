@@ -49,7 +49,7 @@ func TestMutationsAreAppliedByName(t *testing.T) {
 	if got := g.DB.Characters["pc"].Harm; got != 1 {
 		t.Errorf("harm = %d, ожидалось 1", got)
 	}
-	if got := g.Disposition["e_toke"]; got != -1 {
+	if got := g.D.Disposition("e_toke"); got != -1 {
 		t.Errorf("disposition = %d, ожидалось -1", got)
 	}
 }
@@ -92,7 +92,7 @@ func TestTickClockCostFiresConsequence(t *testing.T) {
 		t.Fatalf("последствие не сработало: %v", got)
 	}
 	g.applyConsequences(got)
-	if g.Disposition["e_toke"] >= 0 {
+	if g.D.Disposition("e_toke") >= 0 {
 		t.Error("HostileTo не понизил расположение")
 	}
 }
@@ -110,7 +110,7 @@ func TestFlavourFallsBackToKey(t *testing.T) {
 
 func snapshot(g *Game) [4]int {
 	c := g.DB.Characters["pc"]
-	return [4]int{c.Grit, c.Harm, g.Disposition["e_toke"] + g.Debts["e_toke"],
+	return [4]int{c.Grit, c.Harm, g.D.Disposition("e_toke") + g.Debts["e_toke"],
 		g.DB.Clocks["c_suspicion"].Filled + boolInt(g.Detected)}
 }
 

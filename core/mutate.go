@@ -26,7 +26,7 @@ func (g *Game) applyMutations(ms []Mutation) {
 		case MutClock:
 			g.C.Tick(store.ClockID(m.Target), m.Delta)
 		case MutDisposition:
-			g.Disposition[store.EntityID(m.Target)] += m.Delta
+			g.D.Adjust(store.EntityID(m.Target), m.Delta)
 		case MutPosition:
 			g.Detected = m.Delta < 0
 		}
@@ -45,7 +45,7 @@ func (g *Game) executeCosts(cs []CostKind, in Intent) []store.Consequence {
 		case CostDebt:
 			g.Debts[in.Args.Target]++
 		case CostDispositionDown:
-			g.Disposition[in.Args.Target]--
+			g.D.Adjust(in.Args.Target, -1)
 		case CostPositionWorse:
 			g.Detected = true
 		case CostHarmSelf:
@@ -68,7 +68,7 @@ func (g *Game) applyConsequences(cs []store.Consequence) {
 			delete(g.DB.Holders, f)
 		}
 		for _, e := range c.HostileTo {
-			g.Disposition[e] -= 2
+			g.D.Adjust(e, -2)
 		}
 	}
 }

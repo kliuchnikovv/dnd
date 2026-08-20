@@ -53,3 +53,31 @@ func TestEveryTruthFactHasThreeIndependentSources(t *testing.T) {
 }
 
 func storeFact(s string) store.FactID { return store.FactID(s) }
+
+// Персонажу нужно, о чём говорить. Без этого он либо молчит, либо начинает
+// выдумывать — и то и другое ломает разговор.
+func TestEveryTalkingNPCHasSomethingToSay(t *testing.T) {
+	cfg, err := cases.Load("case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, e := range cfg.DB.Entities {
+		if e.Kind != store.EntityNPC || e.Voice == "" {
+			continue
+		}
+		world, ok := cfg.DB.WorldDossier(id)
+		if !ok || len(world.TalksAbout) == 0 {
+			t.Errorf("%s (%s) не о чем говорить — дневник пуст", id, e.Name)
+			continue
+		}
+		for _, topic := range world.TalksAbout {
+			if len([]rune(topic)) < 20 {
+				t.Errorf("%s: тема слишком коротка: %q", id, topic)
+			}
+		}
+		rel := cfg.DB.DossierFor(id, "party")
+		if len(rel.OpenThreads) == 0 {
+			t.Errorf("%s: нет незакрытых дел — разговору некуда продолжаться", id)
+		}
+	}
+}
