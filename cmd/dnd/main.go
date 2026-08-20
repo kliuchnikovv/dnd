@@ -33,7 +33,9 @@ func main() {
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
 	capTurn := flag.Int("cap-turn", 4, "потолок вызовов модели на один ход: разбор до двух, озвучка один")
+	envFile := flag.String("env", ".env", "файл с переменными окружения; уже заданное окружение приоритетнее")
 	flag.Parse()
+	loadDotenv(*envFile)
 
 	cfg, err := cases.Load(*casePath)
 	if err != nil {
@@ -93,6 +95,12 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser) {
 	s := gw.Stats()
 	fmt.Fprintf(os.Stderr, "\nрасход: %.4f $  битов: %d\n",
 		float64(s.SpentMicro)/1e6, s.Bits)
+	for _, role := range []llm.Role{llm.RoleIntentParser, llm.RoleActor} {
+		if n := s.CallsByRole[role]; n > 0 {
+			fmt.Fprintf(os.Stderr, "вызовов %s: %d (%.4f $)\n",
+				role, n, float64(s.ByRole[role])/1e6)
+		}
+	}
 	m := p.Metrics()
 	if n := m.Observations(); n == 0 {
 		fmt.Fprintln(os.Stderr, "свободный текст ни разу не разбирался")

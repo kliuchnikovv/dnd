@@ -296,3 +296,25 @@ func TestExplicitTurnIDWinsOverContext(t *testing.T) {
 		t.Errorf("ход из контекста задет чужим счётчиком: %v", err)
 	}
 }
+
+// Два вызова парсера на один ввод означают сработавший раунд починки. Увидеть
+// это можно только по счёту вызовов: расход не различает один дорогой вызов
+// от двух дешёвых.
+func TestCallsByRoleCountedSeparatelyFromSpend(t *testing.T) {
+	g, _ := gw(t, Caps{})
+	ctx := context.Background()
+	g.Do(ctx, Request{Role: RoleIntentParser, Input: "первая попытка"})
+	g.Do(ctx, Request{Role: RoleIntentParser, Input: "починка"})
+	g.Do(ctx, Request{Role: RoleNarrator, Input: "сцена"})
+
+	s := g.Stats()
+	if s.CallsByRole[RoleIntentParser] != 2 {
+		t.Errorf("вызовов парсера %d, ожидалось 2", s.CallsByRole[RoleIntentParser])
+	}
+	if s.CallsByRole[RoleNarrator] != 1 {
+		t.Errorf("вызовов нарратора %d, ожидался 1", s.CallsByRole[RoleNarrator])
+	}
+	if s.CallsByRole[RoleActor] != 0 {
+		t.Error("роль без вызовов попала в счёт")
+	}
+}

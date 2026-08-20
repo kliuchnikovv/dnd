@@ -29,14 +29,15 @@ type Ledger struct {
 	caps  Caps
 	alert func(spentMicro, forecastMicro int64)
 
-	global    int64
-	byUser    map[string]int64
-	byParty   map[string]int64
-	turnCalls map[string]int
-	byRole    map[Role]int64
-	bits      int
-	alerted   bool
-	killed    bool
+	global      int64
+	byUser      map[string]int64
+	byParty     map[string]int64
+	turnCalls   map[string]int
+	byRole      map[Role]int64
+	callsByRole map[Role]int
+	bits        int
+	alerted     bool
+	killed      bool
 }
 
 type LedgerOption func(*Ledger)
@@ -56,6 +57,7 @@ func NewLedger(caps Caps, opts ...LedgerOption) *Ledger {
 		now: time.Now, caps: caps,
 		byUser: map[string]int64{}, byParty: map[string]int64{},
 		turnCalls: map[string]int{}, byRole: map[Role]int64{},
+		callsByRole: map[Role]int{},
 	}
 	for _, o := range opts {
 		o(l)
@@ -76,6 +78,7 @@ func (l *Ledger) rollover() {
 		l.byParty = map[string]int64{}
 		l.turnCalls = map[string]int{}
 		l.byRole = map[Role]int64{}
+		l.callsByRole = map[Role]int{}
 		l.bits = 0
 		l.alerted = false
 		l.killed = false
@@ -117,6 +120,7 @@ func (l *Ledger) Record(r Request, resp Response) {
 
 	l.global += resp.CostMicro
 	l.byRole[r.Role] += resp.CostMicro
+	l.callsByRole[r.Role]++
 	if r.UserID != "" {
 		l.byUser[r.UserID] += resp.CostMicro
 	}
@@ -143,9 +147,13 @@ func (l *Ledger) Record(r Request, resp Response) {
 }
 
 type Stats struct {
-	SpentMicro      int64
-	Bits            int
-	ByRole          map[Role]int64
+	SpentMicro int64
+	Bits       int
+	ByRole     map[Role]int64
+	// CallsByRole — сколько раз каждая роль дошла до провайдера. Отдельно от
+	// расхода: два вызова парсера на один ввод означают сработавший раунд
+	// починки, и расход этого не показывает.
+	CallsByRole     map[Role]int
 	Killed          bool
 	CostPerBitMicro int64
 }
@@ -157,7 +165,12 @@ func (l *Ledger) Stats() Stats {
 	for k, v := range l.byRole {
 		byRole[k] = v
 	}
-	s := Stats{SpentMicro: l.global, Bits: l.bits, ByRole: byRole, Killed: l.killed}
+	calls := make(map[Role]int, len(l.callsByRole))
+	for k, v := range l.callsByRole {
+		calls[k] = v
+	}
+	s := Stats{SpentMicro: l.global, Bits: l.bits, ByRole: byRole,
+		CallsByRole: calls, Killed: l.killed}
 	if l.bits > 0 {
 		s.CostPerBitMicro = l.global / int64(l.bits)
 	}
