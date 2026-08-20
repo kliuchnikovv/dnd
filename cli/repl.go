@@ -20,6 +20,7 @@ type Session struct {
 	r      Render
 	sc     *bufio.Scanner
 	interp Interpreter
+	voicer Voicer
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
@@ -129,6 +130,7 @@ func (s *Session) accuse() {
 // ЧАСТИЧНО по таксономии move — «попал + ухудшение позиции»: игрок доходит
 // и платит. Требовать УСПЕХ значило бы брать цену прихода, не давая прийти.
 func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
+	s.speak(in, res)
 	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
 		s.Game.Node = in.Args.Node
 		fmt.Fprint(s.Out, s.r.Scene(s.Game))

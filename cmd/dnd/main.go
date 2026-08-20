@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kliuchnikovv/dnd/actor"
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
@@ -64,7 +65,9 @@ func main() {
 			os.Exit(1)
 		}
 		gw := llm.NewGateway(
-			llm.NewRouter().Route(llm.RoleIntentParser, target),
+			llm.NewRouter().
+				Route(llm.RoleIntentParser, target).
+				Route(llm.RoleActor, target),
 			llm.NewLedger(llm.Caps{
 				GlobalDailyMicro:   int64(*capDay * 1_000_000),
 				PerTurnCalls:       *capTurn,
@@ -74,6 +77,7 @@ func main() {
 			})))
 		parser = intent.NewParser(gw)
 		session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
+		session.WithVoicer(&actor.GameVoicer{Actor: actor.New(gw), Game: game})
 		defer func() { reportMetrics(gw, parser) }()
 	}
 

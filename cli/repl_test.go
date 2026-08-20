@@ -198,3 +198,68 @@ func TestInterpretedMoveChangesNode(t *testing.T) {
 		t.Errorf("узел %q — переводчик и команда ведут себя по-разному", g.Node)
 	}
 }
+
+// --- голос NPC ---
+
+type fakeVoicer struct {
+	line  string
+	err   error
+	calls int
+}
+
+func (f *fakeVoicer) Voice(_ context.Context, _ core.Intent, _ core.TurnResult) (string, error) {
+	f.calls++
+	return f.line, f.err
+}
+
+func TestVoicerLinePrintedAfterTurn(t *testing.T) {
+	fv := &fakeVoicer{line: "— Мокро сегодня."}
+	g := renderGame(t)
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("talk_to toke\nquit\n"), &out).WithVoicer(fv)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "— Мокро сегодня.") {
+		t.Errorf("реплика не напечатана: %q", out.String())
+	}
+}
+
+// Отказ ход не тратит, значит и модель звать незачем.
+func TestVoicerNotCalledOnRefusal(t *testing.T) {
+	fv := &fakeVoicer{line: "— не должно прозвучать"}
+	g := renderGame(t)
+	var out bytes.Buffer
+	NewSession(g, strings.NewReader("talk_to призрак\nquit\n"), &out).WithVoicer(fv).Run()
+	if fv.calls != 0 {
+		t.Errorf("голос вызван на отказе (%d раз)", fv.calls)
+	}
+}
+
+// Озвучка необязательна: её сбой не должен прерывать ход, который уже прошёл.
+func TestVoicerFailureDoesNotBreakTurn(t *testing.T) {
+	fv := &fakeVoicer{err: errors.New("потолок расхода")}
+	g := renderGame(t)
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("talk_to toke\nfacts\nquit\n"), &out).WithVoicer(fv)
+	if err := s.Run(); err != nil {
+		t.Fatalf("сбой озвучки уронил прогон: %v", err)
+	}
+	if !strings.Contains(out.String(), "персонаж промолчал") {
+		t.Errorf("сбой не показан: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "0.500") {
+		t.Errorf("ход после сбоя озвучки не продолжился: %q", out.String())
+	}
+}
+
+func TestWithoutVoicerNothingChanges(t *testing.T) {
+	g := renderGame(t)
+	var out bytes.Buffer
+	if err := NewSession(g, strings.NewReader("talk_to toke\nquit\n"), &out).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "—") {
+		t.Errorf("без озвучки появилась прямая речь: %q", out.String())
+	}
+}
