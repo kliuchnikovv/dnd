@@ -72,7 +72,10 @@ func (s *Session) dispatch(cmd Command) bool {
 		cmd.Intent.Actor = g.Actor
 		res := g.Apply(cmd.Intent)
 		fmt.Fprint(s.Out, r.Turn(g, res))
-		if cmd.Intent.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomeSuccess {
+		// ЧАСТИЧНО по таксономии move — «попал + ухудшение позиции»: игрок
+		// доходит и платит. Требовать УСПЕХ значило бы брать цену прихода,
+		// не давая прийти.
+		if cmd.Intent.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
 			g.Node = cmd.Intent.Args.Node
 			fmt.Fprint(s.Out, r.Scene(g))
 		}

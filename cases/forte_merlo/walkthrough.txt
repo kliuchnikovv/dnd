@@ -1,0 +1,41 @@
+# ---- Kalderes: the police office ----
+question kovac sanchez_case_closed
+question kovac kovac_disillusioned
+question emilien emilien_cut_hand
+search desk_emilien
+examine diary_sanchez
+# ---- the baker: who came down off the fort road at dawn ----
+move_zone kalderes
+move_zone bakery
+question pierre pierre_saw_emilien
+cross_reference pierre emilien_at_dawn
+# ---- up to the fort ----
+move_zone kalderes
+move_zone road_to_fort
+move_zone fort_kpp
+examine kpp_log
+examine kpp_log
+# ---- the office, now that there is a reason to open it ----
+move_zone fort_yard
+move_zone fort_hq
+move_zone zheber_office
+examine shards_office
+examine portiere
+examine drug_pouch
+# ---- the body ----
+move_zone fort_hq
+move_zone fort_yard
+move_zone fort_hospital
+examine body_zheber
+examine body_zheber
+cross_reference body_zheber strangled_and_staged
+# ---- reasoning ----
+compare emilien_cut_hand office_shards_present
+compare zheber_returned_2305 emilien_at_dawn
+facts
+accuse
+emilien
+strangled_staged
+night_14_15
+caught_investigating
+quit

@@ -1,0 +1,1302 @@
+{
+  "id": "forte_merlo",
+  "archetype": "locked_room",
+  "start": "n_police_office",
+  "actor": "pc",
+  "character": {
+    "id": "pc",
+    "grit": 3,
+    "harm": 0,
+    "sheet": {
+      "archetype": "inspector",
+      "attrs": {
+        "body": 0,
+        "edge": 1,
+        "mind": 3,
+        "will": 0
+      },
+      "tags": [
+        {
+          "name": "police",
+          "verbs": [
+            "question",
+            "search"
+          ]
+        },
+        {
+          "name": "coroner's eye",
+          "verbs": [
+            "examine",
+            "cross_reference"
+          ]
+        }
+      ],
+      "abilities": [
+        "read_room"
+      ]
+    }
+  },
+  "locations": [
+    {
+      "id": "n_police_office",
+      "name": "Kalderes Police Office",
+      "adjacent": [
+        "n_kalderes"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_kalderes",
+      "name": "Kalderes",
+      "adjacent": [
+        "n_bakery",
+        "n_bar",
+        "n_emilien_home",
+        "n_police_office",
+        "n_road_to_fort",
+        "n_zheber_home"
+      ],
+      "tags": []
+    },
+    {
+      "id": "n_bar",
+      "name": "Falco's Bar",
+      "adjacent": [
+        "n_kalderes"
+      ],
+      "tags": [
+        "crowd",
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_emilien_home",
+      "name": "Emilien's Room at Widow Garcia's",
+      "adjacent": [
+        "n_kalderes"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_zheber_home",
+      "name": "The Zheber House",
+      "adjacent": [
+        "n_kalderes",
+        "n_road_to_fort"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_bakery",
+      "name": "Old Pierre's Bakery",
+      "adjacent": [
+        "n_kalderes"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_road_to_fort",
+      "name": "The Kalderes–Forte Merlo Road",
+      "adjacent": [
+        "n_fort_kpp",
+        "n_kalderes",
+        "n_santa_irene",
+        "n_zheber_home"
+      ],
+      "tags": [
+        "rain"
+      ]
+    },
+    {
+      "id": "n_santa_irene",
+      "name": "Santa Irene",
+      "adjacent": [
+        "n_road_to_fort"
+      ],
+      "tags": [
+        "crowd"
+      ]
+    },
+    {
+      "id": "n_fort_kpp",
+      "name": "Forte Merlo Checkpoint",
+      "adjacent": [
+        "n_fort_yard",
+        "n_road_to_fort"
+      ],
+      "tags": [
+        "rain"
+      ]
+    },
+    {
+      "id": "n_fort_yard",
+      "name": "Forte Merlo Parade Ground",
+      "adjacent": [
+        "n_fort_barracks",
+        "n_fort_hospital",
+        "n_fort_hq",
+        "n_fort_kpp"
+      ],
+      "tags": [
+        "rain"
+      ]
+    },
+    {
+      "id": "n_fort_hq",
+      "name": "Forte Merlo Headquarters",
+      "adjacent": [
+        "n_fort_yard",
+        "n_zheber_office"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_zheber_office",
+      "name": "Captain Zheber's Office",
+      "adjacent": [
+        "n_fort_hq"
+      ],
+      "tags": [
+        "dark",
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_fort_barracks",
+      "name": "Riflemen's Barracks",
+      "adjacent": [
+        "n_fort_yard"
+      ],
+      "tags": [
+        "crowd",
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_fort_hospital",
+      "name": "Forte Merlo Infirmary",
+      "adjacent": [
+        "n_fort_yard"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "id": "e_emilien",
+      "name": "Emilien",
+      "kind": "npc",
+      "voice": "quick, defends himself before he is accused; a boy's face; right palm bandaged",
+      "node": "n_police_office"
+    },
+    {
+      "id": "e_kovac",
+      "name": "Detective Kovac",
+      "kind": "npc",
+      "voice": "forty-five, grey, coughs; burnt out; speaks like a man who already regrets opening his mouth",
+      "node": "n_police_office"
+    },
+    {
+      "id": "e_riff",
+      "name": "Eduard Riff",
+      "kind": "npc",
+      "voice": "measured, answers precisely, never raises his voice; under pressure only shorter",
+      "node": "n_fort_hq"
+    },
+    {
+      "id": "e_madelaine",
+      "name": "Madelaine Zheber",
+      "kind": "npc",
+      "voice": "grief worn as a shape; never weeps before strangers; calls Riff 'an old friend of the family'",
+      "node": "n_zheber_home"
+    },
+    {
+      "id": "e_neighbors",
+      "name": "Madelaine's Neighbours",
+      "kind": "npc",
+      "voice": "two women who miss nothing on the lane and enjoy being asked",
+      "node": "n_kalderes"
+    },
+    {
+      "id": "e_gallierez",
+      "name": "Private Antonio Gallierez",
+      "kind": "npc",
+      "voice": "twenty-two with a face ten years older; speaks calmly; his left arm does not work",
+      "node": "n_fort_hospital"
+    },
+    {
+      "id": "e_squadmates",
+      "name": "Gallierez's Squadmates",
+      "kind": "npc",
+      "voice": "rough, loyal, they finish each other's sentences",
+      "node": "n_fort_barracks"
+    },
+    {
+      "id": "e_gabriel",
+      "name": "Gabriel Sanchez",
+      "kind": "npc",
+      "voice": "big and shaggy; loud and drunk by evening, sober and slow by morning",
+      "node": "n_bar"
+    },
+    {
+      "id": "e_arens",
+      "name": "Doctor Arens",
+      "kind": "npc",
+      "voice": "slow, hands scarred; no love for command, great love for detail",
+      "node": "n_fort_hospital"
+    },
+    {
+      "id": "e_kempe",
+      "name": "Private Kempe",
+      "kind": "npc",
+      "voice": "young, honest, afraid of blame; by the book, but human if you let him be",
+      "node": "n_fort_kpp"
+    },
+    {
+      "id": "e_falco",
+      "name": "Falco the Barman",
+      "kind": "npc",
+      "voice": "few words, watchful, does not gossip without reason",
+      "node": "n_bar"
+    },
+    {
+      "id": "e_pierre",
+      "name": "Old Pierre",
+      "kind": "npc",
+      "voice": "has not slept since the war; smokes on the step from four in the morning; answers in one word",
+      "node": "n_bakery"
+    },
+    {
+      "id": "e_mazur",
+      "name": "Mazur the Trader",
+      "kind": "npc",
+      "voice": "businesslike, no interest in politics, keeps his ledger straight",
+      "node": "n_santa_irene"
+    },
+    {
+      "id": "e_body_zheber",
+      "name": "The Body of Captain Zheber",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_fort_hospital"
+    },
+    {
+      "id": "e_portiere",
+      "name": "The Office Curtain",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_zheber_office"
+    },
+    {
+      "id": "e_shards_office",
+      "name": "Shards of a Cut-Glass Tumbler",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_zheber_office"
+    },
+    {
+      "id": "e_drug_pouch",
+      "name": "A Leather Pouch and a Syringe",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_zheber_office"
+    },
+    {
+      "id": "e_shards_home",
+      "name": "Glass in Emilien's Boot",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_emilien_home"
+    },
+    {
+      "id": "e_boots_emilien",
+      "name": "Emilien's Boots",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_emilien_home"
+    },
+    {
+      "id": "e_desk_emilien",
+      "name": "Emilien's Desk",
+      "kind": "thing",
+      "voice": "-",
+      "node": "n_police_office"
+    },
+    {
+      "id": "e_diary_sanchez",
+      "name": "Miguel Sanchez's Diary",
+      "kind": "record",
+      "voice": "Miguel's hand: 'they gave it again', 'my head hums', 'as if we were cattle'",
+      "node": "n_police_office"
+    },
+    {
+      "id": "e_medcard_gallierez",
+      "name": "Gallierez's Medical Card",
+      "kind": "record",
+      "voice": "Arens's hand; 'toxicology not performed — order of a senior officer'",
+      "node": "n_fort_hospital"
+    },
+    {
+      "id": "e_kpp_log",
+      "name": "The Checkpoint Log",
+      "kind": "record",
+      "voice": "oilcloth cover, pencil; 'Capt. Zheber — 23:05', 'noise — HQ' in the night column",
+      "node": "n_fort_kpp"
+    }
+  ],
+  "relations": [
+    {
+      "from_entity": "e_madelaine",
+      "to_entity": "e_riff",
+      "kind": "lovers"
+    },
+    {
+      "from_entity": "e_kovac",
+      "to_entity": "e_emilien",
+      "kind": "superior"
+    },
+    {
+      "from_entity": "e_arens",
+      "to_entity": "e_gallierez",
+      "kind": "doctor"
+    },
+    {
+      "from_entity": "e_gallierez",
+      "to_entity": "e_squadmates",
+      "kind": "squad"
+    },
+    {
+      "from_entity": "e_madelaine",
+      "to_entity": "e_neighbors",
+      "kind": "neighbours"
+    },
+    {
+      "from_entity": "e_falco",
+      "to_entity": "e_mazur",
+      "kind": "innkeeper"
+    },
+    {
+      "from_entity": "e_falco",
+      "to_entity": "e_gabriel",
+      "kind": "regular"
+    },
+    {
+      "from_entity": "e_diary_sanchez",
+      "to_entity": "e_gabriel",
+      "kind": "brother's hand"
+    },
+    {
+      "from_entity": "e_medcard_gallierez",
+      "to_entity": "e_arens",
+      "kind": "written by"
+    },
+    {
+      "from_entity": "e_shards_home",
+      "to_entity": "e_boots_emilien",
+      "kind": "same boot"
+    }
+  ],
+  "facts": [
+    {
+      "id": "f_body_found",
+      "key": "Captain Zheber was found dead in his own office at 07:00",
+      "kind": "transition"
+    },
+    {
+      "id": "f_drugs_in_office",
+      "key": "A leather pouch of stimulant powder and a syringe sit in Zheber's office",
+      "kind": "transition"
+    },
+    {
+      "id": "f_petechiae",
+      "key": "Pinpoint haemorrhages in the eyes and mouth — the mark of asphyxia",
+      "kind": "transition"
+    },
+    {
+      "id": "f_zheber_not_user",
+      "key": "Zheber never took the drug himself; his forearms are clean",
+      "kind": "transition"
+    },
+    {
+      "id": "f_fibers_in_mouth",
+      "key": "Fibres of heavy blue cloth in the corpse's mouth and nose",
+      "kind": "transition"
+    },
+    {
+      "id": "f_portiere_torn",
+      "key": "A triangle is torn from the office curtain, a dark stain beside it",
+      "kind": "transition"
+    },
+    {
+      "id": "f_office_shards_present",
+      "key": "Shards of a crested tumbler lie behind the office cabinet",
+      "kind": "transition"
+    },
+    {
+      "id": "f_zheber_returned_2305",
+      "key": "Zheber passed the checkpoint back onto the base at 23:05",
+      "kind": "transition"
+    },
+    {
+      "id": "f_night_noise",
+      "key": "The sentry heard an odd noise from headquarters that night — breaking glass",
+      "kind": "transition"
+    },
+    {
+      "id": "f_emilien_previous_visits",
+      "key": "Emilien entered the base three times by daylight on the Sanchez case",
+      "kind": "transition"
+    },
+    {
+      "id": "f_mazur_saw_emilien",
+      "key": "Mazur saw Emilien on the fort road at dawn, one sleeve bloodied",
+      "kind": "transition"
+    },
+    {
+      "id": "f_falco_heard_mazur",
+      "key": "Falco heard from the trader Mazur that he had seen a policeman on the road",
+      "kind": "transition"
+    },
+    {
+      "id": "f_pierre_saw_emilien",
+      "key": "Pierre saw Emilien walk into Kalderes around five in the morning",
+      "kind": "transition"
+    },
+    {
+      "id": "f_emilien_at_dawn",
+      "key": "Emilien came in from the fort road at dawn, holding his right hand",
+      "kind": "transition"
+    },
+    {
+      "id": "f_boots_mud",
+      "key": "Pale road clay on Emilien's boots; there is no such clay in Kalderes",
+      "kind": "transition"
+    },
+    {
+      "id": "f_emilien_cut_hand",
+      "key": "Emilien's right palm is bandaged; he says he broke a glass at home",
+      "kind": "transition"
+    },
+    {
+      "id": "f_shards_match",
+      "key": "The glass from Emilien's boot matches the break of the shards in the office",
+      "kind": "concept"
+    },
+    {
+      "id": "f_diary_in_desk",
+      "key": "Miguel Sanchez's diary lies in the bottom drawer of Emilien's desk",
+      "kind": "concept"
+    },
+    {
+      "id": "f_riff_alibi_madelaine",
+      "key": "Riff spent the murder night with Madelaine Zheber — a long, hidden affair",
+      "kind": "transition"
+    },
+    {
+      "id": "f_riff_slip",
+      "key": "Riff calls Madelaine by her first name, and far too warmly",
+      "kind": "transition"
+    },
+    {
+      "id": "f_neighbor_saw_riff",
+      "key": "The neighbours saw Riff leaving Madelaine's house at night, that night included",
+      "kind": "transition"
+    },
+    {
+      "id": "f_gabriel_at_bar_all_night",
+      "key": "Gabriel drank at Falco's until closing and slept on the bench",
+      "kind": "transition"
+    },
+    {
+      "id": "f_gabriel_no_pass",
+      "key": "Gabriel has never passed the checkpoint, and the sentry would not pass him",
+      "kind": "transition"
+    },
+    {
+      "id": "f_gabriel_ignorant_drugs",
+      "key": "Sober, Gabriel shows he knows nothing of the drugging of the ranks",
+      "kind": "transition"
+    },
+    {
+      "id": "f_gallierez_hand",
+      "key": "Gallierez's left hand will not close; he cannot tie a lace with it",
+      "kind": "transition"
+    },
+    {
+      "id": "f_gallierez_hand_medcard",
+      "key": "The card records a fractured arm, a contracture, and toxicology refused by order",
+      "kind": "transition"
+    },
+    {
+      "id": "f_gallierez_squadmates",
+      "key": "The squad confirms the hand has been dead a month; they carry his kit for him",
+      "kind": "transition"
+    },
+    {
+      "id": "f_kovac_disillusioned",
+      "key": "Kovac closed the Sanchez case under pressure, not conviction",
+      "kind": "transition"
+    },
+    {
+      "id": "f_sanchez_case_closed",
+      "key": "Private Miguel Sanchez's death was filed as an overdose",
+      "kind": "transition"
+    },
+    {
+      "id": "f_strangled_and_staged",
+      "key": "Zheber was strangled with his own curtain; the drug was planted after death",
+      "kind": "concept"
+    },
+    {
+      "id": "f_night_window",
+      "key": "The killing falls between 23:30 and 03:00 on the night of the 14th",
+      "kind": "concept"
+    },
+    {
+      "id": "f_drug_program",
+      "key": "Zheber dosed his men with combat stimulants for parade results; Sanchez died of it",
+      "kind": "concept"
+    }
+  ],
+  "fact_holders": [
+    {
+      "fact_id": "f_drugs_in_office",
+      "holder_id": "e_drug_pouch",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_petechiae",
+      "holder_id": "e_arens",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_petechiae",
+      "holder_id": "e_body_zheber",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_zheber_not_user",
+      "holder_id": "e_arens",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_zheber_not_user",
+      "holder_id": "e_gallierez",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_fibers_in_mouth",
+      "holder_id": "e_body_zheber",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_portiere_torn",
+      "holder_id": "e_portiere",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_office_shards_present",
+      "holder_id": "e_shards_office",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_zheber_returned_2305",
+      "holder_id": "e_kpp_log",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_zheber_returned_2305",
+      "holder_id": "e_kempe",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_night_noise",
+      "holder_id": "e_kpp_log",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_night_noise",
+      "holder_id": "e_kempe",
+      "gate": {
+        "verbs": [
+          "persuade"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": false,
+      "latent": false
+    },
+    {
+      "fact_id": "f_emilien_previous_visits",
+      "holder_id": "e_kempe",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_emilien_previous_visits",
+      "holder_id": "e_kpp_log",
+      "gate": {
+        "verbs": [
+          "cross_reference"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_falco_heard_mazur",
+      "holder_id": "e_falco",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_mazur_saw_emilien",
+      "holder_id": "e_mazur",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": {
+          "of": [
+            "f_falco_heard_mazur"
+          ],
+          "n": 1
+        }
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_pierre_saw_emilien",
+      "holder_id": "e_pierre",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_emilien_at_dawn",
+      "holder_id": "e_mazur",
+      "gate": {
+        "verbs": [
+          "cross_reference"
+        ],
+        "threshold": "normal",
+        "requires": {
+          "of": [
+            "f_mazur_saw_emilien"
+          ],
+          "n": 1
+        }
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_emilien_at_dawn",
+      "holder_id": "e_pierre",
+      "gate": {
+        "verbs": [
+          "cross_reference"
+        ],
+        "threshold": "normal",
+        "requires": {
+          "of": [
+            "f_pierre_saw_emilien"
+          ],
+          "n": 1
+        }
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_emilien_at_dawn",
+      "holder_id": "e_boots_emilien",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal",
+        "requires": {
+          "of": [
+            "f_boots_mud"
+          ],
+          "n": 1
+        }
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_boots_mud",
+      "holder_id": "e_boots_emilien",
+      "gate": {
+        "verbs": [
+          "search"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_emilien_cut_hand",
+      "holder_id": "e_emilien",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_diary_in_desk",
+      "holder_id": "e_desk_emilien",
+      "gate": {
+        "verbs": [
+          "search"
+        ],
+        "threshold": "hard",
+        "requires": {
+          "of": [
+            "f_kovac_disillusioned",
+            "f_emilien_at_dawn"
+          ],
+          "n": 1
+        }
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_riff_slip",
+      "holder_id": "e_riff",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_neighbor_saw_riff",
+      "holder_id": "e_neighbors",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_gabriel_at_bar_all_night",
+      "holder_id": "e_falco",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_gabriel_no_pass",
+      "holder_id": "e_kempe",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_gabriel_ignorant_drugs",
+      "holder_id": "e_gabriel",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_gallierez_hand",
+      "holder_id": "e_gallierez",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_gallierez_hand_medcard",
+      "holder_id": "e_medcard_gallierez",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_gallierez_squadmates",
+      "holder_id": "e_squadmates",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_kovac_disillusioned",
+      "holder_id": "e_kovac",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_sanchez_case_closed",
+      "holder_id": "e_kovac",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_sanchez_case_closed",
+      "holder_id": "e_arens",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_strangled_and_staged",
+      "holder_id": "e_body_zheber",
+      "gate": {
+        "verbs": [
+          "cross_reference"
+        ],
+        "threshold": "hard",
+        "requires": {
+          "of": [
+            "f_portiere_torn",
+            "f_fibers_in_mouth",
+            "f_office_shards_present"
+          ],
+          "n": 2
+        }
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_drug_program",
+      "holder_id": "e_diary_sanchez",
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": true
+    },
+    {
+      "fact_id": "f_drug_program",
+      "holder_id": "e_gallierez",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal"
+      },
+      "mandatory": true,
+      "latent": false
+    },
+    {
+      "fact_id": "f_drug_program",
+      "holder_id": "e_riff",
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "hard"
+      },
+      "mandatory": true,
+      "latent": false
+    }
+  ],
+  "fact_unlocks": [
+    {
+      "fact_id": "f_night_noise",
+      "unlocks_kind": "node",
+      "unlocks_id": "n_zheber_office"
+    },
+    {
+      "fact_id": "f_riff_slip",
+      "unlocks_kind": "node",
+      "unlocks_id": "n_zheber_office"
+    },
+    {
+      "fact_id": "f_emilien_at_dawn",
+      "unlocks_kind": "node",
+      "unlocks_id": "n_emilien_home"
+    },
+    {
+      "fact_id": "f_falco_heard_mazur",
+      "unlocks_kind": "node",
+      "unlocks_id": "n_santa_irene"
+    },
+    {
+      "fact_id": "f_diary_in_desk",
+      "unlocks_kind": "topic",
+      "unlocks_id": "f_drug_program"
+    }
+  ],
+  "contradictions": [
+    {
+      "a": "f_emilien_cut_hand",
+      "b": "f_office_shards_present",
+      "reveals": "f_shards_match",
+      "flavour_key": "compare.shards_match"
+    },
+    {
+      "a": "f_riff_slip",
+      "b": "f_neighbor_saw_riff",
+      "reveals": "f_riff_alibi_madelaine",
+      "flavour_key": "compare.riff_alibi"
+    },
+    {
+      "a": "f_zheber_returned_2305",
+      "b": "f_emilien_at_dawn",
+      "reveals": "f_night_window",
+      "flavour_key": "compare.night_window"
+    }
+  ],
+  "clocks": [
+    {
+      "id": "c_cover_up",
+      "name": "The Cover-Up",
+      "segments": 6,
+      "tick_policy": "on_cost",
+      "on_fill": {
+        "flavour_key": "clock.cover_up.filled",
+        "remove_holders": [
+          "f_drugs_in_office"
+        ],
+        "hostile_to": [
+          "e_riff"
+        ]
+      }
+    },
+    {
+      "id": "c_flight",
+      "name": "Emilien Prepares to Run",
+      "segments": 8,
+      "tick_policy": "on_cost",
+      "on_fill": {
+        "flavour_key": "clock.flight.filled",
+        "remove_holders": [],
+        "hostile_to": [
+          "e_emilien"
+        ]
+      }
+    }
+  ],
+  "accusation_tokens": [
+    {
+      "slot": "who",
+      "token": "emilien",
+      "fact": "f_shards_match"
+    },
+    {
+      "slot": "who",
+      "token": "riff",
+      "fact": "f_riff_slip"
+    },
+    {
+      "slot": "who",
+      "token": "gallierez",
+      "fact": "f_drug_program"
+    },
+    {
+      "slot": "who",
+      "token": "gabriel",
+      "fact": "f_sanchez_case_closed"
+    },
+    {
+      "slot": "how",
+      "token": "strangled_staged",
+      "fact": "f_strangled_and_staged"
+    },
+    {
+      "slot": "how",
+      "token": "overdose",
+      "fact": "f_drugs_in_office"
+    },
+    {
+      "slot": "when",
+      "token": "night_14_15",
+      "fact": "f_night_window"
+    },
+    {
+      "slot": "when",
+      "token": "dawn_15",
+      "fact": "f_emilien_at_dawn"
+    },
+    {
+      "slot": "why",
+      "token": "caught_investigating",
+      "fact": "f_diary_in_desk"
+    },
+    {
+      "slot": "why",
+      "token": "revenge_for_brother",
+      "fact": "f_sanchez_case_closed"
+    },
+    {
+      "slot": "why",
+      "token": "jealousy",
+      "fact": "f_riff_alibi_madelaine"
+    }
+  ],
+  "truth": {
+    "who": "emilien",
+    "how": "strangled_staged",
+    "when": "night_14_15",
+    "why": "caught_investigating"
+  },
+  "start_facts": [
+    {
+      "fact": "f_body_found",
+      "from": "e_riff"
+    }
+  ],
+  "flavour": {
+    "look.n_police_office": "Two desks, one lamp, and a stove that has not been lit since spring. Kovac's ashtray is a small grey hill. The junior clerk's desk is tidy in the way of a man who has learned to be looked at.",
+    "look.n_kalderes": "Kalderes is a street and a half of whitewash going grey, hung between the sea road and the fort road. Everyone here knows which of the two brought the money and which brought the trouble.",
+    "look.n_bar": "Falco's is low, warm and smells of spilled anise. The benches along the wall are worn into shallow beds by men who did not make it home.",
+    "look.n_emilien_home": "A rented room the width of its bed. A washstand, a nail for a coat, a footlocker. Nothing on the walls — as if the tenant meant to leave at any hour.",
+    "look.n_zheber_home": "The captain's house keeps its shutters half closed. Inside, everything is arranged for a man who is not coming back, and no one has moved a chair yet.",
+    "look.n_bakery": "The oven throws light across the step where Pierre sits with his tobacco. Bread is the only clock in this building, and it runs from four in the morning.",
+    "look.n_road_to_fort": "The road climbs out of the town in pale clay that takes a bootprint like wax and keeps it until the next rain. Tonight the rain is coming in sideways off the water.",
+    "look.n_santa_irene": "A market town with a customs house and an inn, one long day's cart from Kalderes. Traders wait out the weather here and talk while they wait.",
+    "look.n_fort_kpp": "A striped pole, a lantern, and a boy with a rifle he holds like a shovel. The log book lies on the sill under an oilcloth, open at the night column.",
+    "look.n_fort_yard": "The parade ground is beaten flat and running with water. Men cross it fast and without looking up, the way men do where inspections are frequent.",
+    "look.n_fort_hq": "Headquarters smells of wet wool and sealing wax. Someone has already begun the paperwork of a death, and the corridor to the captain's door is very quiet.",
+    "look.n_zheber_office": "The captain's office has been left as it was found. The lamp is out, the window is unlatched a finger's width, and one curtain hangs badly, as if something heavy had swung on it.",
+    "look.n_fort_barracks": "Forty bunks, two stoves, wet cloth on every line. The talk drops when you enter and picks up again a half-tone lower.",
+    "look.n_fort_hospital": "The infirmary is three beds and a scrubbed table. Arens keeps his instruments in the order of a man who has been shouted at for the last time.",
+    "move_zone.n_police_office": "You take your coat off the nail and step out into the wet.",
+    "move_zone.n_kalderes": "You cross the square. Somebody's shutter closes as you pass, unhurried, deliberate.",
+    "move_zone.n_bar": "Falco lifts two fingers as you leave — neither goodbye nor invitation.",
+    "move_zone.n_emilien_home": "You pull the door to. The latch does not catch on the first try.",
+    "move_zone.n_zheber_home": "You leave the house holding its breath behind you.",
+    "move_zone.n_bakery": "Pierre does not look up. The smell of bread follows you half the street.",
+    "move_zone.n_road_to_fort": "The clay pulls at your heels the whole way. It would pull at anyone's.",
+    "move_zone.n_santa_irene": "You take the cart road back, with the sea on your left the whole way.",
+    "move_zone.n_fort_kpp": "The pole comes up, the boy salutes a beat too late, and you are past.",
+    "move_zone.n_fort_yard": "You cut across the open ground with your collar up.",
+    "move_zone.n_fort_hq": "Your boots are loud in the corridor. Nobody comes out to see who it is.",
+    "move_zone.n_zheber_office": "You leave the office as you found it, and pull the door until it clicks.",
+    "move_zone.n_fort_barracks": "The talk resumes behind you before the door is shut.",
+    "move_zone.n_fort_hospital": "Arens returns to his table without waiting for you to go.",
+    "examine.e_drug_pouch.f_drugs_in_office": "Soft leather, worn shiny at the mouth, and a glass syringe wrapped in flannel. The powder inside is army issue and there is a great deal more of it than one man needs.",
+    "question.e_arens.f_petechiae": "Arens turns the lamp so you can see. 'The eyes. And under the lip. That is pressure, detective — the heart still pushing and nowhere for it to go. You do not get that from a needle.'",
+    "examine.e_body_zheber.f_petechiae": "Under the lids and along the inner lip the small vessels have burst in a fine spray. The face kept its colour, which is worse than if it had not.",
+    "question.e_arens.f_zheber_not_user": "'I looked because you would have asked. Both forearms, both thighs — clean. No scars, no thickening, nothing of the habit. Whatever was in him that night, it was new to him.'",
+    "question.e_gallierez.f_zheber_not_user": "Gallierez almost laughs. 'The captain? He handed it out. He stood at the end of the line with the box and he watched us take it. He never took it. He had to be able to write the report after.'",
+    "examine.e_body_zheber.f_fibers_in_mouth": "Deep in the mouth, and further, in the nostrils, there are threads of a heavy blue weave — the kind that hangs in a window and is never washed.",
+    "examine.e_portiere.f_portiere_torn": "The left-hand curtain is short of a triangle at the bottom corner, torn along the weave rather than cut. Beside the tear the cloth has dried stiff and dark.",
+    "examine.e_shards_office.f_office_shards_present": "Behind the cabinet, out of the sweep of a broom, lie the pieces of a cut-glass tumbler with the regimental crest. Someone collected the obvious ones and missed these.",
+    "examine.e_kpp_log.f_zheber_returned_2305": "The night column, in pencil, in a careful hand: 'Capt. Zheber — 23:05.' Nothing after it until the morning relief.",
+    "question.e_kempe.f_zheber_returned_2305": "'The captain came back at five past eleven, sir. I wrote it down because I always write it down. He did not say anything. He never did.'",
+    "examine.e_kpp_log.f_night_noise": "Lower in the same column, in the same pencil but pressed harder: 'noise — HQ'. No time against it, and no note of who was sent to look.",
+    "persuade.e_kempe.f_night_noise": "The boy stops reciting. 'It was glass, sir. Breaking. I thought — a bottle, officers, you know. I did not go and look, and I have not slept right since, if you want the truth of it.'",
+    "question.e_kempe.f_emilien_previous_visits": "'The young policeman? Three times, sir, by day, on the Sanchez business. Assistant's card. I passed him myself — he always knew where he was going.'",
+    "cross_reference.e_kpp_log.f_emilien_previous_visits": "Three daylight entries in the past month, the same assistant's card number each time, the last of them eight days before the killing.",
+    "question.e_falco.f_falco_heard_mazur": "Falco wipes the same glass twice. 'Trader stopped the night here — Mazur. Said he'd seen your policeman out on the fort road, early. Then he went on to Santa Irene, so ask him, not me.'",
+    "question.e_mazur.f_mazur_saw_emilien": "'Young fellow, police coat, walking down off the fort road when the light was still grey. I remember because his sleeve was wet through dark and he put his hand behind him when the cart came past.'",
+    "question.e_pierre.f_pierre_saw_emilien": "Pierre takes the cigarette out of his mouth. 'Five. Maybe ten past. Came in off that side. Held his hand. Looked at the ground.' He puts the cigarette back.",
+    "cross_reference.e_mazur.f_emilien_at_dawn": "Set against the hour of the cart and the distance from the fort, Mazur's sighting puts Emilien on that road while the base was still asleep.",
+    "cross_reference.e_pierre.f_emilien_at_dawn": "The baker's hour and the trader's hour close on each other: one man, one road, coming down from the fort before the town was up.",
+    "examine.e_boots_emilien.f_emilien_at_dawn": "The clay is not yet grey through — it was walked on wet, and once, and not many hours before you took it in your hands.",
+    "search.e_boots_emilien.f_boots_mud": "Pale clay in the welt and up the side of the heel, still damp in the seam. There is red earth in Kalderes and clay on the fort road, and this is the clay.",
+    "question.e_emilien.f_emilien_cut_hand": "He answers before you finish. 'A glass. At home. Stupid — I was washing it and it went in my hand.' The bandage is clean and very recent, and he keeps the palm turned away.",
+    "search.e_desk_emilien.f_diary_in_desk": "The bottom drawer is locked with the kind of lock that is a suggestion. Under a folded shirt lies a soldier's notebook, and the name inked inside the cover is Miguel Sanchez.",
+    "question.e_riff.f_riff_slip": "Riff speaks of the captain evenly, correctly, for a long time. Then: 'Madelaine will need the pension papers signed.' Not 'the widow'. Not 'Mrs Zheber'. He hears it himself and does not correct it.",
+    "question.e_neighbors.f_neighbor_saw_riff": "'The tall officer? Oh, he comes. Not for the captain, mind — the captain's away those nights.' The other one nods along. 'That night as well. Left before the milk.'",
+    "question.e_falco.f_gabriel_at_bar_all_night": "'Gabriel was on that bench from dark to when I put the bar up, and after it too. I stepped over him to sweep. He could not have found the door, let alone the fort.'",
+    "question.e_kempe.f_gabriel_no_pass": "'The dead man's brother? He has never been through my gate, sir, and he never will be. He shouts at the pole from the road sometimes. I write that down as well.'",
+    "question.e_gabriel.f_gabriel_ignorant_drugs": "Sober, he is slow and ashamed. You mention what was given to the ranks and he only stares. 'Given? Given what?' Whatever killed his brother, he has been shouting at the wrong shape of it.",
+    "examine.e_gallierez.f_gallierez_hand": "He holds the hand out flat because he cannot make it do anything else. The fingers will not close on yours. He cannot tie his own lace and does not pretend otherwise.",
+    "examine.e_medcard_gallierez.f_gallierez_hand_medcard": "Fracture of the left forearm, complication, established contracture. Three weeks of entries in the same slow hand. Then, at the foot of the page: toxicology not performed — order of a senior officer.",
+    "question.e_squadmates.f_gallierez_squadmates": "'A month, near enough.' 'We do his straps.' 'He carries with the right and we do the rest.' They say it the way men say a thing they have stopped finding remarkable.",
+    "question.e_kovac.f_kovac_disillusioned": "Kovac coughs into his fist for a while. 'I closed it because I was told what the file would say before I opened it. The boy came to me every day with his papers. Every day I sent him out.'",
+    "question.e_kovac.f_sanchez_case_closed": "'Sanchez. Private, nineteen, found in the barracks. Overdose, signed, filed.' He says it flat, the way a man reads out a debt he means to pay.",
+    "question.e_arens.f_sanchez_case_closed": "'I opened that boy up and wrote what I was allowed to write. Overdose. It is not a lie. It is only the last third of a sentence.'",
+    "cross_reference.e_body_zheber.f_strangled_and_staged": "Put together, the body stops arguing. He was taken from behind with the curtain, and the drug went into a man who was already past objecting to it — a death dressed, afterwards, in the death of Miguel Sanchez.",
+    "examine.e_diary_sanchez.f_drug_program": "The last pages are barely writing. 'They gave it again.' 'My head hums.' 'As if we were cattle, and the cattle win the parade.' The dates run up to four days before he died.",
+    "question.e_gallierez.f_drug_program": "'Before every review. A box, a line, the captain at the end of it. You went up the wall like a lizard and you did not feel your hands. Miguel got one more than me. That is the whole difference between us.'",
+    "question.e_riff.f_drug_program": "Riff is silent long enough that you know the answer before he gives it. 'I knew. I wrote a letter I did not send. He would have called it initiative and been promoted for it.'",
+    "compare.shards_match": "You set the glass from the boot against the pieces from behind the cabinet. The break runs on across both, tooth into tooth, the crest continuing where it should. There was one tumbler, and it broke in that office, and part of it walked out in a policeman's boot.",
+    "compare.riff_alibi": "The name he used and the nights the neighbours counted are the same thing said twice. Riff was not in headquarters that night. He was in the dead man's house, and the reason he will not say so is not murder.",
+    "compare.night_window": "He went in at five past eleven and he was found at seven. The sentry's glass breaks in between; Emilien is on the road at first light. The night closes to a few hours with two men inside it.",
+    "compare.nothing": "You hold the two facts side by side for a while. They are both true and they have nothing to say to each other.",
+    "clock.cover_up.filled": "A staff car comes down from the district in the afternoon. By evening the pouch and the syringe are 'not among the effects', and the word going round headquarters is a private weakness, one officer, regrettable, closed.",
+    "clock.flight.filled": "Emilien's footlocker is open and half empty, and his coat is gone from the nail. He has not run yet. He has decided to.",
+    "rest.short": "You sit on a wall out of the wind for a quarter of an hour and let your hands stop shaking. Nothing heals. Something steadies.",
+    "rest.long": "You take a bed and lose the rest of the day to it. The town goes on deciding what happened while you sleep.",
+    "theorize.recorded": "You say it aloud to hear how it stands up, and write it in the back of your notebook. Not a charge yet. A shape to keep hold of.",
+    "examine.e_drug_pouch": "Leather, glass, powder. It has told you what it has.",
+    "examine.e_body_zheber": "The captain has no more to say to you today.",
+    "examine.e_portiere": "Heavy blue cloth, a torn corner, a stiff dark patch. Nothing further comes out of it.",
+    "examine.e_shards_office": "You turn the pieces over again. Glass, crest, clean breaks — all of it already counted.",
+    "examine.e_kpp_log": "Pencil, oilcloth, a careful hand. You have read every line that matters.",
+    "examine.e_boots_emilien": "Clay, welt, heel. You have had everything these boots will give you.",
+    "examine.e_gallierez": "He waits while you look at him, which is its own kind of answer, and there is nothing new in it.",
+    "examine.e_medcard_gallierez": "Three weeks of entries and one refused test. You have read it all.",
+    "examine.e_diary_sanchez": "You turn the last pages again. Miguel has said everything he was able to say."
+  }
+}

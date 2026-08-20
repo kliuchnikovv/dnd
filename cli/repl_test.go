@@ -89,3 +89,23 @@ func TestSameSeedSameTranscript(t *testing.T) {
 		t.Log("разные seed дали одинаковый транскрипт — допустимо на коротком скрипте")
 	}
 }
+
+func TestPartialMoveStillArrives(t *testing.T) {
+	// Таксономия move: ЧАСТИЧНО — «попал + ухудшение позиции». Игрок обязан
+	// оказаться в новом узле, иначе цена прихода берётся без прихода.
+	g := renderGame(t)
+	start := g.Node
+	var out bytes.Buffer
+	// d20=10 при edge+1 против порога 14 даёт маржу -3, то есть ЧАСТИЧНО.
+	g.Dice = dice.Fixed(10)
+	in := strings.NewReader("move_zone forge\nquit\n")
+	if err := NewSession(g, in, &out).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "ЧАСТИЧНО") {
+		t.Fatalf("бросок дал не ЧАСТИЧНО, тест не о том:\n%s", out.String())
+	}
+	if g.Node == start {
+		t.Errorf("на ЧАСТИЧНО игрок остался в %s — цена взята без прихода", start)
+	}
+}
