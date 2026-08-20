@@ -108,7 +108,7 @@ func (p *Parser) attempt(ctx context.Context, text string, hint SceneHint,
 	if err := json.Unmarshal([]byte(resp.Text), &raw); err != nil {
 		return Result{}, "", fmt.Errorf("intent: ответ не разобрался: %w", err)
 	}
-	res, repairNext := p.validate(raw, hint)
+	res, repairNext := p.validate(raw, hint, text)
 	return res, repairNext, nil
 }
 
@@ -123,7 +123,7 @@ func (p *Parser) observe(res Result) {
 // формально валидна.
 // validate возвращает результат и, если ответ можно починить одним уточнением,
 // текст этого уточнения. Метрику здесь не пишем: она считается по итогу.
-func (p *Parser) validate(raw reply, hint SceneHint) (Result, string) {
+func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, string) {
 	switch raw.Outcome {
 	case OutcomeClarify:
 		return Result{Clarify: fallback(raw.Clarify, "уточни, что именно ты делаешь")}, ""
@@ -143,6 +143,22 @@ func (p *Parser) validate(raw reply, hint SceneHint) (Result, string) {
 
 	reject := func(msg string) (Result, string) {
 		return Result{Clarify: msg, Class: def.Class}, ""
+	}
+
+	// Прежде чем спрашивать, попробуем разрешить ссылку сами. Игрок почти
+	// всегда называет персонажа по имени, а поиск имени в сцене — это
+	// подстрока, а не суждение. Один сэкономленный вызов и, что важнее,
+	// ход не превращается в допрос игрока о том, что он только что написал.
+	need := requires(def.Verb)
+	if need.Target && raw.Target == "" {
+		if id, ok := resolveByName(text, hint.Entities); ok {
+			raw.Target = id
+		}
+	}
+	if need.Node && raw.Node == "" {
+		if id, ok := resolveByName(text, hint.Reachable); ok {
+			raw.Node = id
+		}
 	}
 
 	if msg := requires(def.Verb).missing(raw); msg != "" {

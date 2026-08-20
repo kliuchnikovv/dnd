@@ -432,29 +432,48 @@ func parserRepairing(t *testing.T, first, second string) (*Parser, *llm.Fake) {
 }
 
 // Ровно тот случай с живого прогона: «Поздороваться с Берном» дало talk_to
-// без цели. Один раунд починки доводит ввод до действия.
-func TestMissingArgumentIsRepairedInOneRound(t *testing.T) {
+// без цели. Имя есть во фразе — значит цель разрешается на месте, без второго
+// вызова модели.
+func TestMissingTargetResolvedFromPlayerText(t *testing.T) {
 	hint := harbourHint(t)
-	target := hint.Entities[0].ID
 	p, f := parserRepairing(t,
 		`{"outcome":"intent","verb":"talk_to"}`,
-		`{"outcome":"intent","verb":"talk_to","target":"`+target+`"}`)
+		`{"outcome":"intent","verb":"talk_to","target":"e_bern"}`)
 
 	got, err := p.Parse(context.Background(), "Поздороваться с Берном", hint, llm.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !got.Accepted() {
-		t.Fatalf("починка не помогла: %q", got.Clarify)
+		t.Fatalf("цель не разрешилась по имени: %q", got.Clarify)
 	}
-	if string(got.Intent.Args.Target) != target {
-		t.Errorf("цель %q, ожидалась %q", got.Intent.Args.Target, target)
+	if string(got.Intent.Args.Target) != "e_bern" {
+		t.Errorf("цель %q, ожидалась e_bern", got.Intent.Args.Target)
+	}
+	if n := len(f.Calls()); n != 1 {
+		t.Errorf("вызовов %d — имя во фразе должно решаться без второго обращения", n)
+	}
+}
+
+// Если имени во фразе нет, разрешать нечего — тогда работает раунд починки.
+func TestRepairFiresWhenNameIsAbsentFromText(t *testing.T) {
+	hint := harbourHint(t)
+	p, f := parserRepairing(t,
+		`{"outcome":"intent","verb":"talk_to"}`,
+		`{"outcome":"intent","verb":"talk_to","target":"e_bern"}`)
+
+	got, err := p.Parse(context.Background(), "поздороваться", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Accepted() {
+		t.Fatalf("починка не помогла: %q", got.Clarify)
 	}
 	if n := len(f.Calls()); n != 2 {
 		t.Errorf("вызовов %d, ожидалось 2", n)
 	}
 	if !strings.Contains(f.Calls()[1].Input, "к кому") {
-		t.Errorf("в починку не попало пропущенное поле: %q", f.Calls()[1].Input)
+		t.Errorf("в починку не попало пропущенное поле")
 	}
 }
 

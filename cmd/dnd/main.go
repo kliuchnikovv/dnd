@@ -32,6 +32,7 @@ func main() {
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
+	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
 	capTurn := flag.Int("cap-turn", 4, "потолок вызовов модели на один ход: разбор до двух, озвучка один")
 	envFile := flag.String("env", ".env", "файл с переменными окружения; уже заданное окружение приоритетнее")
 	flag.Parse()
@@ -77,6 +78,9 @@ func main() {
 			}, llm.WithAlert(func(spent, forecast int64) {
 				fmt.Fprintf(os.Stderr, "расход %d мкд превысил прогноз %d вдвое\n", spent, forecast)
 			})))
+		if *debugLLM {
+			gw = gw.WithDebug(os.Stderr)
+		}
 		parser = intent.NewParser(gw)
 		session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
 		session.WithVoicer(&actor.GameVoicer{Actor: actor.New(gw), Game: game})

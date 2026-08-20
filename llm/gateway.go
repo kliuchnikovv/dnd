@@ -1,11 +1,23 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"io"
+)
 
 // Gateway — единственная точка, через которую вызываются модели.
 type Gateway struct {
 	router *Router
 	ledger *Ledger
+	debug  io.Writer
+}
+
+// WithDebug включает дамп обмена с моделью. Нужен ровно тогда, когда ответ
+// модели расходится с ожиданиями, а угадывать причину дороже, чем посмотреть.
+func (g *Gateway) WithDebug(w io.Writer) *Gateway {
+	g.debug = w
+	return g
 }
 
 func NewGateway(r *Router, l *Ledger) *Gateway {
@@ -56,6 +68,7 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 		resp.Model = t.Model
 		resp.Provider = t.Provider.Name()
 		g.ledger.Record(r, resp)
+		g.dump(r, t, resp)
 		return resp, nil
 	}
 	if lastErr == nil {
@@ -65,3 +78,16 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 func (g *Gateway) Stats() Stats { return g.ledger.Stats() }
+
+// dump печатает обмен целиком, включая схему: расхождение чаще всего в ней.
+func (g *Gateway) dump(r Request, t Target, resp Response) {
+	if g.debug == nil {
+		return
+	}
+	fmt.Fprintf(g.debug, "\n--- llm %s -> %s/%s ---\n", r.Role, t.Provider.Name(), t.Model)
+	if r.Schema != "" {
+		fmt.Fprintf(g.debug, "схема: %s\n", r.Schema)
+	}
+	fmt.Fprintf(g.debug, "ввод:\n%s\nответ:\n%s\nтокены: %d/%d, стоимость: %d мкд\n",
+		r.Input, resp.Text, resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.CostMicro)
+}
