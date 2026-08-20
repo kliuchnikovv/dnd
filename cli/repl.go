@@ -21,6 +21,7 @@ type Session struct {
 	sc     *bufio.Scanner
 	interp Interpreter
 	voicer Voicer
+	turn   int
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
@@ -32,6 +33,7 @@ func (s *Session) Run() error {
 	s.sc = bufio.NewScanner(s.In)
 	for s.sc.Scan() {
 		line := s.sc.Text()
+		s.turn++
 		cmd, err := Parse(line)
 		if err != nil {
 			s.interpret(line, err)

@@ -3,9 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/llm"
 )
+
+// turnContext помечает контекст номером хода. Потолок вызовов модели на ход
+// считается по нему: перевод и озвучка одной строки ввода — один ход.
+func (s *Session) turnContext() context.Context {
+	return llm.WithTurnID(context.Background(), "turn-"+strconv.Itoa(s.turn))
+}
 
 // Voicer — необязательный голос NPC. Без него игра работает как раньше,
 // авторской прозой: озвучка это надстройка, а не условие работы.
@@ -27,7 +35,7 @@ func (s *Session) speak(in core.Intent, res core.TurnResult) {
 	if s.voicer == nil || res.Refused {
 		return
 	}
-	line, err := s.voicer.Voice(context.Background(), in, res)
+	line, err := s.voicer.Voice(s.turnContext(), in, res)
 	if err != nil {
 		fmt.Fprintf(s.Out, "(персонаж промолчал: %v)\n", err)
 		return

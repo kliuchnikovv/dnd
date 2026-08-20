@@ -79,3 +79,20 @@ var (
 	ErrSchemaUnsafe = errors.New("llm: роль мутирует состояние, а провайдер не гарантирует схему")
 	ErrUnknownModel = errors.New("llm: у модели нет цены в таблице")
 )
+
+// turnKey — ключ хода в контексте. Потолок вызовов на ход защищает от цикла
+// регенерации, но только если ход вообще опознан. Передавать его через все
+// интерфейсы было бы шумом, поэтому он едет в контексте, а шлюз подхватывает
+// его сам.
+type turnKey struct{}
+
+// WithTurnID помечает контекст идентификатором хода.
+func WithTurnID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, turnKey{}, id)
+}
+
+// TurnIDFrom возвращает идентификатор хода из контекста, если он там есть.
+func TurnIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(turnKey{}).(string)
+	return id
+}

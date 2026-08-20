@@ -53,62 +53,102 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 Ты не решаешь, удалось ли действие. Ты только переводишь.
 
 Обязательные аргументы по глаголам:
-%s`
+%s
+Примеры. Обрати внимание: обязательное поле заполняется ВСЕГДА, даже когда
+игрок называет персонажа по имени, а не по идентификатору.
+
+Сцена: e_bern — Берн, стражник
+Игрок: «Поздороваться с Берном»
+Ответ: {"outcome":"intent","verb":"talk_to","target":"e_bern"}
+
+Сцена: e_ivar — Ивар, кузнец; известные темы: f_ledger — гроссбух
+Игрок: «спрошу кузнеца про книгу»
+Ответ: {"outcome":"intent","verb":"question","target":"e_ivar","topic":"f_ledger"}
+
+Сцена: e_ivar — Ивар, кузнец; известных тем нет
+Игрок: «спрошу кузнеца, кто убийца»
+Ответ: {"outcome":"clarify","clarify":"Об этом парти пока ничего не знает."}`
 
 // Parse переводит текст в интент. Возвращает ошибку только на отказе шлюза
 // или сломанном ответе; непонятый ввод — это Result, а не ошибка.
 func (p *Parser) Parse(ctx context.Context, text string, hint SceneHint, req llm.Request) (Result, error) {
-	req.Role = llm.RoleIntentParser
-	req.Schema = SchemaJSON()
-	req.System = fmt.Sprintf(systemPrompt, arityBrief())
-	req.Input = "Сцена:\n" + hint.Render() + "\nИгрок пишет: " + text
-
-	resp, err := p.gw.Do(ctx, req)
+	res, repair, err := p.attempt(ctx, text, hint, req, "")
 	if err != nil {
 		return Result{}, err
 	}
+	// Один раунд починки. Слабая модель игнорирует инструкцию об обязательном
+	// поле, но исправляется, когда ей называют пропущенное. Второго раунда нет
+	// намеренно: дальше это уже не недопонимание, а неподходящий глагол.
+	if repair != "" {
+		res, _, err = p.attempt(ctx, text, hint, req, repair)
+		if err != nil {
+			return Result{}, err
+		}
+	}
+	p.observe(res)
+	return res, nil
+}
 
+func (p *Parser) attempt(ctx context.Context, text string, hint SceneHint,
+	req llm.Request, repair string) (Result, string, error) {
+	req.Role = llm.RoleIntentParser
+	req.Schema = schemaJSONFor(hint)
+	req.System = fmt.Sprintf(systemPrompt, arityBrief())
+	req.Input = "Сцена:\n" + hint.Render() + "\nИгрок пишет: " + text
+	if repair != "" {
+		req.Input += "\n\nПредыдущий ответ был неполон: " + repair +
+			"\nВерни тот же глагол, заполнив пропущенное значением из сцены."
+	}
+
+	resp, err := p.gw.Do(ctx, req)
+	if err != nil {
+		return Result{}, "", err
+	}
 	var raw reply
 	if err := json.Unmarshal([]byte(resp.Text), &raw); err != nil {
-		return Result{}, fmt.Errorf("intent: ответ не разобрался: %w", err)
+		return Result{}, "", fmt.Errorf("intent: ответ не разобрался: %w", err)
 	}
-	return p.validate(raw, hint), nil
+	res, repairNext := p.validate(raw, hint)
+	return res, repairNext, nil
+}
+
+// observe записывает метрику один раз по окончательному результату: иначе
+// раунд починки считался бы отказом дважды.
+func (p *Parser) observe(res Result) {
+	p.metrics.Observe(res.Class, res.Accepted())
 }
 
 // validate — вторая половина гарантии. Схема отвечает за форму ответа, эта
 // функция за его смысл: ссылка на сущность вне сцены отклоняется, даже если
 // формально валидна.
-func (p *Parser) validate(raw reply, hint SceneHint) Result {
+// validate возвращает результат и, если ответ можно починить одним уточнением,
+// текст этого уточнения. Метрику здесь не пишем: она считается по итогу.
+func (p *Parser) validate(raw reply, hint SceneHint) (Result, string) {
 	switch raw.Outcome {
 	case OutcomeClarify:
-		p.metrics.Observe("", false)
-		return Result{Clarify: fallback(raw.Clarify, "уточни, что именно ты делаешь")}
+		return Result{Clarify: fallback(raw.Clarify, "уточни, что именно ты делаешь")}, ""
 	case OutcomeUnsupported:
-		p.metrics.Observe("", false)
-		return Result{Candidate: fallback(raw.Reason, "словарь такого не покрывает")}
+		return Result{Candidate: fallback(raw.Reason, "словарь такого не покрывает")}, ""
 	case OutcomeIntent:
 	default:
-		p.metrics.Observe("", false)
-		return Result{Clarify: "не разобрал, повтори иначе"}
+		return Result{Clarify: "не разобрал, повтори иначе"}, ""
 	}
 
 	def, ok := core.LookupVerb(raw.Verb)
 	if !ok {
 		// Глагола нет в реестре — класс неизвестен, значит это не отказ
 		// конкретного класса, а промах модели по схеме.
-		p.metrics.Observe("", false)
-		return Result{Clarify: "не разобрал, повтори иначе"}
+		return Result{Clarify: "не разобрал, повтори иначе"}, ""
 	}
 
-	reject := func(msg string) Result {
-		p.metrics.Observe(def.Class, false)
-		return Result{Clarify: msg, Class: def.Class}
+	reject := func(msg string) (Result, string) {
+		return Result{Clarify: msg, Class: def.Class}, ""
 	}
 
 	if msg := requires(def.Verb).missing(raw); msg != "" {
-		// Глагол без обязательного аргумента — это не действие. Раньше такой
-		// ответ доходил до движка, и ключ флейвора уезжал на узел вместо цели.
-		return reject(msg)
+		// Пропущенный обязательный аргумент — единственный случай, который
+		// стоит починить: глагол угадан, не хватает ссылки на сцену.
+		return Result{Clarify: msg, Class: def.Class}, "не заполнено обязательное поле — " + msg
 	}
 	if raw.Target != "" && !hint.hasEntity(raw.Target) {
 		return reject("этого здесь нет — кого ты имеешь в виду?")
@@ -137,8 +177,7 @@ func (p *Parser) validate(raw reply, hint SceneHint) Result {
 		in.Args.Facts = append(in.Args.Facts, store.FactID(f))
 	}
 
-	p.metrics.Observe(def.Class, true)
-	return Result{Intent: in, Class: def.Class}
+	return Result{Intent: in, Class: def.Class}, ""
 }
 
 func fallback(s, def string) string {

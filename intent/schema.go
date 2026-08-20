@@ -33,11 +33,28 @@ func verbNames() []string {
 	return out
 }
 
-// Schema — JSON-схема ответа парсера, выведенная из реестра глаголов.
-// additionalProperties:false обязателен: без него strict-режим не даёт
-// гарантии, а лишние поля молча приезжают в канон.
-func Schema() map[string]any {
+// Schema — схема без привязки к сцене. Нужна для тестов и документации;
+// парсер использует SchemaFor, потому что перечисления из сцены работают
+// сильнее любой инструкции в промпте.
+func Schema() map[string]any { return SchemaFor(SceneHint{}) }
+
+// SchemaFor строит схему под конкретную сцену: target, topic и node получают
+// enum из фактически присутствующих идентификаторов. Модель не может выдумать
+// сущность не потому, что её попросили, а потому, что грамматика не даёт.
+//
+// Цена: схема меняется вместе со сценой, поэтому кэш грамматики у провайдера
+// живёт на узел, а не на всё дело. Это дешевле, чем разбирать ссылки на
+// несуществующих людей.
+func SchemaFor(hint SceneHint) map[string]any {
 	str := map[string]any{"type": "string"}
+	enumOr := func(list []Named, desc string) map[string]any {
+		m := map[string]any{"type": "string", "description": desc}
+		if ids := idsOf(list); len(ids) > 0 {
+			m["enum"] = ids
+		}
+		return m
+	}
+	_ = str
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -51,10 +68,12 @@ func Schema() map[string]any {
 				"type": "string", "enum": verbNames(),
 				"description": "глагол из реестра; обязателен при outcome=intent",
 			},
-			"target":  map[string]any{"type": "string", "description": "id сущности из списка присутствующих"},
-			"topic":   map[string]any{"type": "string", "description": "id факта из банка тем парти"},
-			"node":    map[string]any{"type": "string", "description": "id смежного открытого узла"},
-			"facts":   map[string]any{"type": "array", "items": str, "description": "id фактов для compare"},
+			"target": enumOr(hint.Entities, "id сущности из списка присутствующих"),
+			"topic":  enumOr(hint.Topics, "id факта из банка тем парти"),
+			"node":   enumOr(hint.Reachable, "id смежного открытого узла"),
+			"facts": map[string]any{"type": "array",
+				"items":       enumOr(hint.Topics, "id известного факта"),
+				"description": "ровно два id известных фактов для compare"},
 			"item":    str,
 			"ability": str,
 			"text":    map[string]any{"type": "string", "description": "свободный текст для theorize, say, emote"},
@@ -64,9 +83,19 @@ func Schema() map[string]any {
 	}
 }
 
-// SchemaJSON — схема в том виде, в котором уходит провайдеру.
-func SchemaJSON() string {
-	b, err := json.Marshal(Schema())
+func idsOf(list []Named) []string {
+	out := make([]string, 0, len(list))
+	for _, n := range list {
+		out = append(out, n.ID)
+	}
+	return out
+}
+
+// SchemaJSON — схема сцены в том виде, в котором уходит провайдеру.
+func SchemaJSON() string { return schemaJSONFor(SceneHint{}) }
+
+func schemaJSONFor(hint SceneHint) string {
+	b, err := json.Marshal(SchemaFor(hint))
 	if err != nil {
 		panic(err) // схема статична: ошибка здесь означает сломанный билд
 	}

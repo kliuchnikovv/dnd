@@ -260,3 +260,39 @@ func TestUnknownModelPriceDoesNotSilentlySpend(t *testing.T) {
 		t.Error("расход учтён по модели без цены")
 	}
 }
+
+// Потолок «на ход» бесполезен, если ход не опознан. Адаптеры не заполняют
+// TurnID, поэтому шлюз обязан брать его из контекста.
+func TestTurnIDComesFromContext(t *testing.T) {
+	g, p := gw(t, Caps{PerTurnCalls: 2})
+	ctx := WithTurnID(context.Background(), "turn-1")
+	req := Request{Role: RoleNarrator, Input: "сцена"} // TurnID не задан
+
+	for i := 0; i < 2; i++ {
+		if _, err := g.Do(ctx, req); err != nil {
+			t.Fatalf("вызов %d: %v", i+1, err)
+		}
+	}
+	if _, err := g.Do(ctx, req); !errors.Is(err, ErrTurnCalls) {
+		t.Fatalf("третий вызов того же хода дал %v, ожидалась ErrTurnCalls", err)
+	}
+	if len(p.Calls()) != 2 {
+		t.Errorf("провайдер вызван %d раз", len(p.Calls()))
+	}
+	// Следующий ход начинается с чистого счёта.
+	if _, err := g.Do(WithTurnID(context.Background(), "turn-2"), req); err != nil {
+		t.Errorf("новый ход отвергнут: %v", err)
+	}
+}
+
+func TestExplicitTurnIDWinsOverContext(t *testing.T) {
+	g, _ := gw(t, Caps{PerTurnCalls: 1})
+	ctx := WithTurnID(context.Background(), "turn-1")
+	if _, err := g.Do(ctx, Request{Role: RoleNarrator, Input: "x", TurnID: "own"}); err != nil {
+		t.Fatal(err)
+	}
+	// Ход из контекста не тронут, потому что запрос назвал свой.
+	if _, err := g.Do(ctx, Request{Role: RoleNarrator, Input: "x"}); err != nil {
+		t.Errorf("ход из контекста задет чужим счётчиком: %v", err)
+	}
+}

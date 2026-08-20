@@ -16,6 +16,11 @@ func NewGateway(r *Router, l *Ledger) *Gateway {
 // расход. Порядок важен — потолки проверяются ДО первого вызова, поэтому
 // отказ по бюджету бесплатен.
 func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
+	// Ход опознаётся из контекста, если вызывающий не назвал его явно: иначе
+	// потолок вызовов на ход молча не применяется ни к чему.
+	if r.TurnID == "" {
+		r.TurnID = TurnIDFrom(ctx)
+	}
 	if err := g.ledger.Admit(r); err != nil {
 		return Response{}, err
 	}

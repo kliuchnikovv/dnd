@@ -367,3 +367,150 @@ func TestArityMatchesStructuredParser(t *testing.T) {
 		}
 	}
 }
+
+// --- перечисления из сцены ---
+
+// Инструкция «бери id из списка» слабой моделью игнорируется. Перечисление в
+// схеме — не просьба, а грамматика.
+func TestSchemaCarriesSceneEnums(t *testing.T) {
+	hint := harbourHint(t)
+	props := SchemaFor(hint)["properties"].(map[string]any)
+
+	target := props["target"].(map[string]any)
+	enum, ok := target["enum"].([]string)
+	if !ok {
+		t.Fatal("у target нет перечисления присутствующих")
+	}
+	if len(enum) != len(hint.Entities) {
+		t.Errorf("в перечислении %d сущностей, в сцене %d", len(enum), len(hint.Entities))
+	}
+	for _, e := range hint.Entities {
+		if !containsStr(enum, e.ID) {
+			t.Errorf("в перечислении нет %q", e.ID)
+		}
+	}
+	if _, ok := props["topic"].(map[string]any)["enum"]; !ok {
+		t.Error("у topic нет перечисления известных тем")
+	}
+}
+
+// Пустая сцена не должна давать пустой enum: пустое перечисление делает схему
+// невыполнимой, и модель не сможет ответить вообще ничем.
+func TestEmptySceneLeavesFieldsUnconstrained(t *testing.T) {
+	props := SchemaFor(SceneHint{})["properties"].(map[string]any)
+	for _, field := range []string{"target", "topic", "node"} {
+		if _, ok := props[field].(map[string]any)["enum"]; ok {
+			t.Errorf("у %q появилось пустое перечисление", field)
+		}
+	}
+}
+
+func containsStr(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// --- раунд починки ---
+
+// parserRepairing отвечает неполно на первой попытке и полно на второй.
+func parserRepairing(t *testing.T, first, second string) (*Parser, *llm.Fake) {
+	t.Helper()
+	f := llm.NewFake("fake", true).ReplyWith(func(r llm.Request) string {
+		if strings.Contains(r.Input, "Предыдущий ответ был неполон") {
+			return second
+		}
+		return first
+	})
+	gw := llm.NewGateway(
+		llm.NewRouter().Route(llm.RoleIntentParser, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewLedger(llm.Caps{}))
+	return NewParser(gw), f
+}
+
+// Ровно тот случай с живого прогона: «Поздороваться с Берном» дало talk_to
+// без цели. Один раунд починки доводит ввод до действия.
+func TestMissingArgumentIsRepairedInOneRound(t *testing.T) {
+	hint := harbourHint(t)
+	target := hint.Entities[0].ID
+	p, f := parserRepairing(t,
+		`{"outcome":"intent","verb":"talk_to"}`,
+		`{"outcome":"intent","verb":"talk_to","target":"`+target+`"}`)
+
+	got, err := p.Parse(context.Background(), "Поздороваться с Берном", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Accepted() {
+		t.Fatalf("починка не помогла: %q", got.Clarify)
+	}
+	if string(got.Intent.Args.Target) != target {
+		t.Errorf("цель %q, ожидалась %q", got.Intent.Args.Target, target)
+	}
+	if n := len(f.Calls()); n != 2 {
+		t.Errorf("вызовов %d, ожидалось 2", n)
+	}
+	if !strings.Contains(f.Calls()[1].Input, "к кому") {
+		t.Errorf("в починку не попало пропущенное поле: %q", f.Calls()[1].Input)
+	}
+}
+
+// Второго раунда нет: дальше это уже не недопонимание.
+func TestRepairHappensOnlyOnce(t *testing.T) {
+	hint := harbourHint(t)
+	p, f := parserRepairing(t,
+		`{"outcome":"intent","verb":"talk_to"}`,
+		`{"outcome":"intent","verb":"talk_to"}`)
+
+	got, err := p.Parse(context.Background(), "поздороваться", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accepted() {
+		t.Fatal("принято действие без обязательного аргумента")
+	}
+	if n := len(f.Calls()); n != 2 {
+		t.Errorf("вызовов %d, ожидалось ровно 2", n)
+	}
+}
+
+// Ссылка на несуществующую сущность починке не подлежит: это не пропуск, а
+// выдумка, и второй заход её не исправит.
+func TestBadReferenceIsNotRepaired(t *testing.T) {
+	hint := harbourHint(t)
+	p, f := parserRepairing(t,
+		`{"outcome":"intent","verb":"examine","target":"e_призрак"}`,
+		`{"outcome":"intent","verb":"examine","target":"e_призрак"}`)
+	got, err := p.Parse(context.Background(), "смотрю на призрака", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accepted() {
+		t.Fatal("принята выдуманная сущность")
+	}
+	if n := len(f.Calls()); n != 1 {
+		t.Errorf("вызовов %d — выдумку чинить не надо", n)
+	}
+}
+
+// Метрика считается по итогу, а не по попыткам: иначе починенный ввод
+// записывался бы и как отказ, и как успех.
+func TestRepairCountsOnceInMetrics(t *testing.T) {
+	hint := harbourHint(t)
+	target := hint.Entities[0].ID
+	p, _ := parserRepairing(t,
+		`{"outcome":"intent","verb":"talk_to"}`,
+		`{"outcome":"intent","verb":"talk_to","target":"`+target+`"}`)
+	p.Parse(context.Background(), "привет", hint, llm.Request{})
+
+	m := p.Metrics()
+	if m.Observations() != 1 {
+		t.Errorf("наблюдений %d, ожидалось 1", m.Observations())
+	}
+	if r := m.Rate(core.ClassSocial); r != 0 {
+		t.Errorf("починенный ввод записан отказом: %.2f", r)
+	}
+}

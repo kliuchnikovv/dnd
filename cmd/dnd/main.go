@@ -32,7 +32,7 @@ func main() {
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
-	capTurn := flag.Int("cap-turn", 3, "потолок вызовов модели на один ход")
+	capTurn := flag.Int("cap-turn", 4, "потолок вызовов модели на один ход: разбор до двух, озвучка один")
 	flag.Parse()
 
 	cfg, err := cases.Load(*casePath)

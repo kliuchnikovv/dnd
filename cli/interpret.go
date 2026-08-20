@@ -31,7 +31,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		fmt.Fprintf(s.Out, "нельзя: %v\n", parseErr)
 		return false
 	}
-	in, clarify, err := s.interp.Interpret(context.Background(), text)
+	in, clarify, err := s.interp.Interpret(s.turnContext(), text)
 	switch {
 	case err != nil:
 		// Сбой канала не должен выглядеть как отказ мира: игрок обязан

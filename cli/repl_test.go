@@ -10,6 +10,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 )
 
@@ -262,4 +263,39 @@ func TestWithoutVoicerNothingChanges(t *testing.T) {
 	if strings.Contains(out.String(), "—") {
 		t.Errorf("без озвучки появилась прямая речь: %q", out.String())
 	}
+}
+
+// Перевод и озвучка одной строки ввода — один ход: иначе потолок вызовов на
+// ход считается по разным ведрам и не ограничивает ничего.
+func TestInterpretAndVoiceShareOneTurn(t *testing.T) {
+	var seen []string
+	fi := &fakeInterp{intent: &core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_toke"}}}
+	fv := &turnRecordingVoicer{seen: &seen, line: "— Да?"}
+	g := renderGame(t)
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("поздороваться\nпоздороваться\nquit\n"), &out).
+		WithInterpreter(fi).WithVoicer(fv)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("озвучек %d, ожидалось 2", len(seen))
+	}
+	if seen[0] == seen[1] {
+		t.Errorf("две строки ввода получили один номер хода: %v", seen)
+	}
+	if seen[0] == "" {
+		t.Error("номер хода не проставлен — потолок на ход не применится")
+	}
+}
+
+type turnRecordingVoicer struct {
+	seen *[]string
+	line string
+}
+
+func (v *turnRecordingVoicer) Voice(ctx context.Context, _ core.Intent, _ core.TurnResult) (string, error) {
+	*v.seen = append(*v.seen, llm.TurnIDFrom(ctx))
+	return v.line, nil
 }
