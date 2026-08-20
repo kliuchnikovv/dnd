@@ -291,3 +291,79 @@ func TestObservationsCountsEveryInput(t *testing.T) {
 		t.Errorf("наблюдений %d, ожидалось 2", got)
 	}
 }
+
+// Ровно тот баг, который вылез на живом прогоне: talk_to без цели доходил
+// до движка, и ключ флейвора уезжал на узел вместо сущности.
+func TestVerbWithoutRequiredTargetBecomesClarify(t *testing.T) {
+	hint := harbourHint(t)
+	got := parse(t, `{"outcome":"intent","verb":"talk_to"}`, hint)
+	if got.Accepted() {
+		t.Fatal("talk_to без цели принят как действие")
+	}
+	if !strings.Contains(got.Clarify, "к кому") {
+		t.Errorf("вопрос не про цель: %q", got.Clarify)
+	}
+	if got.Class != core.ClassSocial {
+		t.Errorf("класс %q — отказ должен считаться по классу глагола", got.Class)
+	}
+}
+
+func TestArityIsCheckedForEveryShape(t *testing.T) {
+	hint := harbourHint(t)
+	target := hint.Entities[0].ID
+	cases := []struct {
+		name  string
+		reply string
+	}{
+		{"question без темы", `{"outcome":"intent","verb":"question","target":"` + target + `"}`},
+		{"question без цели", `{"outcome":"intent","verb":"question","topic":"x"}`},
+		{"move_zone без узла", `{"outcome":"intent","verb":"move_zone"}`},
+		{"theorize без текста", `{"outcome":"intent","verb":"theorize"}`},
+		{"use_item без предмета", `{"outcome":"intent","verb":"use_item"}`},
+		{"compare с одним фактом", `{"outcome":"intent","verb":"compare","facts":["f_x"]}`},
+		{"examine без цели", `{"outcome":"intent","verb":"examine"}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := parse(t, c.reply, hint); got.Accepted() {
+				t.Error("принято действие без обязательного аргумента")
+			}
+		})
+	}
+}
+
+func TestLookNeedsNothing(t *testing.T) {
+	if got := parse(t, `{"outcome":"intent","verb":"look"}`, harbourHint(t)); !got.Accepted() {
+		t.Errorf("look отвергнут: %q", got.Clarify)
+	}
+}
+
+// Требования уходят в промпт: без них модель не знает, что заполнять.
+func TestPromptDeclaresArity(t *testing.T) {
+	brief := arityBrief()
+	for _, want := range []string{"talk_to", "question", "target", "topic", "move_zone", "node"} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("в требованиях нет %q:\n%s", want, brief)
+		}
+	}
+	if brief != arityBrief() {
+		t.Error("требования нестабильны между вызовами — префикс промпта не закэшируется")
+	}
+}
+
+// Грамматика свободного текста и грамматика команд обязаны совпадать: иначе
+// один и тот же ввод ведёт себя по-разному в двух режимах.
+func TestArityMatchesStructuredParser(t *testing.T) {
+	for _, d := range core.AllVerbs() {
+		r := requires(d.Verb)
+		n := 0
+		for _, b := range []bool{r.Target, r.Topic, r.Node, r.Item, r.Ability, r.Text} {
+			if b {
+				n++
+			}
+		}
+		if n == 0 && r.Facts == 0 && d.Verb != "look" {
+			t.Errorf("глагол %q не требует ничего — проверь таблицу арности", d.Verb)
+		}
+	}
+}

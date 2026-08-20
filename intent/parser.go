@@ -50,14 +50,17 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 5. Если фраза ложится, но непонятно на что именно, верни clarify с коротким
    вопросом — в характере мира, не служебным языком.
 
-Ты не решаешь, удалось ли действие. Ты только переводишь.`
+Ты не решаешь, удалось ли действие. Ты только переводишь.
+
+Обязательные аргументы по глаголам:
+%s`
 
 // Parse переводит текст в интент. Возвращает ошибку только на отказе шлюза
 // или сломанном ответе; непонятый ввод — это Result, а не ошибка.
 func (p *Parser) Parse(ctx context.Context, text string, hint SceneHint, req llm.Request) (Result, error) {
 	req.Role = llm.RoleIntentParser
 	req.Schema = SchemaJSON()
-	req.System = systemPrompt
+	req.System = fmt.Sprintf(systemPrompt, arityBrief())
 	req.Input = "Сцена:\n" + hint.Render() + "\nИгрок пишет: " + text
 
 	resp, err := p.gw.Do(ctx, req)
@@ -102,6 +105,11 @@ func (p *Parser) validate(raw reply, hint SceneHint) Result {
 		return Result{Clarify: msg, Class: def.Class}
 	}
 
+	if msg := requires(def.Verb).missing(raw); msg != "" {
+		// Глагол без обязательного аргумента — это не действие. Раньше такой
+		// ответ доходил до движка, и ключ флейвора уезжал на узел вместо цели.
+		return reject(msg)
+	}
 	if raw.Target != "" && !hint.hasEntity(raw.Target) {
 		return reject("этого здесь нет — кого ты имеешь в виду?")
 	}

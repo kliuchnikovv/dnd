@@ -8,196 +8,700 @@
     "grit": 3,
     "sheet": {
       "archetype": "inspector",
-      "attrs": {"body": 0, "edge": 1, "mind": 3, "will": 0},
+      "attrs": {
+        "body": 0,
+        "edge": 1,
+        "mind": 3,
+        "will": 0
+      },
       "tags": [
-        {"name": "портовый", "verbs": ["question", "search"]},
-        {"name": "дознаватель", "verbs": ["cross_reference", "examine"]}
+        {
+          "name": "портовый",
+          "verbs": [
+            "question",
+            "search"
+          ]
+        },
+        {
+          "name": "дознаватель",
+          "verbs": [
+            "cross_reference",
+            "examine"
+          ]
+        }
       ],
       "abilities": []
     }
   },
   "locations": [
-    {"id": "n_quay", "name": "Пристань", "adjacent": ["n_warehouse", "n_forge", "n_guildhall"], "tags": ["rain"]},
-    {"id": "n_warehouse", "name": "Склад", "adjacent": ["n_quay"], "tags": ["dark", "indoors"]},
-    {"id": "n_forge", "name": "Кузница", "adjacent": ["n_quay", "n_tavern"], "tags": ["indoors"]},
-    {"id": "n_guildhall", "name": "Контора гильдии", "adjacent": ["n_quay"], "tags": ["indoors"]},
-    {"id": "n_tavern", "name": "Таверна «Мокрый парус»", "adjacent": ["n_forge"], "tags": ["crowd"]}
+    {
+      "id": "n_quay",
+      "name": "Пристань",
+      "adjacent": [
+        "n_warehouse",
+        "n_forge",
+        "n_guildhall"
+      ],
+      "tags": [
+        "rain"
+      ]
+    },
+    {
+      "id": "n_warehouse",
+      "name": "Склад",
+      "adjacent": [
+        "n_quay"
+      ],
+      "tags": [
+        "dark",
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_forge",
+      "name": "Кузница",
+      "adjacent": [
+        "n_quay",
+        "n_tavern"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_guildhall",
+      "name": "Контора гильдии",
+      "adjacent": [
+        "n_quay"
+      ],
+      "tags": [
+        "indoors"
+      ]
+    },
+    {
+      "id": "n_tavern",
+      "name": "Таверна «Мокрый парус»",
+      "adjacent": [
+        "n_forge"
+      ],
+      "tags": [
+        "crowd"
+      ]
+    }
   ],
   "entities": [
-    {"id": "e_body", "name": "Тело Халдена", "kind": "thing", "voice": "", "node": "n_warehouse"},
-    {"id": "e_ledger", "name": "Гроссбух гильдии", "kind": "record", "voice": "", "node": "n_guildhall"},
-    {"id": "e_lock", "name": "Замок складских ворот", "kind": "thing", "voice": "", "node": "n_warehouse"},
-    {"id": "e_toke", "name": "Токе, писарь гильдии", "kind": "npc", "voice": "вежливо уклончивый, каждое слово взвешено заранее", "node": "n_guildhall"},
-    {"id": "e_ivar", "name": "Ивар, кузнец", "kind": "npc", "voice": "раздражённый, отвечает коротко и с нажимом", "node": "n_forge"},
-    {"id": "e_sigrid", "name": "Сигрид, вдова Халдена", "kind": "npc", "voice": "усталая точность, ни одного лишнего слова", "node": "n_forge"},
-    {"id": "e_nils", "name": "Нильс, мальчишка-посыльный", "kind": "npc", "voice": "торопливый, сыплет подробностями", "node": "n_quay"},
-    {"id": "e_bern", "name": "Берн, стражник", "kind": "npc", "voice": "сухой и служебный, докладывает как в протокол", "node": "n_quay"},
-    {"id": "e_tidebook", "name": "Книга приливов", "kind": "record", "voice": "", "node": "n_guildhall"}
+    {
+      "id": "e_body",
+      "name": "Тело Халдена",
+      "kind": "thing",
+      "voice": "",
+      "node": "n_warehouse"
+    },
+    {
+      "id": "e_ledger",
+      "name": "Гроссбух гильдии",
+      "kind": "record",
+      "voice": "",
+      "node": "n_guildhall"
+    },
+    {
+      "id": "e_lock",
+      "name": "Замок складских ворот",
+      "kind": "thing",
+      "voice": "",
+      "node": "n_warehouse"
+    },
+    {
+      "id": "e_toke",
+      "name": "Токе, писарь гильдии",
+      "kind": "npc",
+      "voice": "вежливо уклончивый, каждое слово взвешено заранее",
+      "node": "n_guildhall"
+    },
+    {
+      "id": "e_ivar",
+      "name": "Ивар, кузнец",
+      "kind": "npc",
+      "voice": "раздражённый, отвечает коротко и с нажимом",
+      "node": "n_forge"
+    },
+    {
+      "id": "e_sigrid",
+      "name": "Сигрид, вдова Халдена",
+      "kind": "npc",
+      "voice": "усталая точность, ни одного лишнего слова",
+      "node": "n_forge"
+    },
+    {
+      "id": "e_nils",
+      "name": "Нильс, мальчишка-посыльный",
+      "kind": "npc",
+      "voice": "торопливый, сыплет подробностями",
+      "node": "n_quay"
+    },
+    {
+      "id": "e_bern",
+      "name": "Берн, стражник",
+      "kind": "npc",
+      "voice": "сухой и служебный, докладывает как в протокол",
+      "node": "n_quay"
+    },
+    {
+      "id": "e_tidebook",
+      "name": "Книга приливов",
+      "kind": "record",
+      "voice": "",
+      "node": "n_guildhall"
+    }
   ],
   "relations": [
-    {"from_entity": "e_sigrid", "to_entity": "e_nils", "kind": "тётка и племянник"},
-    {"from_entity": "e_toke", "to_entity": "e_ledger", "kind": "ведёт гроссбух"},
-    {"from_entity": "e_ivar", "to_entity": "e_sigrid", "kind": "соседи по кузнице"}
+    {
+      "from_entity": "e_sigrid",
+      "to_entity": "e_nils",
+      "kind": "тётка и племянник"
+    },
+    {
+      "from_entity": "e_toke",
+      "to_entity": "e_ledger",
+      "kind": "ведёт гроссбух"
+    },
+    {
+      "from_entity": "e_ivar",
+      "to_entity": "e_sigrid",
+      "kind": "соседи по кузнице"
+    }
   ],
   "facts": [
-    {"id": "f_body_found", "key": "Тело сборщика податей Халдена найдено на складе у пристани", "kind": "concept"},
-    {"id": "f_ligature", "key": "На шее тела — узкая борозда от шнура", "kind": "concept"},
-    {"id": "f_seal_cord", "key": "Шнур на шее — гильдейский, с восковой печатью", "kind": "concept"},
-    {"id": "f_lock_intact", "key": "Замок складских ворот не взломан — открывали ключом", "kind": "concept"},
-    {"id": "f_toke_has_key", "key": "Второй ключ от склада есть у писаря Токе", "kind": "concept"},
-    {"id": "f_ledger_erasure", "key": "В гроссбухе гильдии подчищена страница", "kind": "concept"},
-    {"id": "f_shortfall", "key": "В кассе гильдии недостача, скрытая подчисткой", "kind": "concept"},
-    {"id": "f_toke_keeps_ledger", "key": "Гроссбух гильдии ведёт лично Токе", "kind": "concept"},
-    {"id": "f_halden_asked_audit", "key": "Халден требовал внеочередной ревизии кассы", "kind": "concept"},
-    {"id": "f_tide_night", "key": "В ночь убийства склад был заперт до самого прилива", "kind": "concept"},
-    {"id": "f_toke_at_quay", "key": "Токе видели на пристани в ночь убийства", "kind": "concept"},
-    {"id": "f_ivar_debt", "key": "Ивар задолжал Халдену крупную сумму", "kind": "concept"},
-    {"id": "f_ivar_alibi", "key": "Ивар всю ночь просидел в таверне на виду у всех", "kind": "concept"},
-    {"id": "f_toke_paid_debts", "key": "Токе на днях внезапно расплатился со своими долгами", "kind": "concept"},
-    {"id": "f_toke_lied", "key": "Токе солгал о том, где провёл ночь убийства", "kind": "concept"}
+    {
+      "id": "f_body_found",
+      "key": "Тело сборщика податей Халдена найдено на складе у пристани",
+      "kind": "concept"
+    },
+    {
+      "id": "f_ligature",
+      "key": "На шее тела — узкая борозда от шнура",
+      "kind": "concept"
+    },
+    {
+      "id": "f_seal_cord",
+      "key": "Шнур на шее — гильдейский, с восковой печатью",
+      "kind": "concept"
+    },
+    {
+      "id": "f_lock_intact",
+      "key": "Замок складских ворот не взломан — открывали ключом",
+      "kind": "concept"
+    },
+    {
+      "id": "f_toke_has_key",
+      "key": "Второй ключ от склада есть у писаря Токе",
+      "kind": "concept"
+    },
+    {
+      "id": "f_ledger_erasure",
+      "key": "В гроссбухе гильдии подчищена страница",
+      "kind": "concept"
+    },
+    {
+      "id": "f_shortfall",
+      "key": "В кассе гильдии недостача, скрытая подчисткой",
+      "kind": "concept"
+    },
+    {
+      "id": "f_toke_keeps_ledger",
+      "key": "Гроссбух гильдии ведёт лично Токе",
+      "kind": "concept"
+    },
+    {
+      "id": "f_halden_asked_audit",
+      "key": "Халден требовал внеочередной ревизии кассы",
+      "kind": "concept"
+    },
+    {
+      "id": "f_tide_night",
+      "key": "В ночь убийства склад был заперт до самого прилива",
+      "kind": "concept"
+    },
+    {
+      "id": "f_toke_at_quay",
+      "key": "Токе видели на пристани в ночь убийства",
+      "kind": "concept"
+    },
+    {
+      "id": "f_ivar_debt",
+      "key": "Ивар задолжал Халдену крупную сумму",
+      "kind": "concept"
+    },
+    {
+      "id": "f_ivar_alibi",
+      "key": "Ивар всю ночь просидел в таверне на виду у всех",
+      "kind": "concept"
+    },
+    {
+      "id": "f_toke_paid_debts",
+      "key": "Токе на днях внезапно расплатился со своими долгами",
+      "kind": "concept"
+    },
+    {
+      "id": "f_toke_lied",
+      "key": "Токе солгал о том, где провёл ночь убийства",
+      "kind": "concept"
+    }
   ],
   "fact_holders": [
-    {"fact_id": "f_ligature", "holder_id": "e_body", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["examine"], "threshold": "easy", "requires": []}},
-
-    {"fact_id": "f_seal_cord", "holder_id": "e_body", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["examine"], "threshold": "normal", "requires": ["f_ligature"]}},
-    {"fact_id": "f_seal_cord", "holder_id": "e_toke", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-    {"fact_id": "f_seal_cord", "holder_id": "e_bern", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_lock_intact", "holder_id": "e_lock", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["examine"], "threshold": "easy", "requires": []}},
-    {"fact_id": "f_lock_intact", "holder_id": "e_bern", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "easy", "requires": []}},
-
-    {"fact_id": "f_toke_has_key", "holder_id": "e_bern", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_ledger_erasure", "holder_id": "e_ledger", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["examine"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_shortfall", "holder_id": "e_ledger", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["cross_reference"], "threshold": "hard", "requires": ["f_ledger_erasure"]}},
-    {"fact_id": "f_shortfall", "holder_id": "e_sigrid", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-    {"fact_id": "f_shortfall", "holder_id": "e_bern", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_toke_keeps_ledger", "holder_id": "e_toke", "mandatory": true, "latent": true,
-     "gate": {"verbs": ["question"], "threshold": "easy", "requires": []}},
-
-    {"fact_id": "f_halden_asked_audit", "holder_id": "e_sigrid", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_tide_night", "holder_id": "e_tidebook", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["examine"], "threshold": "easy", "requires": []}},
-    {"fact_id": "f_tide_night", "holder_id": "e_bern", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "easy", "requires": []}},
-    {"fact_id": "f_tide_night", "holder_id": "e_ivar", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "easy", "requires": []}},
-
-    {"fact_id": "f_toke_at_quay", "holder_id": "e_nils", "mandatory": true, "latent": true,
-     "gate": {"verbs": ["stake_out", "question"], "threshold": "normal", "requires": []}},
-    {"fact_id": "f_toke_at_quay", "holder_id": "e_bern", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-    {"fact_id": "f_toke_at_quay", "holder_id": "e_ivar", "mandatory": false, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_ivar_debt", "holder_id": "e_sigrid", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "easy", "requires": []}},
-
-    {"fact_id": "f_ivar_alibi", "holder_id": "e_ivar", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}},
-
-    {"fact_id": "f_toke_paid_debts", "holder_id": "e_nils", "mandatory": true, "latent": false,
-     "gate": {"verbs": ["question"], "threshold": "normal", "requires": []}}
+    {
+      "fact_id": "f_ligature",
+      "holder_id": "e_body",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_seal_cord",
+      "holder_id": "e_body",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal",
+        "requires": [
+          "f_ligature"
+        ]
+      }
+    },
+    {
+      "fact_id": "f_seal_cord",
+      "holder_id": "e_toke",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_seal_cord",
+      "holder_id": "e_bern",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_lock_intact",
+      "holder_id": "e_lock",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_lock_intact",
+      "holder_id": "e_bern",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_toke_has_key",
+      "holder_id": "e_bern",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_ledger_erasure",
+      "holder_id": "e_ledger",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_shortfall",
+      "holder_id": "e_ledger",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "cross_reference"
+        ],
+        "threshold": "hard",
+        "requires": [
+          "f_ledger_erasure"
+        ]
+      }
+    },
+    {
+      "fact_id": "f_shortfall",
+      "holder_id": "e_sigrid",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_shortfall",
+      "holder_id": "e_bern",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_toke_keeps_ledger",
+      "holder_id": "e_toke",
+      "mandatory": true,
+      "latent": true,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_halden_asked_audit",
+      "holder_id": "e_sigrid",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_tide_night",
+      "holder_id": "e_tidebook",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "examine"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_tide_night",
+      "holder_id": "e_bern",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_tide_night",
+      "holder_id": "e_ivar",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_toke_at_quay",
+      "holder_id": "e_nils",
+      "mandatory": true,
+      "latent": true,
+      "gate": {
+        "verbs": [
+          "stake_out",
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_toke_at_quay",
+      "holder_id": "e_bern",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_toke_at_quay",
+      "holder_id": "e_ivar",
+      "mandatory": false,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_ivar_debt",
+      "holder_id": "e_sigrid",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "easy",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_ivar_alibi",
+      "holder_id": "e_ivar",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    },
+    {
+      "fact_id": "f_toke_paid_debts",
+      "holder_id": "e_nils",
+      "mandatory": true,
+      "latent": false,
+      "gate": {
+        "verbs": [
+          "question"
+        ],
+        "threshold": "normal",
+        "requires": []
+      }
+    }
   ],
   "fact_unlocks": [
-    {"fact_id": "f_ledger_erasure", "unlocks_kind": "topic", "unlocks_id": "f_toke_at_quay"},
-    {"fact_id": "f_ledger_erasure", "unlocks_kind": "node", "unlocks_id": "n_warehouse"},
-    {"fact_id": "f_seal_cord", "unlocks_kind": "topic", "unlocks_id": "f_toke_keeps_ledger"}
+    {
+      "fact_id": "f_ledger_erasure",
+      "unlocks_kind": "topic",
+      "unlocks_id": "f_toke_at_quay"
+    },
+    {
+      "fact_id": "f_ledger_erasure",
+      "unlocks_kind": "node",
+      "unlocks_id": "n_warehouse"
+    },
+    {
+      "fact_id": "f_seal_cord",
+      "unlocks_kind": "topic",
+      "unlocks_id": "f_toke_keeps_ledger"
+    }
   ],
   "contradictions": [
-    {"a": "f_toke_at_quay", "b": "f_toke_keeps_ledger", "reveals": "f_toke_lied", "flavour_key": "compare.toke_lied"}
+    {
+      "a": "f_toke_at_quay",
+      "b": "f_toke_keeps_ledger",
+      "reveals": "f_toke_lied",
+      "flavour_key": "compare.toke_lied"
+    }
   ],
   "clocks": [
-    {"id": "c_tide", "name": "Прилив", "segments": 6, "filled": 0, "tick_policy": "on_cost",
-     "on_fill": {"flavour_key": "clock.tide.filled", "remove_holders": ["f_lock_intact"], "hostile_to": []}},
-    {"id": "c_suspicion", "name": "Слухи", "segments": 8, "filled": 0, "tick_policy": "on_cost",
-     "on_fill": {"flavour_key": "clock.suspicion.filled", "remove_holders": [], "hostile_to": ["e_toke"]}}
+    {
+      "id": "c_tide",
+      "name": "Прилив",
+      "segments": 6,
+      "filled": 0,
+      "tick_policy": "on_cost",
+      "on_fill": {
+        "flavour_key": "clock.tide.filled",
+        "remove_holders": [
+          "f_lock_intact"
+        ],
+        "hostile_to": []
+      }
+    },
+    {
+      "id": "c_suspicion",
+      "name": "Слухи",
+      "segments": 8,
+      "filled": 0,
+      "tick_policy": "on_cost",
+      "on_fill": {
+        "flavour_key": "clock.suspicion.filled",
+        "remove_holders": [],
+        "hostile_to": [
+          "e_toke"
+        ]
+      }
+    }
   ],
   "accusation_tokens": [
-    {"slot": "who", "token": "toke", "fact": "f_toke_lied"},
-    {"slot": "who", "token": "ivar", "fact": "f_ivar_debt"},
-    {"slot": "who", "token": "sigrid", "fact": "f_halden_asked_audit"},
-
-    {"slot": "how", "token": "seal_cord", "fact": "f_seal_cord"},
-    {"slot": "how", "token": "hammer", "fact": "f_ivar_debt"},
-
-    {"slot": "when", "token": "night_before_tide", "fact": "f_tide_night"},
-    {"slot": "when", "token": "morning", "fact": "f_body_found"},
-
-    {"slot": "why", "token": "audit_shortfall", "fact": "f_shortfall"},
-    {"slot": "why", "token": "unpaid_debt", "fact": "f_ivar_debt"}
+    {
+      "slot": "who",
+      "token": "toke",
+      "fact": "f_toke_lied"
+    },
+    {
+      "slot": "who",
+      "token": "ivar",
+      "fact": "f_ivar_debt"
+    },
+    {
+      "slot": "who",
+      "token": "sigrid",
+      "fact": "f_halden_asked_audit"
+    },
+    {
+      "slot": "how",
+      "token": "seal_cord",
+      "fact": "f_seal_cord"
+    },
+    {
+      "slot": "how",
+      "token": "hammer",
+      "fact": "f_ivar_debt"
+    },
+    {
+      "slot": "when",
+      "token": "night_before_tide",
+      "fact": "f_tide_night"
+    },
+    {
+      "slot": "when",
+      "token": "morning",
+      "fact": "f_body_found"
+    },
+    {
+      "slot": "why",
+      "token": "audit_shortfall",
+      "fact": "f_shortfall"
+    },
+    {
+      "slot": "why",
+      "token": "unpaid_debt",
+      "fact": "f_ivar_debt"
+    }
   ],
-  "truth": {"who": "toke", "how": "seal_cord", "when": "night_before_tide", "why": "audit_shortfall"},
+  "truth": {
+    "who": "toke",
+    "how": "seal_cord",
+    "when": "night_before_tide",
+    "why": "audit_shortfall"
+  },
   "start_facts": [
-    {"fact": "f_body_found", "from": "e_body"}
+    {
+      "fact": "f_body_found",
+      "from": "e_body"
+    }
   ],
   "flavour": {
-    "look.n_quay": "Дождь сечёт доски пристани косыми полосами, и фонари на столбах дрожат от ветра с залива. Пахнет смолой и мокрой пенькой. У края причала, натянув плащ на голову, топчется стражник — рядом с ним жмётся мальчишка-посыльный, явно рад любому поводу не молчать.",
-    "look.n_warehouse": "Внутри темно и сыро, пыль от зерна ещё висит в воздухе, будто здесь никто не убирался с самой находки. Тело уже унесли к лекарю, но меловой контур на досках пола и сорванная веревка у балки говорят сами за себя. Ворота заперты на массивный засов с одним замком.",
-    "look.n_forge": "Горн ещё тёплый, хотя огонь давно прогорел — здесь пахнет углём и палёным железом. У наковальни, вытирая руки тряпкой, стоит кузнец с недовольным лицом; в углу, сложив руки на коленях, тихо сидит женщина в тёмном платке.",
-    "look.n_guildhall": "Контора пропахла чернилами и сургучом. Полки заставлены гроссбухами в потрёпанных переплётах, на столе раскрыта толстая книга с пометками о приливах. За конторкой аккуратно раскладывает перья писарь — движения у него слишком выверенные для человека, которому нечего скрывать.",
-    "look.n_tavern": "В «Мокром парусе» шумно даже днём: кто-то спорит из-за костей, кто-то дремлет над кружкой. Хозяйка протирает стойку и косится на дверь при каждом скрипе — здесь любой вечер похож на все прочие, если не приглядываться.",
-
+    "ask_about": "Вы спрашиваете осторожно, будто между прочим, и следите не за словами, а за тем, как их произносят.",
+    "clock.suspicion.filled": "По пристани и таверне расползся слух, что писарь под подозрением. Токе теперь держится настороже, лишних вопросов не ждёт и отвечает короткими, заранее заготовленными фразами.",
+    "clock.tide.filled": "Вода наконец добралась до нижнего яруса склада, и то немногое, что ещё можно было бы разглядеть у ворот, теперь скрыто под мутной пеленой прилива. Кто не успел — тот опоздал.",
+    "compare.nothing": "Вы сопоставляете факты и так и эдак, но ничего нового не складывается — эти два обстоятельства просто существуют рядом, не противореча друг другу.",
+    "compare.toke_lied": "Токе клялся, что в ночь убийства ни разу не покидал контору гильдии, и сам же — как единственный, кому доверен гроссбух, — уверял, что никто, кроме него, к записям не притрагивался. Но его видели у самого склада, за полночь, там, где не должно было быть никого с чистой совестью. Одно из двух: либо контора не так пуста ночами, как он говорит, либо Токе лжёт о том, где провёл эту ночь — и лжёт не по мелочи.",
+    "cross_reference.e_ledger.f_shortfall": "Сверив исправленные суммы с записями о пошлинах и корабельными манифестами за тот же месяц, вы находите разницу: в кассе должно быть больше монеты, чем показывает гроссбух. Подчистка не украшательство — она прячет недостачу.",
+    "emote": "Вы делаете это молча, и молчание тоже читается — теми, кто умеет читать.",
     "examine.e_body.f_ligature": "На шее покойного — узкая тёмная борозда, идущая наискось от уха к затылку. Кожа вокруг стёрта неровно, будто веревку дёргали в стороны, а не просто затянули один раз.",
     "examine.e_body.f_seal_cord": "Присмотревшись к волокнам в самой борозде, вы находите застрявший обрывок шнура — плетёный, с восковой нашлёпкой на конце. Такими шнурами гильдия перевязывает готовые к отправке грузовые описи, а не обычные верёвки с рынка.",
-    "question.e_toke.f_seal_cord": "Токе долго рассматривает обрывок шнура, который вы кладёте на стол, и говорит ровно: «Да, это наш, гильдейский. Такими вяжут пачки описей — их выдают писарям под запись. Мало ли кто мог его подобрать у склада». Голос вежлив, но взгляд уже не встречается с вашим.",
-    "question.e_bern.f_seal_cord": "«Шнур этот я и сам приметил, когда тело нашли, — говорит Берн, не отрывая взгляда от причала. — Гильдейский, с печатью. В протокол занёс сразу, чтобы после не спрашивали, откуда я знаю».",
-
-    "examine.e_lock.f_lock_intact": "Дужка замка цела, скважина не поцарапана и не забита ничем посторонним. Того, кто вскрывал бы его отмычкой или ломом, здесь не было — ворота открыл человек с ключом.",
-    "question.e_bern.f_lock_intact": "«Замок я проверил первым делом, — докладывает Берн сухо, будто читает по бумаге. — Цел, не тронут. Кто бы ни вошёл ночью, ломать ему было незачем: у него был ключ».",
-    "question.e_bern.f_toke_has_key": "«Ключей от склада всего два, — говорит Берн, слегка понизив голос. — Один у смотрителя, второй по гильдейскому уставу выдан писарю — для описи товара без лишних хождений к смотрителю. Токе носит его на поясе, я сам видел».",
-
     "examine.e_ledger.f_ledger_erasure": "На развороте за прошлый месяц бумага чуть светлее и тоньше обычного — лист скоблили ножом, а потом заново вписали цифры сверху, стараясь подделать прежний почерк. Подделка хорошая, но не в косом свете лампы.",
-    "cross_reference.e_ledger.f_shortfall": "Сверив исправленные суммы с записями о пошлинах и корабельными манифестами за тот же месяц, вы находите разницу: в кассе должно быть больше монеты, чем показывает гроссбух. Подчистка не украшательство — она прячет недостачу.",
-    "question.e_sigrid.f_shortfall": "«Халден вечерами считал и пересчитывал, — тихо говорит Сигрид, не поднимая глаз. — Он сказал мне: цифры не сходятся, и сходиться не будут, пока кто-то не признается, куда делась разница».",
-    "question.e_bern.f_shortfall": "«Слухи о недостаче в кассе гильдии ходят по пристани с весны, — пожимает плечами Берн. — Говорить я не говорил, но и не слышать такое, стоя у ворот целыми днями, тоже нельзя».",
-
-    "question.e_toke.f_toke_keeps_ledger": "«Гроссбух — моя обязанность, я веду его один, — говорит Токе с лёгкой, отрепетированной улыбкой. — Ни смотритель, ни казначей туда не заглядывают, это моя работа с тех пор, как меня взяли писарем». Он произносит это так, будто заранее знал, что вы спросите.",
-
-    "question.e_sigrid.f_halden_asked_audit": "«За неделю до смерти он сказал мне за ужином: „Завтра потребую ревизию, гильдия должна знать правду о кассе“, — Сигрид смотрит в стену. — Он не боялся. Наверное, зря».",
-
+    "examine.e_lock.f_lock_intact": "Дужка замка цела, скважина не поцарапана и не забита ничем посторонним. Того, кто вскрывал бы его отмычкой или ломом, здесь не было — ворота открыл человек с ключом.",
     "examine.e_tidebook.f_tide_night": "В книге приливов помечено рукой смотрителя: в ночь убийства склад был заперт на засов ещё до заката, а открыть его можно было только после полуночного отлива — иначе вода из-под пирса заливает нижний ярус.",
-    "question.e_bern.f_tide_night": "«До прилива туда никто не совался, я стоял у ворот, — говорит Берн. — Открыть можно было только после полуночи, когда вода отступает. Раньше — только если у тебя ключ и веская причина не бояться сырых ног».",
-    "question.e_ivar.f_tide_night": "«Прилив в ту ночь я слышал прекрасно, — бурчит Ивар, не отрываясь от молота. — Колокол на молу бьёт, когда вода уходит, я как раз запирал горн. Позже полуночи было, не раньше».",
-
-    "stake_out.e_nils.f_toke_at_quay": "Просидев вечер в тени бочек у причала, вы замечаете, как Токе — узнать его нетрудно по хромающей походке — торопливо проходит к складу уже за полночь, оглядываясь на пустую пристань.",
-    "question.e_nils.f_toke_at_quay": "«Я видел его, вот те крест! — тараторит Нильс, взмахивая руками. — Токе, писаря, уже затемно, после того как все фонари потушили. Шёл быстро, к складу, и ещё головой всё крутил, будто прятался. Я как раз бочку катил, чуть не столкнулись!»",
-    "question.e_bern.f_toke_at_quay": "Берн хмурится, вспоминая. «Обход я делал не каждый час, врать не буду. Но раз за полночь мне почудилась фигура у складских ворот — плащ гильдейского покроя. Тогда подумал: почудилось. Теперь не уверен».",
-    "question.e_ivar.f_toke_at_quay": "«Выходил я подышать, пока горн стыл, — неохотно признаёт Ивар. — И видел, как по пристани к складу кто-то спешил, кутаясь в плащ. Издали не разобрать было кто, но шаг у писаря приметный — хромает он на правую».",
-
-    "question.e_sigrid.f_ivar_debt": "«Ивар задолжал мужу порядочно, ещё с прошлой зимы, — говорит Сигрид без всякой охоты. — Халден его не торопил, но и не забывал. Ивар это знал, и это его злило».",
-    "question.e_ivar.f_ivar_alibi": "«Всю ночь я просидел в „Мокром парусе“, если кому интересно, — рычит Ивар, скрестив руки. — Хозяйка подтвердит, полтаверны подтвердит. Долг я бы и так отдал, к весне, не убивать же человека из-за пары монет».",
-    "question.e_nils.f_toke_paid_debts": "«А ещё Токе на днях разом расплатился со всеми, кому был должен, — вставляет Нильс, довольный, что вспомнил. — И с лодочником, и в лавке. Раньше тянул месяцами, а тут вдруг монета нашлась, будто из ниоткуда».",
-
-    "compare.toke_lied": "Токе клялся, что в ночь убийства ни разу не покидал контору гильдии, и сам же — как единственный, кому доверен гроссбух, — уверял, что никто, кроме него, к записям не притрагивался. Но его видели у самого склада, за полночь, там, где не должно было быть никого с чистой совестью. Одно из двух: либо контора не так пуста ночами, как он говорит, либо Токе лжёт о том, где провёл эту ночь — и лжёт не по мелочи.",
-    "compare.nothing": "Вы сопоставляете факты и так и эдак, но ничего нового не складывается — эти два обстоятельства просто существуют рядом, не противореча друг другу.",
-
-    "clock.tide.filled": "Вода наконец добралась до нижнего яруса склада, и то немногое, что ещё можно было бы разглядеть у ворот, теперь скрыто под мутной пеленой прилива. Кто не успел — тот опоздал.",
-    "clock.suspicion.filled": "По пристани и таверне расползся слух, что писарь под подозрением. Токе теперь держится настороже, лишних вопросов не ждёт и отвечает короткими, заранее заготовленными фразами.",
-
-    "move_zone.n_quay": "Вы уходите с пристани, оставляя дождь, фонари и скрип причальных досок за спиной.",
-    "move_zone.n_warehouse": "Вы выходите со склада — сырой воздух и запах зерновой пыли сменяются свежим ветром с залива.",
+    "look": "Вы присматриваетесь внимательнее, задерживая взгляд там, где обычно скользят. Ничего нового не открывается, но картина становится плотнее.",
+    "look.n_forge": "Горн ещё тёплый, хотя огонь давно прогорел — здесь пахнет углём и палёным железом. У наковальни, вытирая руки тряпкой, стоит кузнец с недовольным лицом; в углу, сложив руки на коленях, тихо сидит женщина в тёмном платке.",
+    "look.n_guildhall": "Контора пропахла чернилами и сургучом. Полки заставлены гроссбухами в потрёпанных переплётах, на столе раскрыта толстая книга с пометками о приливах. За конторкой аккуратно раскладывает перья писарь — движения у него слишком выверенные для человека, которому нечего скрывать.",
+    "look.n_quay": "Дождь сечёт доски пристани косыми полосами, и фонари на столбах дрожат от ветра с залива. Пахнет смолой и мокрой пенькой. У края причала, натянув плащ на голову, топчется стражник — рядом с ним жмётся мальчишка-посыльный, явно рад любому поводу не молчать.",
+    "look.n_tavern": "В «Мокром парусе» шумно даже днём: кто-то спорит из-за костей, кто-то дремлет над кружкой. Хозяйка протирает стойку и косится на дверь при каждом скрипе — здесь любой вечер похож на все прочие, если не приглядываться.",
+    "look.n_warehouse": "Внутри темно и сыро, пыль от зерна ещё висит в воздухе, будто здесь никто не убирался с самой находки. Тело уже унесли к лекарю, но меловой контур на досках пола и сорванная веревка у балки говорят сами за себя. Ворота заперты на массивный засов с одним замком.",
     "move_zone.n_forge": "Вы покидаете кузницу — жар горна и запах палёного железа остаются позади.",
     "move_zone.n_guildhall": "Вы выходите из конторы гильдии, оставляя запах чернил и сургуча за закрывающейся дверью.",
+    "move_zone.n_quay": "Вы уходите с пристани, оставляя дождь, фонари и скрип причальных досок за спиной.",
     "move_zone.n_tavern": "Вы выходите из «Мокрого паруса», и гомон таверны стихает за спиной.",
-
-    "rest.short": "Вы садитесь передохнуть на несколько минут — переводите дух, унимаете дрожь в руках. Силы возвращаются, но раны как были, так и остаются: короткая передышка лечит только усталость.",
+    "move_zone.n_warehouse": "Вы выходите со склада — сырой воздух и запах зерновой пыли сменяются свежим ветром с залива.",
+    "question.e_bern.f_lock_intact": "«Замок я проверил первым делом, — докладывает Берн сухо, будто читает по бумаге. — Цел, не тронут. Кто бы ни вошёл ночью, ломать ему было незачем: у него был ключ».",
+    "question.e_bern.f_seal_cord": "«Шнур этот я и сам приметил, когда тело нашли, — говорит Берн, не отрывая взгляда от причала. — Гильдейский, с печатью. В протокол занёс сразу, чтобы после не спрашивали, откуда я знаю».",
+    "question.e_bern.f_shortfall": "«Слухи о недостаче в кассе гильдии ходят по пристани с весны, — пожимает плечами Берн. — Говорить я не говорил, но и не слышать такое, стоя у ворот целыми днями, тоже нельзя».",
+    "question.e_bern.f_tide_night": "«До прилива туда никто не совался, я стоял у ворот, — говорит Берн. — Открыть можно было только после полуночи, когда вода отступает. Раньше — только если у тебя ключ и веская причина не бояться сырых ног».",
+    "question.e_bern.f_toke_at_quay": "Берн хмурится, вспоминая. «Обход я делал не каждый час, врать не буду. Но раз за полночь мне почудилась фигура у складских ворот — плащ гильдейского покроя. Тогда подумал: почудилось. Теперь не уверен».",
+    "question.e_bern.f_toke_has_key": "«Ключей от склада всего два, — говорит Берн, слегка понизив голос. — Один у смотрителя, второй по гильдейскому уставу выдан писарю — для описи товара без лишних хождений к смотрителю. Токе носит его на поясе, я сам видел».",
+    "question.e_ivar.f_ivar_alibi": "«Всю ночь я просидел в „Мокром парусе“, если кому интересно, — рычит Ивар, скрестив руки. — Хозяйка подтвердит, полтаверны подтвердит. Долг я бы и так отдал, к весне, не убивать же человека из-за пары монет».",
+    "question.e_ivar.f_tide_night": "«Прилив в ту ночь я слышал прекрасно, — бурчит Ивар, не отрываясь от молота. — Колокол на молу бьёт, когда вода уходит, я как раз запирал горн. Позже полуночи было, не раньше».",
+    "question.e_ivar.f_toke_at_quay": "«Выходил я подышать, пока горн стыл, — неохотно признаёт Ивар. — И видел, как по пристани к складу кто-то спешил, кутаясь в плащ. Издали не разобрать было кто, но шаг у писаря приметный — хромает он на правую».",
+    "question.e_nils.f_toke_at_quay": "«Я видел его, вот те крест! — тараторит Нильс, взмахивая руками. — Токе, писаря, уже затемно, после того как все фонари потушили. Шёл быстро, к складу, и ещё головой всё крутил, будто прятался. Я как раз бочку катил, чуть не столкнулись!»",
+    "question.e_nils.f_toke_paid_debts": "«А ещё Токе на днях разом расплатился со всеми, кому был должен, — вставляет Нильс, довольный, что вспомнил. — И с лодочником, и в лавке. Раньше тянул месяцами, а тут вдруг монета нашлась, будто из ниоткуда».",
+    "question.e_sigrid.f_halden_asked_audit": "«За неделю до смерти он сказал мне за ужином: „Завтра потребую ревизию, гильдия должна знать правду о кассе“, — Сигрид смотрит в стену. — Он не боялся. Наверное, зря».",
+    "question.e_sigrid.f_ivar_debt": "«Ивар задолжал мужу порядочно, ещё с прошлой зимы, — говорит Сигрид без всякой охоты. — Халден его не торопил, но и не забывал. Ивар это знал, и это его злило».",
+    "question.e_sigrid.f_shortfall": "«Халден вечерами считал и пересчитывал, — тихо говорит Сигрид, не поднимая глаз. — Он сказал мне: цифры не сходятся, и сходиться не будут, пока кто-то не признается, куда делась разница».",
+    "question.e_toke.f_seal_cord": "Токе долго рассматривает обрывок шнура, который вы кладёте на стол, и говорит ровно: «Да, это наш, гильдейский. Такими вяжут пачки описей — их выдают писарям под запись. Мало ли кто мог его подобрать у склада». Голос вежлив, но взгляд уже не встречается с вашим.",
+    "question.e_toke.f_toke_keeps_ledger": "«Гроссбух — моя обязанность, я веду его один, — говорит Токе с лёгкой, отрепетированной улыбкой. — Ни смотритель, ни казначей туда не заглядывают, это моя работа с тех пор, как меня взяли писарем». Он произносит это так, будто заранее знал, что вы спросите.",
     "rest.long": "Вы находите тихий угол и отсыпаетесь как следует, дав телу время затянуть хотя бы одну рану. Пока вы спите, город и залив не ждут — жизнь на пристани идёт своим чередом.",
-    "theorize.recorded": "Вы останавливаетесь и проговариваете догадку вслух, чтобы не потерять нить рассуждений. Это ещё не обвинение — просто мысль, записанная для памяти."
+    "rest.short": "Вы садитесь передохнуть на несколько минут — переводите дух, унимаете дрожь в руках. Силы возвращаются, но раны как были, так и остаются: короткая передышка лечит только усталость.",
+    "say": "Вы говорите это вслух. Слова уходят в дождь и остаются в чьей-то памяти дольше, чем вам бы хотелось.",
+    "stake_out.e_nils.f_toke_at_quay": "Просидев вечер в тени бочек у причала, вы замечаете, как Токе — узнать его нетрудно по хромающей походке — торопливо проходит к складу уже за полночь, оглядываясь на пустую пристань.",
+    "talk_to": "Вы заводите разговор — без нажима, о погоде и о том, как тут вообще живут. Такие разговоры ничего не выясняют сразу, зато после них с вами говорят иначе.",
+    "thank": "Вы благодарите — коротко, без лишнего. Здесь это замечают: спасибо в этом городе слышат реже, чем требования.",
+    "theorize.recorded": "Вы останавливаетесь и проговариваете догадку вслух, чтобы не потерять нить рассуждений. Это ещё не обвинение — просто мысль, записанная для памяти.",
+    "threaten_verbally": "Вы не поднимаете голоса и не обещаете ничего конкретного. Иногда этого хватает, а иногда именно с этого всё и портится."
   }
 }

@@ -254,20 +254,52 @@ func (g *Game) hostileCount() int {
 // держателя нет (look, move_zone, theorize и т.п.), используется прежний
 // откат на verb.target/verb.node.
 func (g *Game) flavourKeyFor(in Intent, holder store.FactHolder, found bool) string {
+	verb := string(in.Verb)
 	if found {
-		return string(in.Verb) + "." + string(holder.HolderID) + "." + string(holder.FactID)
+		return g.resolveFlavour(
+			verb+"."+string(holder.HolderID)+"."+string(holder.FactID),
+			verb+"."+string(holder.FactID),
+			verb+"."+string(holder.HolderID),
+			verb,
+		)
 	}
 	return g.flavourKey(in)
 }
 
+// flavourKey подбирает ключ по цепочке от частного к общему. Общий ключ на
+// глагол позволяет написать текст для talk_to один раз, а не на каждую пару
+// глагол-сущность: soft-глаголы фактов не выдают, и частная проза им нужна
+// не всегда. Без цепочки такой глагол показывал игроку [ключ].
 func (g *Game) flavourKey(in Intent) string {
-	if in.Args.Topic != "" {
-		return string(in.Verb) + "." + string(in.Args.Target) + "." + string(in.Args.Topic)
+	verb := string(in.Verb)
+	switch {
+	case in.Args.Topic != "":
+		return g.resolveFlavour(
+			verb+"."+string(in.Args.Target)+"."+string(in.Args.Topic),
+			verb+"."+string(in.Args.Topic),
+			verb+"."+string(in.Args.Target),
+			verb,
+		)
+	case in.Args.Target != "":
+		return g.resolveFlavour(verb+"."+string(in.Args.Target), verb)
+	case in.Args.Node != "":
+		// Цель перемещения важнее места, откуда уходят.
+		return g.resolveFlavour(verb+"."+string(in.Args.Node), verb+"."+string(g.Node), verb)
+	default:
+		return g.resolveFlavour(verb+"."+string(g.Node), verb)
 	}
-	if in.Args.Target != "" {
-		return string(in.Verb) + "." + string(in.Args.Target)
+}
+
+// resolveFlavour возвращает первый ключ, для которого есть текст. Если текста
+// нет ни для одного, возвращается САМЫЙ ЧАСТНЫЙ — тогда в выводе появляется
+// именно тот [ключ], который автору дела и надо написать.
+func (g *Game) resolveFlavour(candidates ...string) string {
+	for _, k := range candidates {
+		if _, ok := g.flavour[k]; ok {
+			return k
+		}
 	}
-	return string(in.Verb) + "." + string(g.Node)
+	return candidates[0]
 }
 
 func refuse(msg string) TurnResult { return TurnResult{Refused: true, Refusal: msg} }
