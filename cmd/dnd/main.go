@@ -4,6 +4,9 @@
 // воспроизводится парой (seed, ввод). Флаг -nl включает перевод свободного
 // текста — тогда нераспознанный ввод уходит в модель, и воспроизводимость
 // сохраняется только для структурированных команд.
+//
+// Ключ в коде не хранится. OpenRouter читает OPENROUTER_API_KEY, Anthropic —
+// ANTHROPIC_API_KEY либо профиль, оставленный ant auth login.
 package main
 
 import (
@@ -25,7 +28,8 @@ func main() {
 	seed := flag.Int64("seed", 1, "seed RNG: прогон воспроизводится парой (seed, ввод)")
 	script := flag.String("script", "", "файл команд вместо интерактивного ввода")
 	nl := flag.Bool("nl", false, "переводить свободный текст в действия через модель")
-	model := flag.String("model", "claude-opus-5", "модель для перевода намерений")
+	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
+	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
 	capTurn := flag.Int("cap-turn", 3, "потолок вызовов модели на один ход")
 	flag.Parse()
@@ -54,9 +58,13 @@ func main() {
 
 	var parser *intent.Parser
 	if *nl {
+		target, err := resolveProvider(*provider, *model)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		gw := llm.NewGateway(
-			llm.NewRouter().Route(llm.RoleIntentParser,
-				llm.Target{Provider: llm.NewAnthropic(), Model: *model}),
+			llm.NewRouter().Route(llm.RoleIntentParser, target),
 			llm.NewLedger(llm.Caps{
 				GlobalDailyMicro:   int64(*capDay * 1_000_000),
 				PerTurnCalls:       *capTurn,
@@ -89,5 +97,28 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser) {
 	}
 	if breached := m.Breaches(0.25); len(breached) > 0 {
 		fmt.Fprintf(os.Stderr, "словарь узок в классах: %v\n", breached)
+	}
+}
+
+// resolveProvider выбирает поставщика и модель. Слаги моделей у OpenRouter
+// пространственные (vendor/model) и меняются, поэтому подставлять их по
+// памяти нельзя — модель требуется указать явно.
+func resolveProvider(name, model string) (llm.Target, error) {
+	switch name {
+	case "openrouter":
+		if model == "" {
+			return llm.Target{}, fmt.Errorf(
+				"для -provider openrouter укажите -model, например anthropic/claude-sonnet-4.5\n" +
+					"список слагов: https://openrouter.ai/models\n" +
+					"ключ: переменная окружения OPENROUTER_API_KEY")
+		}
+		return llm.Target{Provider: llm.NewOpenRouter(llm.ORWithTitle("dnd")), Model: model}, nil
+	case "anthropic":
+		if model == "" {
+			model = "claude-opus-5"
+		}
+		return llm.Target{Provider: llm.NewAnthropic(), Model: model}, nil
+	default:
+		return llm.Target{}, fmt.Errorf("неизвестный поставщик %q: ожидается openrouter или anthropic", name)
 	}
 }

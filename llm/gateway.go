@@ -36,12 +36,18 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 			lastErr = err
 			continue
 		}
-		cost, err := CostMicro(t.Model, resp.Usage)
-		if err != nil {
-			lastErr = err
-			continue
+		// Провайдер вправе сообщить фактическую стоимость сам — маршрутизатор
+		// знает, на кого ушёл запрос, а статическая таблица про это не знает.
+		// Молча тратить по-прежнему нельзя: нет ни цены от провайдера, ни
+		// строки в таблице — значит расход неизвестен, и вызов не в счёт.
+		if resp.CostMicro <= 0 {
+			cost, err := CostMicro(t.Model, resp.Usage)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			resp.CostMicro = cost
 		}
-		resp.CostMicro = cost
 		resp.Model = t.Model
 		resp.Provider = t.Provider.Name()
 		g.ledger.Record(r, resp)
