@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 func decodeFile(t *testing.T, raw []byte) File {
@@ -85,5 +87,23 @@ func TestValidatorReportsEveryViolationAtOnce(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "mandatory") || !strings.Contains(err.Error(), "e_nobody") {
 		t.Errorf("сообщено не всё: %v", err)
+	}
+}
+
+func TestDanglingRequirementReferenceIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.FactHolders[0].Gate.Requires = store.RequireAll("f_nonexistent")
+	})
+	if err == nil || !strings.Contains(err.Error(), "f_nonexistent") {
+		t.Fatalf("висячая ссылка в предпосылках принята: %v", err)
+	}
+}
+
+func TestRequirementThresholdOutOfRangeIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.FactHolders[0].Gate.Requires = store.RequireN(5, "f_ligature")
+	})
+	if err == nil || !strings.Contains(err.Error(), "порог") {
+		t.Fatalf("порог больше числа предпосылок принят: %v", err)
 	}
 }

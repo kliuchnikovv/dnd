@@ -27,9 +27,9 @@ type Fact struct {
 // Gate — условие выдачи факта держателем. Threshold — одно из
 // "easy" | "normal" | "hard"; интерпретирует его система правил, не ядро.
 type Gate struct {
-	Verbs     []string `json:"verbs"`
-	Threshold string   `json:"threshold"`
-	Requires  []FactID `json:"requires"`
+	Verbs     []string     `json:"verbs"`
+	Threshold string       `json:"threshold"`
+	Requires  *Requirement `json:"requires"`
 }
 
 type FactHolder struct {
@@ -108,4 +108,62 @@ type Contradiction struct {
 	B          FactID `json:"b"`
 	Reveals    FactID `json:"reveals"`
 	FlavourKey string `json:"flavour_key"`
+}
+
+// Requirement — предпосылки гейта с порогом: нужно не меньше N фактов из Of.
+// Одна примитива покрывает три формы: все (N == len(Of)), любой (N == 1) и
+// «любые K из M». Отдельных OR-гейтов поэтому не требуется.
+type Requirement struct {
+	Of []FactID `json:"of"`
+	N  int      `json:"n"`
+}
+
+// RequireAll — предпосылки, которые нужны все. Для построения из Go.
+func RequireAll(ids ...FactID) *Requirement {
+	return &Requirement{Of: ids, N: len(ids)}
+}
+
+// RequireN — нужно не меньше n предпосылок из перечисленных.
+func RequireN(n int, ids ...FactID) *Requirement {
+	return &Requirement{Of: ids, N: n}
+}
+
+// UnmarshalJSON принимает две записи. Плоский массив — исторический вид, он
+// означает «нужны все»; так продолжают читаться уже написанные дела. Объект
+// {"of": [...], "n": k} задаёт порог; без "n" порог равен длине списка.
+func (r *Requirement) UnmarshalJSON(data []byte) error {
+	var flat []FactID
+	if err := json.Unmarshal(data, &flat); err == nil {
+		r.Of, r.N = flat, len(flat)
+		return nil
+	}
+	var obj struct {
+		Of []FactID `json:"of"`
+		N  *int     `json:"n"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	r.Of = obj.Of
+	if obj.N == nil {
+		r.N = len(obj.Of)
+	} else {
+		r.N = *obj.N
+	}
+	return nil
+}
+
+// Satisfied сообщает, выполнены ли предпосылки. Знание о фактах передаётся
+// предикатом: store остаётся без зависимостей от игровой логики.
+func (r *Requirement) Satisfied(knows func(FactID) bool) bool {
+	if r == nil || len(r.Of) == 0 {
+		return true
+	}
+	got := 0
+	for _, f := range r.Of {
+		if knows(f) {
+			got++
+		}
+	}
+	return got >= r.N
 }

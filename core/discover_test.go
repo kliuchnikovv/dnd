@@ -32,7 +32,7 @@ func discoverGame(out Outcome) *Game {
 	db.Holders["f_seal_cord"] = []store.FactHolder{{
 		FactID: "f_seal_cord", HolderID: "e_body", Mandatory: true,
 		Gate: store.Gate{Verbs: []string{"examine"}, Threshold: "normal",
-			Requires: []store.FactID{"f_ligature"}},
+			Requires: store.RequireAll("f_ligature")},
 	}}
 	// f_hidden — держится тем же e_body, но под глаголом search, не examine:
 	// examine не должен его выдавать.
@@ -44,7 +44,7 @@ func discoverGame(out Outcome) *Game {
 	db.Clocks["c_suspicion"] = &store.Clock{ID: "c_suspicion", Segments: 6, TickPolicy: "on_cost"}
 	return NewGame(Config{
 		DB: db, Rules: fixedRules{out}, Dice: nilDice{},
-		Truth: accusation.NewTruth("toke", "cord", "night", "audit"),
+		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})
 }

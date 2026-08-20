@@ -57,9 +57,15 @@ func validateFile(f File) error {
 				add("gate факта %s ссылается на несуществующий глагол %q", h.FactID, v)
 			}
 		}
-		for _, r := range h.Gate.Requires {
-			if !facts[r] {
-				add("gate факта %s требует несуществующий факт %s", h.FactID, r)
+		if req := h.Gate.Requires; req != nil && len(req.Of) > 0 {
+			for _, r := range req.Of {
+				if !facts[r] {
+					add("gate факта %s требует несуществующий факт %s", h.FactID, r)
+				}
+			}
+			if req.N < 1 || req.N > len(req.Of) {
+				add("gate факта %s задаёт порог %d при %d предпосылках",
+					h.FactID, req.N, len(req.Of))
 			}
 		}
 		if h.Mandatory {

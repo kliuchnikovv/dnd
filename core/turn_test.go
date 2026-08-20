@@ -34,12 +34,12 @@ func turnGame(out Outcome) *Game {
 	db.Holders["f_gated"] = []store.FactHolder{{
 		FactID: "f_gated", HolderID: "e_toke", Mandatory: false,
 		Gate: store.Gate{Verbs: []string{"question"}, Threshold: "normal",
-			Requires: []store.FactID{"f_open"}},
+			Requires: store.RequireAll("f_open")},
 	}}
 	db.Clocks["c_suspicion"] = &store.Clock{ID: "c_suspicion", Segments: 6, TickPolicy: "on_cost"}
 	return NewGame(Config{
 		DB: db, Rules: fixedRules{out}, Dice: nilDice{},
-		Truth: accusation.NewTruth("toke", "cord", "night", "audit"),
+		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})
 }

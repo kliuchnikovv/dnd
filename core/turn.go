@@ -208,12 +208,7 @@ func gateAllows(gate store.Gate, v Verb) bool {
 }
 
 func (g *Game) requirementsMet(gate store.Gate) bool {
-	for _, r := range gate.Requires {
-		if !g.K.Knows(r) {
-			return false
-		}
-	}
-	return true
+	return gate.Requires.Satisfied(func(f store.FactID) bool { return g.K.Knows(f) })
 }
 
 // SceneView собирает срез сцены для правил. Здесь нет и не может быть графа
