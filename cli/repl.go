@@ -59,6 +59,14 @@ func (s *Session) emitText(kind EventKind, text string) {
 	s.sink.Emit(Event{Kind: kind, Text: text})
 }
 
+// emitSpeech — прямая речь с автором. Точек, где кто-то говорит, несколько
+// (NPC, игрок, напарник-подсказка), и у всех должен быть один и тот же
+// формат события, иначе полноэкранный режим научится узнавать говорящего
+// по месту вызова, а не по данным.
+func (s *Session) emitSpeech(speaker, format string, args ...any) {
+	s.sink.Emit(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
+}
+
 func (s *Session) Run() error {
 	s.emitText(EventScene, s.r.Scene(s.Game))
 	s.sc = bufio.NewScanner(s.In)
@@ -196,7 +204,7 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	// подсказка никогда — это закрытая консоль на первой сессии.
 	if line, ok := s.Game.Hint(); ok {
 		if e, found := s.Game.DB.Entities[s.Game.Companion]; found {
-			s.sink.Emit(Event{Kind: EventSpeech, Speaker: e.Name, Text: fmt.Sprintf("%s: %s\n", e.Name, line)})
+			s.emitSpeech(e.Name, "%s: %s\n", e.Name, line)
 		}
 	}
 	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
@@ -301,7 +309,7 @@ func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
 	if said := spokenAloud(in); said != "" && !res.Refused {
 		// Реплика игрока показывается как реплика. Описание того, что он
 		// «сказал это вслух», на каждой фразе читается как шум.
-		s.emit(EventSystem, "%s\n", Spoken(said))
+		s.emitSpeech(PlayerName, "%s\n", Spoken(said))
 	} else {
 		s.emitText(EventProse, s.r.Turn(s.Game, in, res))
 	}

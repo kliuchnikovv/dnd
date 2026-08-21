@@ -7,6 +7,7 @@ import (
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // turnContext помечает контекст номером хода. Потолок вызовов модели на ход
@@ -18,6 +19,11 @@ func (s *Session) turnContext() context.Context {
 // Turn — номер текущего хода. Нужен надстройкам, которые ведут память
 // разговора: транскрипт читается как разговор, а не как список.
 func (s *Session) Turn() int { return s.turn }
+
+// PlayerName — как подписана речь игрока. Одно место на всю игру: подпись
+// участвует в раскладке полноэкранного режима, и расхождение подписей там
+// видно сразу.
+const PlayerName = "Вы"
 
 // Voicer — необязательный голос NPC. Без него игра работает как раньше,
 // авторской прозой: озвучка это надстройка, а не условие работы.
@@ -55,8 +61,14 @@ func (s *Session) speak(in core.Intent, res core.TurnResult) {
 		return
 	}
 	if line != "" {
-		s.emit(EventSystem, "%s\n", Spoken(line))
+		s.emitSpeech(s.speakerName(in.Args.Target), "%s\n", Spoken(line))
 	}
+}
+
+// speakerName — имя сущности для подписи реплики. Пустое имя означает, что
+// говорит не человек, и подпись тогда не нужна.
+func (s *Session) speakerName(id store.EntityID) string {
+	return s.Game.DB.Entities[id].Name
 }
 
 // Narrator — необязательная проза Мастера. Он описывает сцену и исход вместо
