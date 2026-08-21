@@ -37,8 +37,20 @@ type Usage struct {
 	OutputTokens int
 }
 
+// Tier — уровень действия, а не роли. Ход, не меняющий мир, не должен стоить
+// как ход, который его меняет: приветствие и прощание идут дешёвой моделью с
+// коротким выводом. Уровень известен ДО вызова — иначе выбирать было бы
+// поздно.
+type Tier string
+
+const (
+	TierMain  Tier = ""
+	TierCheap Tier = "cheap"
+)
+
 type Request struct {
 	Role      Role
+	Tier      Tier
 	System    string
 	Input     string
 	MaxTokens int

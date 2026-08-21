@@ -35,6 +35,8 @@ type Ledger struct {
 	turnCalls   map[string]int
 	byRole      map[Role]int64
 	callsByRole map[Role]int
+	byTier      map[Tier]int64
+	callsByTier map[Tier]int
 	bits        int
 	alerted     bool
 	killed      bool
@@ -58,6 +60,8 @@ func NewLedger(caps Caps, opts ...LedgerOption) *Ledger {
 		byUser: map[string]int64{}, byParty: map[string]int64{},
 		turnCalls: map[string]int{}, byRole: map[Role]int64{},
 		callsByRole: map[Role]int{},
+		byTier:      map[Tier]int64{},
+		callsByTier: map[Tier]int{},
 	}
 	for _, o := range opts {
 		o(l)
@@ -79,6 +83,8 @@ func (l *Ledger) rollover() {
 		l.turnCalls = map[string]int{}
 		l.byRole = map[Role]int64{}
 		l.callsByRole = map[Role]int{}
+		l.byTier = map[Tier]int64{}
+		l.callsByTier = map[Tier]int{}
 		l.bits = 0
 		l.alerted = false
 		l.killed = false
@@ -121,6 +127,8 @@ func (l *Ledger) Record(r Request, resp Response) {
 	l.global += resp.CostMicro
 	l.byRole[r.Role] += resp.CostMicro
 	l.callsByRole[r.Role]++
+	l.byTier[r.Tier] += resp.CostMicro
+	l.callsByTier[r.Tier]++
 	if r.UserID != "" {
 		l.byUser[r.UserID] += resp.CostMicro
 	}
@@ -153,7 +161,12 @@ type Stats struct {
 	// CallsByRole — сколько раз каждая роль дошла до провайдера. Отдельно от
 	// расхода: два вызова парсера на один ввод означают сработавший раунд
 	// починки, и расход этого не показывает.
-	CallsByRole     map[Role]int
+	CallsByRole map[Role]int
+	// ByTier и CallsByTier отвечают на вопрос «сколько ушло на ходы, ничего
+	// не менявшие в мире». Роль на него не отвечает: актёр говорит и там, и
+	// там.
+	ByTier          map[Tier]int64
+	CallsByTier     map[Tier]int
 	Killed          bool
 	CostPerBitMicro int64
 }
@@ -169,8 +182,16 @@ func (l *Ledger) Stats() Stats {
 	for k, v := range l.callsByRole {
 		calls[k] = v
 	}
+	byTier := make(map[Tier]int64, len(l.byTier))
+	for k, v := range l.byTier {
+		byTier[k] = v
+	}
+	tierCalls := make(map[Tier]int, len(l.callsByTier))
+	for k, v := range l.callsByTier {
+		tierCalls[k] = v
+	}
 	s := Stats{SpentMicro: l.global, Bits: l.bits, ByRole: byRole,
-		CallsByRole: calls, Killed: l.killed}
+		CallsByRole: calls, ByTier: byTier, CallsByTier: tierCalls, Killed: l.killed}
 	if l.bits > 0 {
 		s.CostPerBitMicro = l.global / int64(l.bits)
 	}

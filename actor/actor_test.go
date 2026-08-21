@@ -642,3 +642,86 @@ func TestFarewellRecognisesCommonForms(t *testing.T) {
 		}
 	}
 }
+
+// Приветствие и прощание мир не меняют. Платить за них как за ход, который
+// его меняет, — прямая утечка бюджета на off-case репликах.
+func TestFlavourActsGoCheapAndShort(t *testing.T) {
+	cases := map[string]llm.Tier{
+		"Здравствуйте":                llm.TierCheap,
+		"Спасибо":                     llm.TierCheap,
+		"До встречи":                  llm.TierCheap,
+		"Что-нибудь слышно в городе?": llm.TierMain,
+		"Почему вы этого не сказали?": llm.TierMain,
+	}
+	for text, want := range cases {
+		if got := tierFor(Classify(text)); got != want {
+			t.Errorf("%q: тир %q, ожидался %q", text, got, want)
+		}
+	}
+	if maxTokensFor(ActGreeting) >= maxTokensFor(ActProbe) {
+		t.Error("у приветствия потолок вывода не короче, чем у открытого вопроса")
+	}
+}
+
+// Проверка на выдумку — это «да/нет». Она не сочиняет и дорогой модели не
+// требует никогда.
+func TestGuardAlwaysGoesCheap(t *testing.T) {
+	_, f := actorWith(t, `{"move":"smalltalk","line":"Служба идёт."}`)
+	_ = f
+	g := NewGuard(nil)
+	if g.tier() != llm.TierCheap {
+		t.Error("страж пошёл дорогим тиром")
+	}
+}
+
+// Желание — то, чем персонаж отличается от справочника. Реактивный NPC только
+// отвечает; персонаж с желанием сам открывает разговор и просит.
+func TestWantOpensAMoveOfItsOwn(t *testing.T) {
+	sit := Situation{PlayerText: "Здравствуйте", Wants: []string{
+		"передать Ивару, что смена не придёт",
+	}}
+	allowed := movesFor(Classify(sit.PlayerText), sit)
+	if !containsMove(allowed, string(MoveRaiseWant)) {
+		t.Errorf("персонажу с желанием нечем его высказать: %v", allowed)
+	}
+
+	without := Situation{PlayerText: "Здравствуйте"}
+	if containsMove(movesFor(Classify(without.PlayerText), without), string(MoveRaiseWant)) {
+		t.Error("ход появился у персонажа без желания")
+	}
+}
+
+// Желание — разрешённый материал: иначе страж зарубит собственную просьбу
+// персонажа как выдумку.
+func TestWantIsAllowedMaterial(t *testing.T) {
+	sit := Situation{Wants: []string{"передать Ивару, что смена не придёт"}}
+	material := allowedMaterial(Speaker{Name: "Берн"}, sit, "")
+	for _, m := range material {
+		if m == "передать Ивару, что смена не придёт" {
+			return
+		}
+	}
+	t.Errorf("желание не попало в материал: %v", material)
+}
+
+// Дно для желания — само желание: просьба, сказанная плоско, всё равно
+// остаётся просьбой и всё равно двигает разговор.
+func TestWantTemplateAsksForTheThing(t *testing.T) {
+	sit := Situation{Wants: []string{"передать Ивару, что смена не придёт"}}
+	if got := template(MoveRaiseWant, sit); got != sit.Wants[0] {
+		t.Errorf("заглушка желания: %q", got)
+	}
+}
+
+// Желание должно доехать до модели: ход есть, материал разрешён, но если
+// текста желания нет в промпте, персонаж попросит наугад.
+func TestPromptCarriesTheWant(t *testing.T) {
+	sit := Situation{
+		PlayerText: "Здравствуйте",
+		Wants:      []string{"передать Ивару, что смена не придёт"},
+	}
+	got := renderPrompt(Speaker{Name: "Берн", Voice: "сухой"}, sit, Classify(sit.PlayerText))
+	if !strings.Contains(got, "передать Ивару") {
+		t.Errorf("желания нет в промпте:\n%s", got)
+	}
+}

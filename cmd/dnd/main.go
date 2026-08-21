@@ -31,6 +31,9 @@ func main() {
 	nl := flag.Bool("nl", false, "переводить свободный текст в действия через модель")
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
+	modelCheap := flag.String("model-cheap", "", "модель для ходов, не меняющих мир: приветствие, прощание, проверка на выдумку")
+	priceInCheap := flag.Float64("price-in-cheap", 0, "цена ввода дешёвой модели, $ за миллион токенов")
+	priceOutCheap := flag.Float64("price-out-cheap", 0, "цена вывода дешёвой модели, $ за миллион токенов")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
 	priceIn := flag.Float64("price-in", 0, "цена ввода, $ за миллион токенов; нужна для моделей вне таблицы")
 	priceOut := flag.Float64("price-out", 0, "цена вывода, $ за миллион токенов; нужна для моделей вне таблицы")
@@ -74,11 +77,23 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		gw := llm.NewGateway(
-			llm.NewRouter().
-				Route(llm.RoleIntentParser, target).
-				Route(llm.RoleActor, target).
-				Route(llm.RoleCanonGuard, target),
+		router := llm.NewRouter().
+			Route(llm.RoleIntentParser, target).
+			Route(llm.RoleActor, target).
+			Route(llm.RoleCanonGuard, target)
+		// Ход, не меняющий мир, не обязан стоить как ход, который его меняет.
+		// Без флага всё идёт основной моделью — молча дешеветь за счёт
+		// качества нельзя.
+		if *modelCheap != "" {
+			cheap := llm.Target{Provider: target.Provider, Model: *modelCheap}
+			if err := ensurePrice(cheap.Model, *priceInCheap, *priceOutCheap); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			router.RouteCheap(llm.RoleActor, cheap).
+				RouteCheap(llm.RoleCanonGuard, cheap)
+		}
+		gw := llm.NewGateway(router,
 			llm.NewLedger(llm.Caps{
 				GlobalDailyMicro:   int64(*capDay * 1_000_000),
 				PerTurnCalls:       *capTurn,
@@ -116,6 +131,11 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser) {
 			fmt.Fprintf(os.Stderr, "вызовов %s: %d (%.4f $)\n",
 				role, n, float64(s.ByRole[role])/1e6)
 		}
+	}
+	if cheap := s.CallsByTier[llm.TierCheap]; cheap > 0 {
+		fmt.Fprintf(os.Stderr, "дешёвым тиром: %d вызовов (%.4f $), основным: %d (%.4f $)\n",
+			cheap, float64(s.ByTier[llm.TierCheap])/1e6,
+			s.CallsByTier[llm.TierMain], float64(s.ByTier[llm.TierMain])/1e6)
 	}
 	m := p.Metrics()
 	if n := m.Observations(); n == 0 {

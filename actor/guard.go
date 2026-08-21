@@ -51,6 +51,7 @@ func NewGuard(gw *llm.Gateway) *Guard {
 // Check возвращает true, если реплику можно показывать.
 func (g *Guard) Check(ctx context.Context, line string, material []string, req llm.Request) (bool, error) {
 	req.Role = llm.RoleCanonGuard
+	req.Tier = g.tier()
 	req.Schema = g.schema
 	req.System = guardPrompt
 	req.MaxTokens = 200
@@ -78,3 +79,7 @@ func (g *Guard) Check(ctx context.Context, line string, material []string, req l
 	}
 	return !out.Invented, nil
 }
+
+// tier — проверка на выдумку это «да/нет». Она ничего не сочиняет, и дорогая
+// модель ей не нужна никогда.
+func (g *Guard) tier() llm.Tier { return llm.TierCheap }

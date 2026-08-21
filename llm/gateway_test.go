@@ -334,3 +334,68 @@ func TestHasPriceAnswersBeforeTheCall(t *testing.T) {
 		t.Error("цена, заданная руками, не подхватилась")
 	}
 }
+
+// Ход без механических последствий не должен стоить как ход, меняющий мир.
+// Приветствие и прощание идут дешёвым тиром; если дешёвая цель для роли не
+// объявлена, запрос честно уходит на основную, а не падает.
+func TestCheapTierRoutesToItsOwnTarget(t *testing.T) {
+	main := NewFake("main", true).ReplyWith(func(Request) string { return "основная" })
+	cheap := NewFake("cheap", true).ReplyWith(func(Request) string { return "дешёвая" })
+	r := NewRouter().
+		Route(RoleActor, Target{main, "claude-opus-5"}).
+		RouteCheap(RoleActor, Target{cheap, "claude-haiku-4-5"})
+	g := NewGateway(r, NewLedger(Caps{GlobalDailyMicro: 1_000_000}))
+
+	got, err := g.Do(context.Background(), Request{Role: RoleActor, Input: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Text != "основная" {
+		t.Errorf("обычный запрос ушёл не туда: %q", got.Text)
+	}
+
+	got, err = g.Do(context.Background(), Request{Role: RoleActor, Input: "x", Tier: TierCheap})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Text != "дешёвая" {
+		t.Errorf("дешёвый запрос ушёл не туда: %q", got.Text)
+	}
+}
+
+func TestCheapTierFallsBackToMainWhenNotDeclared(t *testing.T) {
+	main := NewFake("main", true).ReplyWith(func(Request) string { return "основная" })
+	g := NewGateway(NewRouter().Route(RoleActor, Target{main, "claude-opus-5"}),
+		NewLedger(Caps{GlobalDailyMicro: 1_000_000}))
+
+	got, err := g.Do(context.Background(), Request{Role: RoleActor, Input: "x", Tier: TierCheap})
+	if err != nil {
+		t.Fatalf("дешёвый запрос без дешёвой цели упал: %v", err)
+	}
+	if got.Text != "основная" {
+		t.Errorf("откат не сработал: %q", got.Text)
+	}
+}
+
+// Метрика, ради которой тир и заводится: сколько ушло на ходы, ничего не
+// менявшие в мире.
+func TestSpendIsCountedPerTier(t *testing.T) {
+	p := NewFake("p", true).ReplyWith(func(Request) string { return "ответ" })
+	g := NewGateway(NewRouter().
+		Route(RoleActor, Target{p, "claude-opus-5"}).
+		RouteCheap(RoleActor, Target{p, "claude-haiku-4-5"}),
+		NewLedger(Caps{GlobalDailyMicro: 10_000_000}))
+
+	ctx := context.Background()
+	g.Do(ctx, Request{Role: RoleActor, Input: "длинный ход, меняющий мир"})
+	g.Do(ctx, Request{Role: RoleActor, Input: "длинный ход, меняющий мир", Tier: TierCheap})
+
+	s := g.Stats()
+	if s.ByTier[TierCheap] == 0 {
+		t.Error("расход дешёвого тира не посчитан")
+	}
+	if s.ByTier[TierCheap] >= s.ByTier[TierMain] {
+		t.Errorf("дешёвый тир обошёлся не дешевле: %d против %d",
+			s.ByTier[TierCheap], s.ByTier[TierMain])
+	}
+}

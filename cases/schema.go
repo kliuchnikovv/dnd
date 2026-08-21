@@ -42,6 +42,7 @@ type File struct {
 		Disposition int            `json:"disposition"`
 		KnowsAbout  []store.FactID `json:"knows_about"`
 		OpenThreads []string       `json:"open_threads"`
+		Wants       []string       `json:"wants"`
 		TalksAbout  []string       `json:"talks_about"`
 		Summary     string         `json:"summary"`
 	} `json:"dossiers"`

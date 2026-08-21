@@ -28,6 +28,7 @@ func (d *Dossiers) view(e store.EntityID) store.Dossier {
 		out.Kind = world.Kind
 		out.KnowsAbout = append(out.KnowsAbout, world.KnowsAbout...)
 		out.TalksAbout = append(out.TalksAbout, world.TalksAbout...)
+		out.Wants = append(out.Wants, world.Wants...)
 	}
 	if rel, ok := d.db.Dossiers[store.DossierKey{EntityID: e, PartyID: d.party}]; ok {
 		out.Disposition = rel.Disposition
@@ -74,6 +75,15 @@ func (d *Dossiers) Knows(e store.EntityID, f store.FactID) bool {
 // OpenThreads — незакрытое с парти, в стабильном порядке.
 func (d *Dossiers) OpenThreads(e store.EntityID) []string {
 	out := append([]string(nil), d.view(e).OpenThreads...)
+	sort.Strings(out)
+	return out
+}
+
+// Wants — чего персонаж хочет от парти, в стабильном порядке. Желание не
+// вычитается по мере рассказа: человек не перестаёт хотеть оттого, что
+// однажды попросил.
+func (d *Dossiers) Wants(e store.EntityID) []string {
+	out := append([]string(nil), d.view(e).Wants...)
 	sort.Strings(out)
 	return out
 }

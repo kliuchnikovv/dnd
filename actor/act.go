@@ -3,6 +3,7 @@ package actor
 import (
 	"strings"
 
+	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/naming"
 )
 
@@ -84,6 +85,7 @@ func movesFor(act Act, sit Situation) []string {
 	hasNotes := len(sit.Talks) > 0
 	hasFacts := len(sit.Known) > 0
 	hasThreads := len(sit.Threads) > 0
+	hasWants := len(sit.Wants) > 0
 
 	var allowed []Move
 	switch act {
@@ -124,6 +126,15 @@ func movesFor(act Act, sit Situation) []string {
 		}
 	}
 
+	// Просить о своём персонаж вправе там, где разговор не под давлением:
+	// на угрозе и на прямом требовании объяснений просьба звучала бы
+	// подхалимством, а не желанием.
+	if hasWants {
+		switch act {
+		case ActGreeting, ActThanks, ActFarewell, ActProbe, ActOther:
+			allowed = append(allowed, MoveRaiseWant)
+		}
+	}
 	if hasFacts {
 		allowed = append(allowed, MoveConfirmKnown)
 	}
@@ -159,4 +170,29 @@ func actHint(act Act) string {
 	default:
 		return "говорит что-то, не требующее прямого ответа"
 	}
+}
+
+// tierFor выбирает уровень модели по акту, а не по роли. Приветствие,
+// благодарность и прощание мир не меняют: платить за них как за ход, который
+// его меняет, — прямая утечка бюджета на репликах вне дела.
+//
+// Уровень известен ДО вызова, потому что акт определяет код. Выбирать его по
+// уже полученной реплике было бы поздно.
+func tierFor(act Act) llm.Tier {
+	switch act {
+	case ActGreeting, ActThanks, ActFarewell:
+		return llm.TierCheap
+	default:
+		return llm.TierMain
+	}
+}
+
+// maxTokensFor — потолок вывода. У светской реплики он короче: длинная
+// реплика на «здравствуйте» почти всегда означает, что персонаж начал
+// рассказывать то, о чём его не спрашивали.
+func maxTokensFor(act Act) int {
+	if tierFor(act) == llm.TierCheap {
+		return 80
+	}
+	return 200
 }

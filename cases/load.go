@@ -92,6 +92,7 @@ func Parse(raw []byte) (*core.Config, error) {
 		world.Voice = d.Voice
 		world.KnowsAbout = append(world.KnowsAbout, d.KnowsAbout...)
 		world.TalksAbout = append(world.TalksAbout, d.TalksAbout...)
+		world.Wants = append(world.Wants, d.Wants...)
 
 		rel := db.DossierFor(d.Entity, defaultParty)
 		rel.Kind = "npc"

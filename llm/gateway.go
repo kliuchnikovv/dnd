@@ -37,7 +37,7 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 		return Response{}, err
 	}
 
-	chain := g.router.Chain(r.Role)
+	chain := g.router.ChainFor(r.Role, r.Tier)
 	if len(chain) == 0 {
 		if g.router.Declared(r.Role) {
 			// Роль настроена, но все цели отфильтрованы как непригодные.

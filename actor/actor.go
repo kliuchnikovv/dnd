@@ -49,6 +49,10 @@ type Situation struct {
 	// Threads — незакрытое с парти: обещания, долги, угрозы. То, из чего у
 	// разговора появляется продолжение, а не повтор.
 	Threads []string
+	// Wants — чего персонаж хочет от парти сегодня. То, чем он отличается от
+	// справочника: реактивный NPC только отвечает, персонаж с желанием сам
+	// открывает разговор и просит.
+	Wants []string
 	// KnowsSomething — персонаж знает нечто, чего парти не знает. Сказать что
 	// именно он не вправе, но «об этом я говорить не буду» честнее и живее
 	// глухого «не могу сказать».
@@ -83,6 +87,7 @@ const (
 	MoveObserve      Move = "observe"       // сказать об обстановке, которая на виду
 	MoveVolunteer    Move = "volunteer"     // поднять свою тему из списка
 	MoveRaiseThread  Move = "raise_thread"  // напомнить о незакрытом деле
+	MoveRaiseWant    Move = "raise_want"    // попросить о своём
 	MoveHint         Move = "hint"          // дать понять, что знает, но не скажет
 )
 
@@ -90,6 +95,7 @@ func moves() []string {
 	return []string{string(MoveDeflect), string(MoveAskBack),
 		string(MoveConfirmKnown), string(MoveRefuse), string(MoveSmalltalk),
 		string(MoveObserve), string(MoveVolunteer), string(MoveRaiseThread),
+		string(MoveRaiseWant),
 		string(MoveHint)}
 }
 
@@ -232,11 +238,12 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 	allowed := movesFor(act, sit)
 
 	req.Role = llm.RoleActor
+	req.Tier = tierFor(act)
 	req.Schema = schemaJSON(sit.Known, sit.Talks, allowed)
 	req.System = systemPrompt
 	req.Input = renderPrompt(s, sit, act)
 	if req.MaxTokens == 0 {
-		req.MaxTokens = 200
+		req.MaxTokens = maxTokensFor(act)
 	}
 
 	resp, err := a.gw.Do(ctx, req)
@@ -351,6 +358,11 @@ func template(m Move, sit Situation) string {
 		// Дно для volunteer намеренно не пересказывает заметку: дословная
 		// заметка звучит сводкой, а не речью.
 		return "Есть тут одна вещь, но это долгий разговор."
+	case MoveRaiseWant:
+		if len(sit.Wants) > 0 {
+			return sit.Wants[0]
+		}
+		return "Ладно, это подождёт."
 	case MoveRaiseThread:
 		if len(sit.Threads) > 0 {
 			return sit.Threads[0]
@@ -377,6 +389,7 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 		out = append(out, t.Note)
 	}
 	out = append(out, sit.Threads...)
+	out = append(out, sit.Wants...)
 	if sit.PlayerText != "" {
 		out = append(out, sit.PlayerText)
 	}
@@ -427,6 +440,12 @@ func renderPrompt(s Speaker, sit Situation, act Act) string {
 		b.WriteString("Незакрытое с этой парти:\n")
 		for _, t := range sit.Threads {
 			b.WriteString("  " + t + "\n")
+		}
+	}
+	if len(sit.Wants) > 0 {
+		b.WriteString("Чего он хочет от парти — об этом он вправе заговорить сам:\n")
+		for _, w := range sit.Wants {
+			b.WriteString("  " + w + "\n")
 		}
 	}
 	if sit.KnowsSomething {
@@ -530,6 +549,7 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 			v.Game.D.MarkTold(in.Args.Target, t.Note)
 		},
 		Threads:        v.Game.D.OpenThreads(in.Args.Target),
+		Wants:          v.Game.D.Wants(in.Args.Target),
 		KnowsSomething: knowsUnrevealed(v.Game, in.Args.Target),
 		Scene:          SceneOf(v.Game, speaker.ID),
 		Frame:          v.Game.Flavour(res.FlavourKey),
