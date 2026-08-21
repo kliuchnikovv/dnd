@@ -238,7 +238,7 @@ func TestOverlongLineFallsBackToTemplate(t *testing.T) {
 // Схема несёт материал: подтвердить можно только перечисленное.
 func TestSchemaEnumeratesKnownFacts(t *testing.T) {
 	g := harbour(t)
-	props := schemaFor(KnownTopics(g))["properties"].(map[string]any)
+	props := schemaFor(KnownTopics(g), nil)["properties"].(map[string]any)
 	fact := props["fact"].(map[string]any)
 	enum, ok := fact["enum"].([]string)
 	if !ok || len(enum) == 0 {
@@ -370,7 +370,7 @@ func TestSceneOfCarriesPlaceWeatherAndCompany(t *testing.T) {
 }
 
 func TestObserveIsAValidMove(t *testing.T) {
-	props := schemaFor(nil)["properties"].(map[string]any)
+	props := schemaFor(nil, nil)["properties"].(map[string]any)
 	enum := props["move"].(map[string]any)["enum"].([]string)
 	// Каждый ход из набора обязан быть в схеме: ход, которого модель не видит,
 	// существует только на бумаге.
@@ -402,5 +402,83 @@ func TestPromptSeparatesFactsFromScene(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "Факты дела — только это и можно подтверждать") {
 		t.Errorf("факты не помечены как ограниченные: %q", prompt)
+	}
+}
+
+// --- темы: не зачитывать и не повторять ---
+
+// Тема, поднятая вне списка, отклоняется — иначе персонаж «упоминает» то,
+// чего не знает.
+func TestVolunteerRequiresTopicFromList(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"move":"volunteer","topic":"t99","line":"А вот был случай."}`)
+	got, err := a.Line(context.Background(), sp, Situation{
+		Verb: "talk_to", Talks: topicsOf(g, "e_bern"), Scene: SceneOf(g, "e_bern"),
+	}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "А вот был случай." {
+		t.Error("принята тема вне списка")
+	}
+}
+
+// Поднятая тема помечается рассказанной: второй раз она звучит как
+// заклинивший автомат.
+func TestVolunteeredTopicIsMarkedTold(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	before := topicsOf(g, "e_bern")
+	if len(before) == 0 {
+		t.Fatal("у Берна нет заметок — фикстура сломана")
+	}
+	a, _ := actorWith(t, `{"move":"volunteer","topic":"`+before[0].ID+
+		`","line":"Книгу через пристань таскают, я докладывал."}`)
+
+	v := &GameVoicer{Actor: a, Game: g}
+	if _, err := v.Voice(context.Background(),
+		core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern"}},
+		core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	after := topicsOf(g, "e_bern")
+	if len(after) != len(before)-1 {
+		t.Errorf("заметок было %d, стало %d — рассказанное не вычитается",
+			len(before), len(after))
+	}
+	_ = sp
+}
+
+// Заметки — не реплики. Дно для volunteer не пересказывает заметку дословно:
+// дословная заметка звучит сводкой.
+func TestVolunteerTemplateDoesNotReciteNote(t *testing.T) {
+	g := harbour(t)
+	talks := topicsOf(g, "e_bern")
+	got := template(MoveVolunteer, Situation{Talks: talks})
+	for _, tp := range talks {
+		if got == tp.Note {
+			t.Errorf("шаблон зачитал заметку дословно: %q", got)
+		}
+	}
+}
+
+// Промпт обязан требовать ответа на сказанное, а не выдачи известного.
+func TestPromptDemandsAnsweringThePlayer(t *testing.T) {
+	g := harbour(t)
+	a, f := actorWith(t, `{"move":"smalltalk","line":"Здравствуйте."}`)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a.Line(context.Background(), sp, Situation{Verb: "talk_to",
+		Talks: topicsOf(g, "e_bern")}, llm.Request{})
+
+	sys := f.Calls()[0].System
+	if !strings.Contains(sys, "реплика ОТВЕЧАЕТ на то, что сказал игрок") {
+		t.Error("в промпте нет требования отвечать на сказанное")
+	}
+	if !strings.Contains(sys, "не зачитывай") {
+		t.Error("в промпте нет запрета зачитывать заметку")
+	}
+	if strings.Contains(sys, "Предпочитай") {
+		t.Error("в промпте осталось предпочтение volunteer — оно и делало сводку")
 	}
 }

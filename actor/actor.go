@@ -41,9 +41,11 @@ type Situation struct {
 	// Frame — авторская проза хода: реплика должна к ней примыкать, а не
 	// повторять её.
 	Frame string
-	// Talks — темы, которые персонаж поднимает сам. Это и есть топливо
-	// разговора: без него остаётся погода, и человек превращается в синоптика.
-	Talks []string
+	// Talks — то, что персонаж знает и может к месту упомянуть. Это ЗАМЕТКИ,
+	// а не реплики: заметку он формулирует своими словами и только тогда,
+	// когда она отвечает на сказанное. Готовые фразы модель просто зачитывает
+	// по списку, и разговор превращается в сводку.
+	Talks []Topic
 	// Threads — незакрытое с парти: обещания, долги, угрозы. То, из чего у
 	// разговора появляется продолжение, а не повтор.
 	Threads []string
@@ -51,6 +53,9 @@ type Situation struct {
 	// именно он не вправе, но «об этом я говорить не буду» честнее и живее
 	// глухого «не могу сказать».
 	KnowsSomething bool
+	// MarkTold отмечает тему рассказанной. Необязателен: без него темы просто
+	// не помечаются.
+	MarkTold func(Topic)
 	// Scene — обстановка: место, погода, кто рядом. Об этом персонаж говорит
 	// свободно, потому что это у всех на виду.
 	//
@@ -101,8 +106,10 @@ const systemPrompt = `Ты озвучиваешь одного персонаж�
 Сначала выбери ХОД:
 - confirm_known — подтвердить РОВНО ОДИН факт дела. Укажи его в поле fact;
 - observe — сказать об обстановке: о погоде, о месте, о тех, кто рядом;
-- volunteer — поднять СВОЮ тему из списка «о чём заговорит сам». Предпочитай
-  этот ход, когда список непуст: человеку есть что сказать, и это живее погоды;
+- volunteer — упомянуть то, что он знает, из списка заметок. Только если это
+  ОТВЕЧАЕТ на сказанное игроком или естественно продолжает разговор. Укажи id
+  в поле topic. Заметку перескажи СВОИМИ СЛОВАМИ, коротко, как в разговоре —
+  не зачитывай её;
 - raise_thread — напомнить о незакрытом деле с этой парти;
 - hint — дать понять, что знает нечто, но говорить не станет. Что именно —
   не называть;
@@ -112,6 +119,11 @@ const systemPrompt = `Ты озвучиваешь одного персонаж�
 - smalltalk — короткая любезность.
 
 Затем сформулируй реплику этим голосом. Одна-две фразы.
+
+Главное правило: реплика ОТВЕЧАЕТ на то, что сказал игрок. На приветствие —
+приветствие, на вопрос — ответ или уклонение, на пустое — пустое. Вываливать
+известное без повода нельзя: человек, который на «здравствуйте» отвечает
+сводкой, звучит как автомат, а не как стражник.
 
 Важно про уклонение: «нечего сказать» не значит «скажи ничего». Уклоняясь,
 персонаж всё равно остаётся человеком — он ворчит о погоде, отшучивается,
@@ -124,7 +136,7 @@ const systemPrompt = `Ты озвучиваешь одного персонаж�
 
 Отвечай на том же языке, на котором написан голос персонажа.`
 
-func schemaFor(known []Known) map[string]any {
+func schemaFor(known []Known, talks []Topic) map[string]any {
 	factField := map[string]any{"type": "string",
 		"description": "id подтверждаемого факта; только при move=confirm_known"}
 	if ids := knownIDs(known); len(ids) > 0 {
@@ -135,11 +147,45 @@ func schemaFor(known []Known) map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"move", "line"},
 		"properties": map[string]any{
-			"move": map[string]any{"type": "string", "enum": moves()},
-			"fact": factField,
-			"line": map[string]any{"type": "string", "description": "одна-две фразы прямой речи"},
+			"move":  map[string]any{"type": "string", "enum": moves()},
+			"fact":  factField,
+			"topic": topicField(talks),
+			"line":  map[string]any{"type": "string", "description": "одна-две фразы прямой речи"},
 		},
 	}
+}
+
+// Topic — заметка о том, что персонаж знает. Идентификатор нужен, чтобы
+// поднятую тему можно было проверить и не поднимать второй раз.
+type Topic struct {
+	ID   string
+	Note string
+}
+
+func topicIDs(t []Topic) []string {
+	out := make([]string, 0, len(t))
+	for _, x := range t {
+		out = append(out, x.ID)
+	}
+	return out
+}
+
+func topicByID(t []Topic, id string) (Topic, bool) {
+	for _, x := range t {
+		if x.ID == id {
+			return x, true
+		}
+	}
+	return Topic{}, false
+}
+
+func topicField(talks []Topic) map[string]any {
+	f := map[string]any{"type": "string",
+		"description": "id поднимаемой темы; только при move=volunteer"}
+	if ids := topicIDs(talks); len(ids) > 0 {
+		f["enum"] = ids
+	}
+	return f
 }
 
 // Known — единица материала: факт, на который персонажу разрешено ссылаться.
@@ -180,7 +226,7 @@ func (a *Actor) WithGuard(g LineGuard) *Actor {
 // означает, что персонажу сейчас нечего сказать.
 func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Request) (string, error) {
 	req.Role = llm.RoleActor
-	req.Schema = schemaJSON(sit.Known)
+	req.Schema = schemaJSON(sit.Known, sit.Talks)
 	req.System = systemPrompt
 	req.Input = renderPrompt(s, sit)
 	if req.MaxTokens == 0 {
@@ -192,9 +238,10 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 		return "", err
 	}
 	var out struct {
-		Move string `json:"move"`
-		Fact string `json:"fact"`
-		Line string `json:"line"`
+		Move  string `json:"move"`
+		Fact  string `json:"fact"`
+		Topic string `json:"topic"`
+		Line  string `json:"line"`
 	}
 	if err := json.Unmarshal([]byte(resp.Text), &out); err != nil {
 		return "", fmt.Errorf("actor: реплика не разобралась: %w", err)
@@ -210,6 +257,17 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 	}
 	if move != MoveConfirmKnown && out.Fact != "" {
 		return template(move, sit), nil
+	}
+	if move == MoveVolunteer {
+		topic, ok := topicByID(sit.Talks, out.Topic)
+		if !ok {
+			return template(MoveObserve, sit), nil
+		}
+		// Поднятую тему помечаем рассказанной: второй раз она прозвучит как
+		// заклинивший автомат.
+		if sit.MarkTold != nil {
+			sit.MarkTold(topic)
+		}
 	}
 	if line == "" || len([]rune(line)) > maxLine {
 		return template(move, sit), nil
@@ -261,10 +319,9 @@ func template(m Move, sit Situation) string {
 	case MoveRefuse:
 		return "Нет. И не просите."
 	case MoveVolunteer:
-		if len(sit.Talks) > 0 {
-			return sit.Talks[0]
-		}
-		return "Да так, служба идёт."
+		// Дно для volunteer намеренно не пересказывает заметку: дословная
+		// заметка звучит сводкой, а не речью.
+		return "Есть тут одна вещь, но это долгий разговор."
 	case MoveRaiseThread:
 		if len(sit.Threads) > 0 {
 			return sit.Threads[0]
@@ -287,7 +344,9 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	out := []string{s.Name, s.Voice}
 	// Обстановка разрешена всегда: она на виду и придумать её нельзя.
 	out = append(out, sit.Scene...)
-	out = append(out, sit.Talks...)
+	for _, t := range sit.Talks {
+		out = append(out, t.Note)
+	}
 	out = append(out, sit.Threads...)
 	if sit.PlayerText != "" {
 		out = append(out, sit.PlayerText)
@@ -300,8 +359,8 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	return out
 }
 
-func schemaJSON(known []Known) string {
-	b, err := json.Marshal(schemaFor(known))
+func schemaJSON(known []Known, talks []Topic) string {
+	b, err := json.Marshal(schemaFor(known, talks))
 	if err != nil {
 		panic(err) // схема выводится из данных сцены, ошибка означает битый билд
 	}
@@ -330,9 +389,9 @@ func renderPrompt(s Speaker, sit Situation) string {
 		fmt.Fprintf(&b, "Что уже описано: %s\n", sit.Frame)
 	}
 	if len(sit.Talks) > 0 {
-		b.WriteString("О чём заговорит сам:\n")
+		b.WriteString("Что знает и может упомянуть к месту (перескажи своими словами):\n")
 		for _, t := range sit.Talks {
-			b.WriteString("  " + t + "\n")
+			b.WriteString("  " + t.ID + " — " + t.Note + "\n")
 		}
 	}
 	if len(sit.Threads) > 0 {
@@ -434,10 +493,13 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		return "", nil
 	}
 	return v.Actor.Line(ctx, speaker, Situation{
-		Verb:           string(in.Verb),
-		PlayerText:     in.Args.Text,
-		Known:          KnownTopics(v.Game),
-		Talks:          v.Game.D.TalksAbout(in.Args.Target),
+		Verb:       string(in.Verb),
+		PlayerText: in.Args.Text,
+		Known:      KnownTopics(v.Game),
+		Talks:      topicsOf(v.Game, in.Args.Target),
+		MarkTold: func(t Topic) {
+			v.Game.D.MarkTold(in.Args.Target, t.Note)
+		},
 		Threads:        v.Game.D.OpenThreads(in.Args.Target),
 		KnowsSomething: knowsUnrevealed(v.Game, in.Args.Target),
 		Scene:          SceneOf(v.Game, speaker.ID),
@@ -478,4 +540,15 @@ func knowsUnrevealed(g *core.Game, id store.EntityID) bool {
 		}
 	}
 	return false
+}
+
+// topicsOf нумерует доступные заметки. Идентификатор нужен только на время
+// одного вызова: помечается тема по тексту, потому что список меняется.
+func topicsOf(g *core.Game, id store.EntityID) []Topic {
+	notes := g.D.TalksAbout(id)
+	out := make([]Topic, 0, len(notes))
+	for i, n := range notes {
+		out = append(out, Topic{ID: fmt.Sprintf("t%d", i+1), Note: n})
+	}
+	return out
 }

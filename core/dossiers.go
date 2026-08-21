@@ -78,11 +78,33 @@ func (d *Dossiers) OpenThreads(e store.EntityID) []string {
 	return out
 }
 
-// TalksAbout — то, о чём сущность заговорит сама.
+// TalksAbout — то, что сущность знает и ещё не рассказывала этой парти.
+// Рассказанное вычитается: повтор звучит как заклинивший автомат.
 func (d *Dossiers) TalksAbout(e store.EntityID) []string {
-	out := append([]string(nil), d.view(e).TalksAbout...)
+	told := map[string]bool{}
+	for _, t := range d.db.DossierFor(e, d.party).Told {
+		told[t] = true
+	}
+	var out []string
+	for _, t := range d.view(e).TalksAbout {
+		if !told[t] {
+			out = append(out, t)
+		}
+	}
 	sort.Strings(out)
 	return out
+}
+
+// MarkTold помечает тему рассказанной этой парти.
+func (d *Dossiers) MarkTold(e store.EntityID, note string) {
+	row := d.db.DossierFor(e, d.party)
+	for _, t := range row.Told {
+		if t == note {
+			return
+		}
+	}
+	row.Told = append(row.Told, note)
+	row.Version++
 }
 
 // Voice — голос из дневника либо из самой сущности. Дневник переопределяет:
