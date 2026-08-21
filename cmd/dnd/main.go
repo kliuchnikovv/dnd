@@ -24,6 +24,7 @@ import (
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/tui"
 )
 
 func main() {
@@ -43,6 +44,8 @@ func main() {
 	guardLines := flag.Bool("guard-lines", true,
 		"проверять реплики NPC на утечку дела вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
+	plain := flag.Bool("plain", false,
+		"построчный режим на терминале: без полноэкранного окна, как в скрипте")
 	// Ход при полном протоколе: разбор ввода, актёр, Мастер за данными, актёр
 	// договаривает, проверка реплики, ремонт при утечке, повторная проверка,
 	// проза Мастера. Потолок ниже означал бы, что часть надстроек молча
@@ -77,6 +80,8 @@ func main() {
 	session := cli.NewSession(game, in, os.Stdout)
 
 	var parser *intent.Parser
+	var debugRing *tui.Ring
+	var gw *llm.Gateway
 	if *nl {
 		target, err := resolveProvider(*provider, *model)
 		if err != nil {
@@ -99,7 +104,7 @@ func main() {
 			}
 		}
 		router := buildRouter(target, cheap)
-		gw := llm.NewGateway(router,
+		gw = llm.NewGateway(router,
 			llm.NewLedger(llm.Caps{
 				GlobalDailyMicro:   int64(*capDay * 1_000_000),
 				PerTurnCalls:       *capTurn,
@@ -108,7 +113,14 @@ func main() {
 				fmt.Fprintf(os.Stderr, "расход %d мкд превысил прогноз %d вдвое\n", spent, forecast)
 			})))
 		if *debugLLM {
-			gw = gw.WithDebug(os.Stderr)
+			if fullscreen(in, os.Stdout, *plain) {
+				// В полноэкранном режиме stderr затирает экран, поэтому дамп
+				// уходит в буфер, а панель по Tab его показывает.
+				debugRing = tui.NewRing(200)
+				gw = gw.WithDebug(debugRing)
+			} else {
+				gw = gw.WithDebug(os.Stderr)
+			}
 		}
 		parser = intent.NewParser(gw)
 		session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
@@ -126,9 +138,50 @@ func main() {
 		defer func() { reportMetrics(gw, parser) }()
 	}
 
+	if fullscreen(in, os.Stdout, *plain) {
+		title := *casePath
+		if err := tui.Run(session, tui.Options{
+			Title:  title,
+			Status: statusOf(gw),
+			Debug:  debugRing,
+		}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := session.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// fullscreen сообщает, уместен ли полноэкранный режим. Только когда И ввод, И
+// вывод — терминал: пайп, -script и тесты обязаны идти построчным путём,
+// иначе воспроизводимость начнёт зависеть от способа запуска.
+func fullscreen(in, out *os.File, plain bool) bool {
+	if plain {
+		return false
+	}
+	return isTerminal(in) && isTerminal(out)
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// statusOf — строка шапки: ход и расход. Функция, а не строка, потому что
+// шапка перерисовывается, а расход растёт.
+func statusOf(gw *llm.Gateway) func() string {
+	if gw == nil {
+		return func() string { return "" }
+	}
+	return func() string {
+		return fmt.Sprintf("$%.4f", float64(gw.Stats().SpentMicro)/1e6)
 	}
 }
 
