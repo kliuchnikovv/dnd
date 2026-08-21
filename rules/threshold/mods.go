@@ -8,6 +8,7 @@ const (
 	ThresholdHard   = 18
 
 	TagValue       = 2
+	PushValue      = 2
 	SituationalCap = 4
 )
 

@@ -66,30 +66,47 @@ func TestNat20LiftsSuccessToCrit(t *testing.T) {
 	}
 }
 
-func TestGritConvertsFailToPartial(t *testing.T) {
+// grit — единственное место, где игрок принимает решение о риске. Тратится он
+// заявкой ДО броска: автоматическое списание на каждом провале решением не
+// является, потому что решать нечего.
+func TestPushSpendsGritForTwo(t *testing.T) {
 	view := sheetRaw(t)
 	view.Grit = 3
-	got := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(2))
-	if got.Class != core.OutcomePartial {
-		t.Fatalf("grit не сконвертировал провал: %v", got.Class)
+	plain := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(9))
+	pushed := New().Resolve(core.Intent{Verb: "question", Push: true}, view, dice.Fixed(9))
+
+	if pushed.Margin != plain.Margin+2 {
+		t.Errorf("push дал %+d к марже, ожидалось +2", pushed.Margin-plain.Margin)
 	}
 	var spent bool
-	for _, m := range got.Mutations {
+	for _, m := range pushed.Mutations {
 		if m.Kind == core.MutResource && m.Target == "grit" && m.Delta == -1 {
 			spent = true
 		}
 	}
 	if !spent {
-		t.Error("grit сконвертировал провал, но не списался")
+		t.Error("push сработал, но grit не списался")
 	}
 }
 
-func TestNoGritNoConversion(t *testing.T) {
+func TestPushWithoutGritChangesNothing(t *testing.T) {
 	view := sheetRaw(t)
 	view.Grit = 0
+	plain := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(9))
+	pushed := New().Resolve(core.Intent{Verb: "question", Push: true}, view, dice.Fixed(9))
+	if pushed.Margin != plain.Margin || len(pushed.Mutations) != 0 {
+		t.Errorf("push без grit что-то изменил: маржа %d против %d, мутации %v",
+			pushed.Margin, plain.Margin, pushed.Mutations)
+	}
+}
+
+// Без заявки провал остаётся провалом, сколько бы grit ни лежало на листе.
+func TestFailStaysFailWithoutPush(t *testing.T) {
+	view := sheetRaw(t)
+	view.Grit = 3
 	got := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(2))
 	if got.Class != core.OutcomeFail {
-		t.Errorf("провал сконвертирован без grit: %v", got.Class)
+		t.Errorf("провал сконвертирован без заявки: %v", got.Class)
 	}
 }
 
@@ -119,4 +136,29 @@ func TestLogCarriesNamedTerms(t *testing.T) {
 
 func TestSystemSatisfiesRuleSystem(t *testing.T) {
 	var _ core.RuleSystem = New()
+}
+
+// Переход по улице, где никто не мешает, — не бросок. Провал, означающий «ты
+// не дошёл до соседнего дома», не несёт ни выбора, ни смысла, зато тикает часы
+// и рассинхронизирует всё, что игрок планировал дальше.
+func TestUnopposedMoveDoesNotRoll(t *testing.T) {
+	view := sheetRaw(t)
+	got := New().Resolve(core.Intent{Verb: "move_zone"}, view, dice.Fixed(1))
+	if got.Class != core.OutcomeSuccess {
+		t.Errorf("безопасный переход дал %v", got.Class)
+	}
+	if got.Log.Die != 0 {
+		t.Errorf("безопасный переход тронул кость: d20=%d", got.Log.Die)
+	}
+}
+
+// При враждебных в сцене переход снова становится броском: уйти из-под
+// наблюдения — это уже действие с ценой.
+func TestMoveUnderHostilesStillRolls(t *testing.T) {
+	view := sheetRaw(t)
+	view.Foes = 1
+	got := New().Resolve(core.Intent{Verb: "move_zone"}, view, dice.Fixed(1))
+	if got.Log.Die == 0 {
+		t.Error("переход при враждебных прошёл без броска")
+	}
 }

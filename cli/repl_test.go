@@ -100,7 +100,10 @@ func TestPartialMoveStillArrives(t *testing.T) {
 	g := renderGame(t)
 	start := g.Node
 	var out bytes.Buffer
-	// d20=10 при edge+1 против порога 14 даёт маржу -3, то есть ЧАСТИЧНО.
+	// Безопасный переход броска не требует, поэтому Токе враждебен: только
+	// под наблюдением уход из зоны снова становится действием с ценой.
+	// d20=10, edge+1, не обнаружен +2, дождь -2 против порога 14 — маржа -3.
+	g.D.Adjust("e_toke", -2)
 	g.Dice = dice.Fixed(10)
 	in := strings.NewReader("move_zone forge\nquit\n")
 	if err := NewSession(g, in, &out).Run(); err != nil {
