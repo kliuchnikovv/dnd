@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"unicode"
 
 	"github.com/kliuchnikovv/dnd/core"
@@ -49,11 +48,11 @@ func meaningless(text string) bool {
 
 func (s *Session) interpret(text string, parseErr error) bool {
 	if meaningless(text) {
-		fmt.Fprintln(s.Out, "не понял — напиши, что ты делаешь, или скажи что-нибудь в кавычках")
+		s.emit(EventRefusal, "не понял — напиши, что ты делаешь, или скажи что-нибудь в кавычках\n")
 		return true
 	}
 	if s.interp == nil {
-		fmt.Fprintf(s.Out, "нельзя: %v\n", parseErr)
+		s.emit(EventRefusal, "нельзя: %v\n", parseErr)
 		return false
 	}
 	in, clarify, err := s.interp.Interpret(s.turnContext(), text, s.spokenTo, s.pending)
@@ -64,7 +63,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 	case err != nil:
 		// Сбой канала не должен выглядеть как отказ мира: игрок обязан
 		// понимать, что дело в инструменте, а не в его замысле.
-		fmt.Fprintf(s.Out, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
+		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
 		return false
 	case in != nil:
 		s.applyIntent(*in)
@@ -73,7 +72,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		question := fallbackClarify(clarify)
 		// Помним, о чём спросили: следующая фраза игрока — ответ на это.
 		s.pending = question
-		fmt.Fprintf(s.Out, "%s\n", question)
+		s.emit(EventPrompt, "%s\n", question)
 		return true
 	}
 }

@@ -15,9 +15,13 @@ import (
 // Session гоняет один и тот же цикл и для интерактивного REPL, и для скрипта:
 // прогон воспроизводится парой (seed, файл команд).
 type Session struct {
-	Game     *core.Game
-	In       io.Reader
-	Out      io.Writer
+	Game *core.Game
+	In   io.Reader
+	Out  io.Writer
+	// sink — куда уходит вывод. Сессия печатает только через него: иначе
+	// полноэкранный режим пришлось бы делать вторым форматом вывода, а не
+	// вторым приёмником.
+	sink     Sink
 	r        Render
 	sc       *bufio.Scanner
 	interp   Interpreter
@@ -36,11 +40,27 @@ type Session struct {
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
-	return &Session{Game: g, In: in, Out: out}
+	return &Session{Game: g, In: in, Out: out, sink: TextSink{W: out}}
+}
+
+// WithSink подменяет приёмник вывода.
+func (s *Session) WithSink(k Sink) *Session {
+	s.sink = k
+	return s
+}
+
+// emit — форматированное событие. Обёртка нужна, чтобы места печати меняли
+// только вид события, а не способ вывода.
+func (s *Session) emit(kind EventKind, format string, args ...any) {
+	s.sink.Emit(Event{Kind: kind, Text: fmt.Sprintf(format, args...)})
+}
+
+func (s *Session) emitText(kind EventKind, text string) {
+	s.sink.Emit(Event{Kind: kind, Text: text})
 }
 
 func (s *Session) Run() error {
-	fmt.Fprint(s.Out, s.r.Scene(s.Game))
+	s.emitText(EventScene, s.r.Scene(s.Game))
 	s.sc = bufio.NewScanner(s.In)
 	if s.ended() {
 		return nil
@@ -72,7 +92,7 @@ func (s *Session) ended() bool {
 		return false
 	}
 	if cold := s.Game.ColdCase(); cold != "" {
-		fmt.Fprintf(s.Out, "\n%s\n", cold)
+		s.emit(EventSystem, "\n%s\n", cold)
 	}
 	return true
 }
@@ -84,17 +104,17 @@ func (s *Session) dispatch(cmd Command) bool {
 	case CmdQuit:
 		return true
 	case CmdHelp:
-		fmt.Fprint(s.Out, r.Help())
+		s.emitText(EventSystem, r.Help())
 	case CmdSurvey:
-		fmt.Fprint(s.Out, r.Survey(g))
+		s.emitText(EventSystem, r.Survey(g))
 	case CmdFacts:
-		fmt.Fprint(s.Out, r.Facts(g))
+		s.emitText(EventSystem, r.Facts(g))
 	case CmdState:
-		fmt.Fprint(s.Out, r.State(g))
+		s.emitText(EventSystem, r.State(g))
 	case CmdClocks:
-		fmt.Fprint(s.Out, r.Clocks(g))
+		s.emitText(EventSystem, r.Clocks(g))
 	case CmdCompare:
-		fmt.Fprint(s.Out, r.Turn(g, core.Intent{Verb: "compare"}, g.Compare(cmd.Facts[0], cmd.Facts[1])))
+		s.emitText(EventProse, r.Turn(g, core.Intent{Verb: "compare"}, g.Compare(cmd.Facts[0], cmd.Facts[1])))
 	case CmdAccuse:
 		s.accuse()
 	case CmdRest:
@@ -103,9 +123,9 @@ func (s *Session) dispatch(cmd Command) bool {
 			kind = core.RestLong
 		}
 		if clocks := g.RestPreview(kind); len(clocks) > 0 {
-			fmt.Fprintf(s.Out, "длинный отдых продвинет часы: %v\n", clocks)
+			s.emit(EventSystem, "длинный отдых продвинет часы: %v\n", clocks)
 		}
-		fmt.Fprint(s.Out, r.Turn(g, core.Intent{Verb: "rest"}, g.Rest(kind)))
+		s.emitText(EventProse, r.Turn(g, core.Intent{Verb: "rest"}, g.Rest(kind)))
 	case CmdAction:
 		s.applyIntentWithHint(cmd.Intent, cmd.Text)
 	}
@@ -176,12 +196,12 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	// подсказка никогда — это закрытая консоль на первой сессии.
 	if line, ok := s.Game.Hint(); ok {
 		if e, found := s.Game.DB.Entities[s.Game.Companion]; found {
-			fmt.Fprintf(s.Out, "%s: %s\n", e.Name, line)
+			s.sink.Emit(Event{Kind: EventSpeech, Speaker: e.Name, Text: fmt.Sprintf("%s: %s\n", e.Name, line)})
 		}
 	}
 	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
 		s.Game.Node = in.Args.Node
-		fmt.Fprint(s.Out, s.r.Scene(s.Game))
+		s.emitText(EventScene, s.r.Scene(s.Game))
 	}
 }
 
@@ -273,7 +293,7 @@ func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
 		for _, c := range s.npcsHere() {
 			names = append(names, c.Name)
 		}
-		fmt.Fprintf(s.Out, "к кому ты обращаешься? здесь %s\n", strings.Join(names, ", "))
+		s.emit(EventPrompt, "к кому ты обращаешься? здесь %s\n", strings.Join(names, ", "))
 		return
 	}
 	s.remember(in)
@@ -281,9 +301,9 @@ func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
 	if said := spokenAloud(in); said != "" && !res.Refused {
 		// Реплика игрока показывается как реплика. Описание того, что он
 		// «сказал это вслух», на каждой фразе читается как шум.
-		fmt.Fprintln(s.Out, Spoken(said))
+		s.emit(EventSystem, "%s\n", Spoken(said))
 	} else {
-		fmt.Fprint(s.Out, s.r.Turn(s.Game, in, res))
+		s.emitText(EventProse, s.r.Turn(s.Game, in, res))
 	}
 	s.afterAction(in, res)
 }

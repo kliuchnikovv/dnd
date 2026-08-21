@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -52,11 +51,11 @@ func (s *Session) speak(in core.Intent, res core.TurnResult) {
 	}
 	line, err := s.voicer.Voice(s.turnContext(), in, res)
 	if err != nil {
-		fmt.Fprintf(s.Out, "(персонаж промолчал: %v)\n", err)
+		s.emit(EventNote, "(персонаж промолчал: %v)\n", err)
 		return
 	}
 	if line != "" {
-		fmt.Fprintln(s.Out, Spoken(line))
+		s.emit(EventSystem, "%s\n", Spoken(line))
 	}
 }
 
@@ -107,5 +106,5 @@ func (s *Session) noteOnce(text string) {
 		return
 	}
 	s.noted[text] = true
-	fmt.Fprintf(s.Out, "(%s)\n", text)
+	s.emit(EventNote, "(%s)\n", text)
 }
