@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/llm"
+	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 )
 
@@ -42,7 +44,11 @@ func main() {
 	// (Фаза 5), сырое поведение диалогового актёра видно только без неё.
 	guardLines := flag.Bool("guard-lines", false, "проверять реплики NPC на выдумку вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
-	capTurn := flag.Int("cap-turn", 4, "потолок вызовов модели на один ход: разбор до двух, озвучка один")
+	// Ход при полном протоколе: разбор ввода, актёр, Мастер за данными, актёр
+	// договаривает, проверка реплики, проза Мастера. Потолок ниже означал бы,
+	// что часть надстроек молча отваливается на ErrTurnCalls.
+	capTurn := flag.Int("cap-turn", 6,
+		"потолок вызовов модели на один ход: разбор, актёр×2, Мастер, проверка, нарратив")
 	envFile := flag.String("env", ".env", "файл с переменными окружения; уже заданное окружение приоритетнее")
 	flag.Parse()
 	loadDotenv(*envFile)
@@ -113,7 +119,10 @@ func main() {
 		if *guardLines {
 			act = act.WithGuard(actor.NewGuard(gw))
 		}
-		session.WithVoicer(&actor.GameVoicer{Actor: act, Game: game, Turn: session.Turn})
+		gm := master.New(gw)
+		session.WithVoicer(&actor.GameVoicer{
+			Actor: act, Game: game, Turn: session.Turn, Master: gm})
+		session.WithNarrator(&narrator{master: gm, game: game})
 		defer func() { reportMetrics(gw, parser) }()
 	}
 
@@ -123,13 +132,25 @@ func main() {
 	}
 }
 
+// narrator связывает Мастера с презентацией. Проза необязательна: без -nl
+// печатается авторский текст, и это тот же текст, что служит Мастеру рамкой.
+type narrator struct {
+	master *master.Master
+	game   *core.Game
+}
+
+func (n *narrator) Narrate(ctx context.Context, frame string, scene, outcome []string) (string, error) {
+	return n.master.Narrate(ctx, frame,
+		master.World{Setting: n.game.Setting, Scene: scene}, outcome, llm.Request{})
+}
+
 // reportMetrics печатает то, без чего слой моделей нельзя вести: расход,
 // стоимость бита и долю непонятого ввода по классу глагола.
 func reportMetrics(gw *llm.Gateway, p *intent.Parser) {
 	s := gw.Stats()
 	fmt.Fprintf(os.Stderr, "\nрасход: %.4f $  битов: %d\n",
 		float64(s.SpentMicro)/1e6, s.Bits)
-	for _, role := range []llm.Role{llm.RoleIntentParser, llm.RoleActor} {
+	for _, role := range []llm.Role{llm.RoleIntentParser, llm.RoleActor, llm.RoleNarrator} {
 		if n := s.CallsByRole[role]; n > 0 {
 			fmt.Fprintf(os.Stderr, "вызовов %s: %d (%.4f $)\n",
 				role, n, float64(s.ByRole[role])/1e6)

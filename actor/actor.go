@@ -18,6 +18,7 @@ import (
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
+	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -47,6 +48,18 @@ type Situation struct {
 	Setting string
 	// Life — быт этого человека: смена, привычки, о чём ворчит.
 	Life string
+	// Canon — ambient-детали мира, решённые Мастером раньше. Материал: их
+	// персонаж вправе озвучивать сам, не запрашивая второй раз.
+	Canon []store.CanonFact
+	// Grants — что Мастер решил ПРЯМО СЕЙЧАС, в ответ на запрос персонажа.
+	Grants []master.Grant
+	// Refused — запросы, которые Мастер отклонил: об этом в мире ничего нет
+	// либо это территория дела. Отказ — законный исход, и уклонение по нему
+	// живее глухой стены.
+	Refused []string
+	// MasterAnswered — Мастер уже ответил, круг закончен. Второй запрос
+	// уводит разговор в цикл и съедает потолок вызовов на ход.
+	MasterAnswered bool
 	// Frame — авторская проза хода: реплика должна к ней примыкать, а не
 	// повторять её.
 	Frame string
@@ -209,6 +222,14 @@ type LineGuard interface {
 	Check(ctx context.Context, line string, material []string, req llm.Request) (bool, error)
 }
 
+// WorldMaster — власть над миром: единственный, кто вправе решить деталь,
+// которой в авторской затравке нет. Интерфейс здесь, потому что нужен он
+// именно протоколу разговора, а реализация живёт в пакете master.
+type WorldMaster interface {
+	Grant(ctx context.Context, needs []string, canon []master.CanonFact,
+		w master.World, req llm.Request) ([]master.Grant, []string, error)
+}
+
 type Actor struct {
 	gw    *llm.Gateway
 	guard LineGuard
@@ -278,6 +299,14 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 	if err != nil {
 		return "", err
 	}
+	return a.finish(ctx, s, sit, out, req)
+}
+
+// finish — политика над полученной репликой: пометить тему, отбить пустое и
+// длинное, проверить на выдумку. Отдельно от speak, потому что протокол с
+// Мастером вклинивается между вызовом модели и этой политикой.
+func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
+	req llm.Request) (string, error) {
 	// Названная тема помечается рассказанной: второй раз она прозвучит как
 	// заклинивший автомат. Названная неверно — просто хинт мимо, и реплику
 	// это не рубит: грамматикой набор ходов больше не является.
@@ -399,6 +428,13 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	if sit.Life != "" {
 		out = append(out, sit.Life)
 	}
+	// Канон и то, что решил Мастер, — правда о мире, а не выдумка персонажа.
+	for _, c := range sit.Canon {
+		out = append(out, c.Topic+": "+c.Text)
+	}
+	for _, gr := range sit.Grants {
+		out = append(out, gr.Topic+": "+gr.Answer)
+	}
 	for _, t := range sit.Talks {
 		out = append(out, t.Note)
 	}
@@ -483,6 +519,28 @@ func renderPrompt(s Speaker, sit Situation, act Act) string {
 		b.WriteString("Ты знаешь нечто, чего им знать не положено: можешь дать понять, " +
 			"что знаешь, но не говори что.\n")
 	}
+	if len(sit.Canon) > 0 {
+		b.WriteString("Про мир уже известно — этим можешь пользоваться свободно:\n")
+		for _, c := range sit.Canon {
+			b.WriteString("  " + c.Topic + ": " + c.Text + "\n")
+		}
+	}
+	if len(sit.Grants) > 0 {
+		b.WriteString("Мастер сообщает — это правда о мире, говори как своё:\n")
+		for _, gr := range sit.Grants {
+			b.WriteString("  " + gr.Topic + ": " + gr.Answer + "\n")
+		}
+	}
+	if len(sit.Refused) > 0 {
+		b.WriteString("Про это в мире ничего нет — не выдумывай, уклонись по-человечески:\n")
+		for _, r := range sit.Refused {
+			b.WriteString("  " + r + "\n")
+		}
+	}
+	if sit.MasterAnswered {
+		b.WriteString("Мастер уже ответил: договаривай тем, что есть, " +
+			"больше не спрашивай.\n")
+	}
 	if len(sit.Scene) > 0 {
 		b.WriteString("Обстановка — об этом можно говорить свободно:\n")
 		for _, sc := range sit.Scene {
@@ -553,6 +611,9 @@ type GameVoicer struct {
 	// Turn — номер текущего хода. Нужен только памяти: транскрипт читается
 	// как разговор, а не как список. Без него круги нумеруются нулём.
 	Turn func() int
+	// Master — власть над миром. Без него запросы персонажа просто
+	// игнорируются: игра работает как раньше, авторским материалом.
+	Master WorldMaster
 }
 
 func (v *GameVoicer) turn() int {
@@ -582,12 +643,13 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 	if !ok {
 		return "", nil
 	}
-	line, err := v.Actor.Line(ctx, speaker, Situation{
+	sit := Situation{
 		Verb:       string(in.Verb),
 		PlayerText: in.Args.Text,
 		History:    v.Game.D.Recent(in.Args.Target),
 		Setting:    v.Game.Setting,
 		Life:       v.Game.D.Life(in.Args.Target),
+		Canon:      v.Game.Canon(),
 		Known:      KnownTopics(v.Game),
 		Talks:      topicsOf(v.Game, in.Args.Target),
 		MarkTold: func(t Topic) {
@@ -598,7 +660,9 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		KnowsSomething: knowsUnrevealed(v.Game, in.Args.Target),
 		Scene:          SceneOf(v.Game, speaker.ID),
 		Frame:          frameOf(v.Game, res.FlavourKey),
-	}, v.Req)
+	}
+
+	line, err := v.talk(ctx, speaker, sit)
 	if err != nil || line == "" {
 		return "", err
 	}
@@ -611,6 +675,66 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 	}
 	v.Game.D.Remember(in.Args.Target, said, line, v.turn())
 	return line, nil
+}
+
+// talk — один ход разговора по протоколу: персонаж отвечает, чего не знает —
+// запрашивает, Мастер решает, персонаж договаривает.
+//
+// Круг ровно ОДИН. Запросы второго прохода игнорируются: иначе разговор уходит
+// в цикл «а это кто, а тот кто» и съедает потолок вызовов на ход, а игрок
+// ждёт реплику вместо ответа.
+func (v *GameVoicer) talk(ctx context.Context, speaker Speaker, sit Situation) (string, error) {
+	first, err := v.Actor.speak(ctx, speaker, sit, v.Req)
+	if err != nil {
+		return "", err
+	}
+	grants, refused := v.resolveNeeds(ctx, first.Needs, sit)
+	if len(grants) == 0 && len(refused) == 0 {
+		// Мастера нет, спрашивать нечего или он не ответил — договаривать
+		// нечем, и переспрашивать модель впустую значит платить за шум.
+		return v.Actor.finish(ctx, speaker, sit, first, v.Req)
+	}
+	sit.Grants, sit.Refused, sit.MasterAnswered = grants, refused, true
+	return v.Actor.Line(ctx, speaker, sit, v.Req)
+}
+
+// resolveNeeds спрашивает Мастера о том, чего у персонажа нет.
+//
+// Сбой Мастера не рушит ход: персонаж договаривает тем, что у него есть.
+// Реплика уже получена, и ронять из-за надстройки закоммиченный ход нельзя.
+func (v *GameVoicer) resolveNeeds(ctx context.Context, needs []string,
+	sit Situation) ([]master.Grant, []string) {
+	if v.Master == nil || len(needs) == 0 {
+		return nil, nil
+	}
+	granted, refused, err := v.Master.Grant(ctx, needs, canonFor(v.Game),
+		master.World{Setting: v.Game.Setting, Scene: sit.Scene}, v.Req)
+	if err != nil {
+		return nil, nil
+	}
+	out := make([]master.Grant, 0, len(granted))
+	for _, g := range granted {
+		// Канон держит слово: если тема уже решена, действующий ответ
+		// сильнее свежего. Иначе второй вопрос даёт второй мир.
+		if g.Canon {
+			if text := v.Game.CanonPut(g.Topic, g.Answer, v.turn()); text != "" {
+				g.Answer = text
+			}
+		}
+		out = append(out, g)
+	}
+	return out, refused
+}
+
+// canonFor — канон дела в форме, которую понимает Мастер. Он обязан видеть
+// решённое: иначе решит тот же вопрос второй раз и по-другому.
+func canonFor(g *core.Game) []master.CanonFact {
+	all := g.Canon()
+	out := make([]master.CanonFact, 0, len(all))
+	for _, c := range all {
+		out = append(out, master.CanonFact{Topic: c.Topic, Text: c.Text})
+	}
+	return out
 }
 
 // frameOf — авторская проза хода, если она есть. Отсутствующий ключ Flavour

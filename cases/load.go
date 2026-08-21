@@ -116,6 +116,7 @@ func Parse(raw []byte) (*core.Config, error) {
 		Truth:     accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
 		Flavour:   f.Flavour,
 		Setting:   f.Setting,
+		CaseID:    f.ID,
 		Tokens:    tokens,
 		Start:     f.Start,
 		Aftermath: f.Aftermath,

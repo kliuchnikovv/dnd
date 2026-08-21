@@ -16,6 +16,9 @@ type DB struct {
 	Knowledge  []Knowledge
 	Dossiers   map[DossierKey]*Dossier
 	Props      map[NodeID][]SceneProp
+	// Canon — ambient-детали мира, решённые Мастером по ходу игры. Отдельно
+	// от фактов дела: факт дела импровизацией не канонизируется никогда.
+	Canon map[CanonKey]CanonFact
 
 	// Пустые до M2. См. store/future.go: пустая таблица стоит ноль, миграция
 	// потом стоит дорого.
@@ -38,6 +41,7 @@ func NewDB() *DB {
 		Characters: map[CharacterID]*Character{},
 		Dossiers:   map[DossierKey]*Dossier{},
 		Props:      map[NodeID][]SceneProp{},
+		Canon:      map[CanonKey]CanonFact{},
 		Cases:      map[CaseID]*Case{},
 		Regions:    map[RegionID]Region{},
 	}

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -151,5 +153,83 @@ func TestSuccessShowsNoCostLine(t *testing.T) {
 	})
 	if strings.Contains(out, "цена") {
 		t.Errorf("у успеха появилась цена: %q", out)
+	}
+}
+
+// --- проза Мастера ---
+
+type fakeNarrator struct {
+	prose   string
+	err     error
+	calls   int
+	frames  []string
+	outcome []string
+}
+
+func (n *fakeNarrator) Narrate(_ context.Context, frame string, scene, outcome []string) (string, error) {
+	n.calls++
+	n.frames = append(n.frames, frame)
+	n.outcome = append(n.outcome, outcome...)
+	return n.prose, n.err
+}
+
+// Сцену описывает Мастер, а не статичный флейвор. Структура остаётся кодовой:
+// заголовок, цели, выходы печатает презентация.
+func TestMasterProseReplacesFlavourInScene(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{prose: "Дождь не унимается, доски скользят."}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+
+	got := s.r.Scene(g)
+	if !strings.Contains(got, "Дождь не унимается") {
+		t.Errorf("проза Мастера не попала в сцену: %q", got)
+	}
+	if !strings.Contains(got, "==") {
+		t.Errorf("структура сцены потерялась: %q", got)
+	}
+	if n.calls != 1 || !strings.Contains(n.frames[0], g.Flavour("look."+string(g.Node))) {
+		t.Errorf("авторская рамка не доехала до Мастера: %d %v", n.calls, n.frames)
+	}
+}
+
+// Механические строки Мастеру не принадлежат: бросок, «узнали» и цену
+// печатает код, иначе проза начнёт врать о механике.
+func TestMechanicalLinesStayWithTheCode(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{prose: "Вы всматриваетесь в темноту склада."}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+
+	res := g.Apply(core.Intent{Verb: "examine", Args: core.Args{Target: "e_body"}})
+	got := s.r.Turn(g, res)
+	if !strings.Contains(got, "Вы всматриваетесь") {
+		t.Errorf("проза Мастера не попала в исход: %q", got)
+	}
+	if len(res.Learned) > 0 && !strings.Contains(got, "+ узнали") {
+		t.Errorf("механическая строка исчезла: %q", got)
+	}
+	// Исход обязан доехать до Мастера: он описывает то, что произошло.
+	if n.calls != 1 {
+		t.Fatalf("Мастер вызван %d раз", n.calls)
+	}
+}
+
+// Сбой Мастера не рушит ход: печатается авторский текст, как без -nl.
+func TestNarratorFailureFallsBackToAuthoredProse(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{err: errors.New("шлюз закрыт")}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+
+	got := s.r.Scene(g)
+	if !strings.Contains(got, g.Flavour("look."+string(g.Node))) {
+		t.Errorf("авторская проза не подставилась после сбоя: %q", got)
+	}
+}
+
+// Без Мастера всё как раньше: печатается авторский текст.
+func TestWithoutNarratorAuthoredProseIsPrinted(t *testing.T) {
+	g := renderGame(t)
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{})
+	if got := s.r.Scene(g); !strings.Contains(got, g.Flavour("look."+string(g.Node))) {
+		t.Errorf("авторская проза не напечатана: %q", got)
 	}
 }

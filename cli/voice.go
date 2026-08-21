@@ -59,3 +59,28 @@ func (s *Session) speak(in core.Intent, res core.TurnResult) {
 		fmt.Fprintln(s.Out, Spoken(line))
 	}
 }
+
+// Narrator — необязательная проза Мастера. Он описывает сцену и исход вместо
+// статичного авторского текста, но авторский текст остаётся рамкой: Мастер её
+// оживляет, не заменяя.
+//
+// Механические строки — бросок, «узнали», цена — Мастеру не принадлежат: их
+// печатает код, иначе проза начнёт врать о механике.
+type Narrator interface {
+	Narrate(ctx context.Context, frame string, scene, outcome []string) (string, error)
+}
+
+// WithNarrator включает прозу Мастера.
+func (s *Session) WithNarrator(n Narrator) *Session {
+	s.narrator = n
+	s.r.Prose = func(frame string, scene, outcome []string) string {
+		// Сбой надстройки не рушит ход: печатается авторский текст, как без
+		// -nl. Проза необязательна, а ход уже сыгран.
+		out, err := n.Narrate(s.turnContext(), frame, scene, outcome)
+		if err != nil || strings.TrimSpace(out) == "" {
+			return frame
+		}
+		return out
+	}
+	return s
+}

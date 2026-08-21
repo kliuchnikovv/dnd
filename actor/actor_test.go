@@ -2,6 +2,7 @@ package actor
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/llm"
+	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -780,5 +782,236 @@ func TestMissingFrameDoesNotReachThePrompt(t *testing.T) {
 	if in := f.Calls()[0].Input; strings.Contains(in, "[нет.такого.ключа]") ||
 		strings.Contains(in, "Что уже описано: []") {
 		t.Errorf("дыра флейвора доехала в промпт:\n%s", in)
+	}
+}
+
+// --- протокол: актёр запрашивает данные у Мастера ---
+
+// fakeMaster — Мастер под контролем теста. Реальный живёт в пакете master и
+// проверяется там; здесь проверяется протокол, а не его решения.
+type fakeMaster struct {
+	grants  []master.Grant
+	answers []string // ответы по вызовам: Мастер вправе надумать новое
+	refuse  []string
+	err     error
+	calls   int
+	needs   []string
+	canon   []master.CanonFact
+	setting string
+}
+
+func (m *fakeMaster) Grant(_ context.Context, needs []string, canon []master.CanonFact,
+	w master.World, _ llm.Request) ([]master.Grant, []string, error) {
+	m.needs = append(m.needs, needs...)
+	m.canon = canon
+	m.setting = w.Setting
+	if len(m.answers) > 0 {
+		answer := m.answers[min(m.calls, len(m.answers)-1)]
+		m.calls++
+		return []master.Grant{{Topic: "ключи от весовой", Answer: answer, Canon: true}},
+			nil, m.err
+	}
+	m.calls++
+	return m.grants, m.refuse, m.err
+}
+
+// Реплики по кругу: первая с запросом, вторая — договаривает.
+func repliesInOrder(t *testing.T, replies ...string) (*Actor, *llm.Fake) {
+	t.Helper()
+	var i int
+	f := llm.NewFake("fake", true).ReplyWith(func(llm.Request) string {
+		out := replies[min(i, len(replies)-1)]
+		i++
+		return out
+	})
+	gw := llm.NewGateway(
+		llm.NewRouter().Route(llm.RoleActor, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewLedger(llm.Caps{}))
+	return New(gw), f
+}
+
+// Круг ровно один: актёр спросил, Мастер ответил, актёр договорил.
+func TestNeedsGoToMasterAndBack(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t,
+		`{"line":"Сейчас скажу.","needs":["кто держит ключи от весовой"]}`,
+		`{"line":"Ключи у смотрителя весов, к нему и идите."}`)
+	m := &fakeMaster{grants: []master.Grant{
+		{Topic: "ключи от весовой", Answer: "у смотрителя весов", Canon: true}}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m, Turn: func() int { return 2 }}
+
+	got, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "а ключи у кого?"}}, core.TurnResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Ключи у смотрителя весов, к нему и идите." {
+		t.Errorf("реплика %q — актёр не договорил с данными Мастера", got)
+	}
+	if m.calls != 1 {
+		t.Errorf("Мастер вызван %d раз, круг должен быть один", m.calls)
+	}
+	if len(f.Calls()) != 2 {
+		t.Errorf("вызовов актёра %d, ждали два", len(f.Calls()))
+	}
+	if in := f.Calls()[1].Input; !strings.Contains(in, "у смотрителя весов") {
+		t.Errorf("ответ Мастера не доехал во второй вызов:\n%s", in)
+	}
+	if m.setting == "" {
+		t.Error("Мастер решает без сеттинга дела")
+	}
+}
+
+// Решённое Мастером оседает в каноне и держит слово: спросят второй раз —
+// вернётся то же, даже если Мастер надумал новое. Без этого «расширение мира»
+// становится генератором противоречий.
+func TestGrantedDetailBecomesCanonAndHoldsIt(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t,
+		`{"line":"Сейчас.","needs":["кто держит ключи от весовой"]}`,
+		`{"line":"У смотрителя весов."}`,
+		`{"line":"Сейчас.","needs":["кто держит ключи от весовой"]}`,
+		`{"line":"Я же сказал — у смотрителя."}`)
+	m := &fakeMaster{answers: []string{"у смотрителя весов", "у начальника стражи"}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+	in := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern", Text: "ключи?"}}
+
+	if _, err := v.Voice(context.Background(), in, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := g.CanonGet("ключи от весовой"); !ok || got != "у смотрителя весов" {
+		t.Fatalf("деталь не осела в каноне: %q (%v)", got, ok)
+	}
+	if _, err := v.Voice(context.Background(), in, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := g.CanonGet("ключи от весовой"); got != "у смотрителя весов" {
+		t.Errorf("канон переписан вторым ответом Мастера: %q", got)
+	}
+	// Актёр договаривает действующим каноном, а не свежей выдумкой Мастера.
+	last := f.Calls()[len(f.Calls())-1].Input
+	if !strings.Contains(last, "у смотрителя весов") || strings.Contains(last, "начальника стражи") {
+		t.Errorf("актёру доехал не канон:\n%s", last)
+	}
+}
+
+// Мимолётное каноном не становится: настроение и «кто сейчас прошёл мимо» в
+// канон писать нельзя, иначе он зарастёт шумом.
+func TestNonCanonGrantIsNotRemembered(t *testing.T) {
+	g := harbour(t)
+	a, _ := repliesInOrder(t,
+		`{"line":"Сейчас.","needs":["кто там шумит"]}`, `{"line":"Грузчики бранятся."}`)
+	m := &fakeMaster{grants: []master.Grant{
+		{Topic: "кто там шумит", Answer: "грузчики бранятся у весов", Canon: false}}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+
+	if _, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "что за шум?"}}, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Canon()) != 0 {
+		t.Errorf("мимолётное ушло в канон: %+v", g.Canon())
+	}
+}
+
+// Отказ Мастера — законный исход: персонаж договаривает честным уклонением,
+// а не выдумкой и не заглушкой.
+func TestMasterRefusalReachesTheActor(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t,
+		`{"line":"Сейчас.","needs":["кто убил Халдена"]}`,
+		`{"line":"Про такое я не знаю, и знать не хочу."}`)
+	m := &fakeMaster{refuse: []string{"кто убил Халдена"}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+
+	got, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "кто убил?"}}, core.TurnResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Про такое я не знаю, и знать не хочу." {
+		t.Errorf("реплика %q", got)
+	}
+	if in := f.Calls()[1].Input; !strings.Contains(in, "кто убил Халдена") {
+		t.Errorf("отказ не доехал до актёра:\n%s", in)
+	}
+}
+
+// Второй круг запрещён: needs второго прохода игнорируются, иначе разговор
+// уходит в цикл запросов и съедает потолок вызовов на ход.
+func TestSecondRoundNeedsAreIgnored(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t,
+		`{"line":"Сейчас.","needs":["кто держит ключи"]}`,
+		`{"line":"Спросите в конторе.","needs":["а кто в конторе сидит"]}`)
+	m := &fakeMaster{grants: []master.Grant{
+		{Topic: "ключи", Answer: "у смотрителя", Canon: true}}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+
+	got, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "ключи?"}}, core.TurnResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Спросите в конторе." {
+		t.Errorf("реплика %q", got)
+	}
+	if m.calls != 1 || len(f.Calls()) != 2 {
+		t.Errorf("круг не один: Мастер %d, актёр %d", m.calls, len(f.Calls()))
+	}
+	if in := f.Calls()[1].Input; !strings.Contains(in, "больше не спрашивай") {
+		t.Errorf("актёру не сказано, что круг закончен:\n%s", in)
+	}
+}
+
+// Сбой Мастера не рушит ход: персонаж договаривает тем, что у него есть.
+func TestMasterFailureLeavesTheFirstLine(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t, `{"line":"Не знаю, право слово.","needs":["кто держит ключи"]}`)
+	m := &fakeMaster{err: errors.New("шлюз закрыт")}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+
+	got, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "ключи?"}}, core.TurnResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Не знаю, право слово." {
+		t.Errorf("реплика %q — сбой Мастера съел ход", got)
+	}
+	if len(f.Calls()) != 1 {
+		t.Error("после сбоя Мастера актёра переспросили впустую")
+	}
+}
+
+// Без Мастера запрос просто игнорируется: игра без него работает как раньше.
+func TestNeedsWithoutMasterAreIgnored(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t, `{"line":"Кто их знает.","needs":["кто держит ключи"]}`)
+	v := &GameVoicer{Actor: a, Game: g}
+
+	got, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "ключи?"}}, core.TurnResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Кто их знает." || len(f.Calls()) != 1 {
+		t.Errorf("реплика %q, вызовов %d", got, len(f.Calls()))
+	}
+}
+
+// Канон — материал персонажа: решённую деталь он вправе озвучивать сам, не
+// запрашивая её второй раз.
+func TestCanonReachesThePrompt(t *testing.T) {
+	g := harbour(t)
+	g.CanonPut("ключи от весовой", "у смотрителя весов", 1)
+	v, f := voicer(t, g, `{"line":"У смотрителя."}`)
+
+	if _, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "ключи?"}}, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[0].Input; !strings.Contains(in, "у смотрителя весов") {
+		t.Errorf("канон не доехал в промпт:\n%s", in)
 	}
 }

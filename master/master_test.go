@@ -1,0 +1,156 @@
+package master
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/kliuchnikovv/dnd/llm"
+)
+
+func masterWith(t *testing.T, reply string) (*Master, *llm.Fake) {
+	t.Helper()
+	f := llm.NewFake("fake", true).ReplyWith(func(llm.Request) string { return reply })
+	gw := llm.NewGateway(
+		llm.NewRouter().Route(llm.RoleNarrator, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewLedger(llm.Caps{}))
+	return New(gw), f
+}
+
+// Мастер — единственная власть над миром: он отвечает на то, чего у персонажа
+// нет, и помечает решённое каноном.
+func TestGrantAnswersNeeds(t *testing.T) {
+	m, f := masterWith(t, `{"grants":[{"topic":"ключи от весовой",`+
+		`"answer":"ключи у смотрителя весов, он же запирает на ночь","canon":true}]}`)
+
+	grants, refused, err := m.Grant(context.Background(),
+		[]string{"кто держит ключи от весовой"}, nil,
+		World{Setting: "посёлок в устье", Scene: []string{"Место: Пристань"}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refused) != 0 {
+		t.Errorf("отказ там, где был ответ: %v", refused)
+	}
+	if len(grants) != 1 || !grants[0].Canon {
+		t.Fatalf("ответ Мастера не разобрался: %+v", grants)
+	}
+	if grants[0].Topic != "ключи от весовой" ||
+		!strings.Contains(grants[0].Answer, "смотрителя весов") {
+		t.Errorf("ответ не тот: %+v", grants[0])
+	}
+	if f.Calls()[0].Role != llm.RoleNarrator {
+		t.Errorf("Мастер вызван не своей ролью: %q", f.Calls()[0].Role)
+	}
+}
+
+// Отказ — законный исход: territory дела Мастеру не принадлежит.
+func TestGrantRefusalIsALegalOutcome(t *testing.T) {
+	m, _ := masterWith(t, `{"grants":[],"refuse":["кто убил Халдена"]}`)
+
+	grants, refused, err := m.Grant(context.Background(),
+		[]string{"кто убил Халдена"}, nil, World{}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 0 {
+		t.Errorf("Мастер выдал содержание дела: %+v", grants)
+	}
+	if len(refused) != 1 || refused[0] != "кто убил Халдена" {
+		t.Errorf("отказ не разобрался: %v", refused)
+	}
+}
+
+// Пустой запрос модель не беспокоит: вызов без нужды это деньги за шум.
+func TestGrantWithoutNeedsDoesNotCallTheModel(t *testing.T) {
+	m, f := masterWith(t, `{"grants":[]}`)
+	grants, refused, err := m.Grant(context.Background(), nil, nil, World{}, llm.Request{})
+	if err != nil || len(grants) != 0 || len(refused) != 0 {
+		t.Errorf("пустой запрос дал %+v %v %v", grants, refused, err)
+	}
+	if len(f.Calls()) != 0 {
+		t.Error("модель вызвана впустую")
+	}
+}
+
+// Уже решённое Мастер видит: иначе он решит то же второй раз и по-другому.
+func TestGrantSeesExistingCanon(t *testing.T) {
+	m, f := masterWith(t, `{"grants":[]}`)
+	_, _, err := m.Grant(context.Background(), []string{"аптека"},
+		[]CanonFact{{Topic: "аптека", Text: "аптеки нет, только травница"}}, World{}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[0].Input; !strings.Contains(in, "травница") {
+		t.Errorf("канон не доехал до Мастера:\n%s", in)
+	}
+}
+
+// Решение ambient-детали — это «да/нет и одна строка». Дорогая модель ей не
+// нужна: за неё платится в каждом разговоре.
+func TestGrantGoesCheap(t *testing.T) {
+	m, f := masterWith(t, `{"grants":[]}`)
+	m.Grant(context.Background(), []string{"аптека"}, nil, World{}, llm.Request{})
+	if got := f.Calls()[0].Tier; got != llm.TierCheap {
+		t.Errorf("запрос к Мастеру пошёл тиром %q", got)
+	}
+}
+
+// Нарратив: авторская рамка не заменяется, а оживляется. Противоречить ей
+// Мастер не вправе, поэтому она обязана доехать.
+func TestNarrateCarriesFrameSceneAndOutcome(t *testing.T) {
+	m, f := masterWith(t, "Дождь не унимается, и доски под ногами скользят.")
+	got, err := m.Narrate(context.Background(),
+		"Дождь сечёт доски пристани.", World{Scene: []string{"Место: Пристань"}},
+		[]string{"успех, маржа +3", "узнали: тело найдено на складе"}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Дождь не унимается, и доски под ногами скользят." {
+		t.Errorf("проза Мастера %q", got)
+	}
+	in := f.Calls()[0].Input
+	for _, want := range []string{"Дождь сечёт доски", "Место: Пристань", "маржа +3"} {
+		if !strings.Contains(in, want) {
+			t.Errorf("в промпте нет %q:\n%s", want, in)
+		}
+	}
+}
+
+// Мастеру нельзя вводить содержание, похожее на дело: containment живёт на
+// его границе, а не размазан по каждой реплике.
+func TestPromptsForbidCaseContent(t *testing.T) {
+	m, f := masterWith(t, `{"grants":[]}`)
+	m.Grant(context.Background(), []string{"аптека"}, nil, World{}, llm.Request{})
+	m.Narrate(context.Background(), "рамка", World{}, nil, llm.Request{})
+
+	for i, call := range f.Calls() {
+		sys := strings.ToLower(call.System)
+		if !strings.Contains(sys, "дел") || !strings.Contains(sys, "автор") {
+			t.Errorf("вызов %d: в промпте нет границы дела:\n%s", i, call.System)
+		}
+	}
+}
+
+// Схема запроса — форма ответа Мастера. Без canon флага деталь не осядет в
+// каноне, и второй вопрос даст новую выдумку.
+func TestGrantSchemaCarriesCanonFlag(t *testing.T) {
+	m, f := masterWith(t, `{"grants":[]}`)
+	m.Grant(context.Background(), []string{"аптека"}, nil, World{}, llm.Request{})
+
+	var probe map[string]any
+	if err := json.Unmarshal([]byte(f.Calls()[0].Schema), &probe); err != nil {
+		t.Fatal(err)
+	}
+	props := probe["properties"].(map[string]any)
+	item := props["grants"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	for _, want := range []string{"topic", "answer", "canon"} {
+		if _, ok := item[want]; !ok {
+			t.Errorf("в схеме ответа нет поля %q", want)
+		}
+	}
+	if _, ok := props["refuse"]; !ok {
+		t.Error("в схеме нет отказа — а отказ законный исход")
+	}
+}

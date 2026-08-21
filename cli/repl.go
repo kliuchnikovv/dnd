@@ -15,14 +15,15 @@ import (
 // Session гоняет один и тот же цикл и для интерактивного REPL, и для скрипта:
 // прогон воспроизводится парой (seed, файл команд).
 type Session struct {
-	Game   *core.Game
-	In     io.Reader
-	Out    io.Writer
-	r      Render
-	sc     *bufio.Scanner
-	interp Interpreter
-	voicer Voicer
-	turn   int
+	Game     *core.Game
+	In       io.Reader
+	Out      io.Writer
+	r        Render
+	sc       *bufio.Scanner
+	interp   Interpreter
+	voicer   Voicer
+	narrator Narrator
+	turn     int
 	// spokenTo — последний, к кому обращались. Разговор продолжается с тем же
 	// человеком: игроку не надо называть его в каждой реплике.
 	spokenTo store.EntityID

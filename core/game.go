@@ -24,6 +24,9 @@ func party(id string) string {
 
 type Config struct {
 	DB *store.DB
+	// CaseID — какое это дело. Ключует канон мира: деталь, решённую в одном
+	// деле, нельзя молча применять к другому.
+	CaseID store.CaseID
 	// Party — чья это игра. Пусто означает одиночную парти по умолчанию.
 	Party   string
 	Rules   RuleSystem
@@ -70,6 +73,9 @@ type Game struct {
 	Companion store.EntityID
 	Hints     map[store.FactID]string
 
+	// CaseID — какое это дело. Ключ канона мира.
+	CaseID store.CaseID
+
 	// Setting — сеттинг-библия дела. Домен ею не пользуется; она лежит здесь,
 	// потому что читать её должен слой над доменом, а другого места, где
 	// собрано дело целиком, нет.
@@ -106,6 +112,7 @@ func NewGame(cfg Config) *Game {
 		truth: cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
 		aftermath: cfg.Aftermath, coldCase: cfg.ColdCase,
 		Setting:   cfg.Setting,
+		CaseID:    cfg.CaseID,
 		unlocked:  map[string]bool{},
 		hinted:    map[store.FactID]bool{},
 		Companion: cfg.Companion, Hints: cfg.Hints,

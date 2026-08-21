@@ -8,12 +8,38 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 )
 
-type Render struct{}
+type Render struct {
+	// Prose переписывает авторский текст прозой Мастера. Пустой — печатается
+	// авторский текст: игра без моделей обязана работать как раньше.
+	//
+	// Структура остаётся кодовой: заголовок, цели, выходы, бросок и «узнали»
+	// печатает презентация, а не модель.
+	Prose func(frame string, scene, outcome []string) string
+}
+
+// prose — авторский текст либо его оживлённая версия.
+func (r Render) prose(frame string, scene, outcome []string) string {
+	if r.Prose == nil || strings.TrimSpace(frame) == "" {
+		return frame
+	}
+	return r.Prose(frame, scene, outcome)
+}
+
+// sceneOf — что видно вокруг. Мастеру это нужно, чтобы не противоречить
+// обстановке.
+func sceneOf(g *core.Game) []string {
+	loc := g.DB.Locations[g.Node]
+	out := []string{"Место: " + loc.Name}
+	if len(loc.Tags) > 0 {
+		out = append(out, "Обстановка: "+strings.Join(loc.Tags, ", "))
+	}
+	return out
+}
 
 func (r Render) Scene(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
-	fmt.Fprintf(&b, "%s\n", g.Flavour("look."+string(g.Node)))
+	fmt.Fprintf(&b, "%s\n", r.prose(g.Flavour("look."+string(g.Node)), sceneOf(g), nil))
 	b.WriteString(targetList(g))
 	if reach := g.ReachableNodes(); len(reach) > 0 {
 		parts := make([]string, len(reach))
@@ -33,7 +59,7 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 	}
 	var b strings.Builder
 	if t.FlavourKey != "" {
-		fmt.Fprintf(&b, "%s\n", g.Flavour(t.FlavourKey))
+		fmt.Fprintf(&b, "%s\n", r.prose(g.Flavour(t.FlavourKey), sceneOf(g), outcomeOf(g, t)))
 	}
 	// Бросок печатается, только если он был: у безопасного действия кость не
 	// трогается, и Log.Die остаётся нулём.
@@ -56,6 +82,29 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 		fmt.Fprintf(&b, "  ⏱ %s\n", g.Flavour(c.FlavourKey))
 	}
 	return b.String()
+}
+
+// outcomeOf — что только что произошло, словами без механики. Мастер
+// описывает исход, поэтому исход обязан до него доехать; ключ факта тут
+// законен — парти его уже знает, а правды дела в нём нет.
+func outcomeOf(g *core.Game, t core.TurnResult) []string {
+	var out []string
+	if t.Res != nil {
+		out = append(out, "исход: "+t.Res.Class.String())
+	}
+	for _, l := range t.Learned {
+		out = append(out, "узнали: "+g.DB.Facts[l.Fact].Key)
+	}
+	if names := costNames(t.Costs); names != "" {
+		out = append(out, "цена: "+names)
+	}
+	if t.FalseLead {
+		out = append(out, "след оказался ложным")
+	}
+	if t.HalfEffect {
+		out = append(out, "помогло только наполовину")
+	}
+	return out
 }
 
 func (Render) roll(res core.Resolution) string {
