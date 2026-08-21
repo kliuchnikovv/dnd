@@ -8,21 +8,29 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 )
 
+// ProseKind — что описывает проза: обстановку или исход хода.
+type ProseKind string
+
+const (
+	ProsePlace   ProseKind = "place"
+	ProseOutcome ProseKind = "outcome"
+)
+
 type Render struct {
 	// Prose переписывает авторский текст прозой Мастера. Пустой — печатается
 	// авторский текст: игра без моделей обязана работать как раньше.
 	//
 	// Структура остаётся кодовой: заголовок, цели, выходы, бросок и «узнали»
 	// печатает презентация, а не модель.
-	Prose func(frame string, scene, outcome []string) string
+	Prose func(kind ProseKind, frame string, scene, outcome []string) string
 }
 
 // prose — авторский текст либо его оживлённая версия.
-func (r Render) prose(frame string, scene, outcome []string) string {
+func (r Render) prose(kind ProseKind, frame string, scene, outcome []string) string {
 	if r.Prose == nil || strings.TrimSpace(frame) == "" {
 		return frame
 	}
-	return r.Prose(frame, scene, outcome)
+	return r.Prose(kind, frame, scene, outcome)
 }
 
 // sceneOf — что видно вокруг. Мастеру это нужно, чтобы не противоречить
@@ -39,7 +47,7 @@ func sceneOf(g *core.Game) []string {
 func (r Render) Scene(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
-	fmt.Fprintf(&b, "%s\n", r.prose(g.Flavour("look."+string(g.Node)), sceneOf(g), nil))
+	fmt.Fprintf(&b, "%s\n", r.prose(ProsePlace, g.Flavour("look."+string(g.Node)), sceneOf(g), nil))
 	b.WriteString(targetList(g))
 	if reach := g.ReachableNodes(); len(reach) > 0 {
 		parts := make([]string, len(reach))
@@ -59,7 +67,7 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 	}
 	var b strings.Builder
 	if t.FlavourKey != "" {
-		fmt.Fprintf(&b, "%s\n", r.prose(g.Flavour(t.FlavourKey), sceneOf(g), outcomeOf(g, t)))
+		fmt.Fprintf(&b, "%s\n", r.prose(ProseOutcome, g.Flavour(t.FlavourKey), sceneOf(g), outcomeOf(g, t)))
 	}
 	// Бросок печатается, только если он был: у безопасного действия кость не
 	// трогается, и Log.Die остаётся нулём.

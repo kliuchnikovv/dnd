@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
@@ -49,6 +50,10 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
    чего не хватило. Не подгоняй фразу под неподходящий глагол.
 5. Если фраза ложится, но непонятно на что именно, верни clarify с коротким
    вопросом — в характере мира, не служебным языком.
+6. clarify и reason читает ИГРОК. Пиши их языком мира, а не языком словаря:
+   «бумаг при себе не оказалось», а не «в доступных действиях нет глагола для
+   использования предметов». О схеме, глаголах, списках и полях игрок не знает
+   и знать не должен.
 
 Ты не решаешь, удалось ли действие. Ты только переводишь.
 
@@ -160,6 +165,13 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 			raw.Node = id
 		}
 	}
+	// Там, где обязательный аргумент — свободный текст, он уже произнесён:
+	// это сама фраза игрока. Спрашивать «что именно ты хочешь сказать?» у
+	// того, кто только что это сказал, — допрос игрока о его же строке, и
+	// живой прогон упирался в него дважды за три хода.
+	if need.Text && strings.TrimSpace(raw.Text) == "" {
+		raw.Text = strings.TrimSpace(text)
+	}
 
 	if msg := requires(def.Verb).missing(raw); msg != "" {
 		// Пропущенный обязательный аргумент — единственный случай, который
@@ -214,8 +226,17 @@ type GameInterpreter struct {
 	Req llm.Request
 }
 
-func (gi *GameInterpreter) Interpret(ctx context.Context, text string) (*core.Intent, string, error) {
-	res, err := gi.Parser.Parse(ctx, text, BuildHint(gi.Game), gi.Req)
+func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with store.EntityID,
+	pending string) (*core.Intent, string, error) {
+	hint := BuildHint(gi.Game)
+	// Разговор — часть сцены. Транскрипт лежит в дневнике собеседника: его
+	// ведёт озвучка, а разбор им пользуется, и второго места правды не
+	// появляется.
+	hint.Talk = Talk{With: with, Pending: pending}
+	if with != "" {
+		hint.Talk.Recent = gi.Game.D.Recent(with)
+	}
+	res, err := gi.Parser.Parse(ctx, text, hint, gi.Req)
 	if err != nil {
 		return nil, "", err
 	}

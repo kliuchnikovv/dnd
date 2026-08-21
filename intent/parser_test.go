@@ -11,6 +11,7 @@ import (
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // parserWith собирает парсер, чей провайдер отвечает заданным JSON.
@@ -23,7 +24,7 @@ func parserWith(t *testing.T, replyJSON string) (*Parser, *llm.Fake) {
 	return NewParser(gw), f
 }
 
-func harbourHint(t *testing.T) SceneHint {
+func harbourGame(t *testing.T) *core.Game {
 	t.Helper()
 	cfg, err := cases.Load("../cases/harbour/case.json")
 	if err != nil {
@@ -31,7 +32,12 @@ func harbourHint(t *testing.T) SceneHint {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(1).Stream("resolve")
-	return BuildHint(core.NewGame(*cfg))
+	return core.NewGame(*cfg)
+}
+
+func harbourHint(t *testing.T) SceneHint {
+	t.Helper()
+	return BuildHint(harbourGame(t))
 }
 
 func parse(t *testing.T, replyJSON string, hint SceneHint) Result {
@@ -44,8 +50,10 @@ func parse(t *testing.T, replyJSON string, hint SceneHint) Result {
 	return got
 }
 
+// Схема отдаёт модели все глаголы, исполнимые в этой сцене. «Все» значит все
+// из реестра, когда сцена может дать каждому обязательный аргумент.
 func TestSchemaEnumeratesEveryVerb(t *testing.T) {
-	s := Schema()
+	s := SchemaFor(SceneHint{Tools: []Named{{"p_hammers", "Молоты"}}})
 	props := s["properties"].(map[string]any)
 	verb := props["verb"].(map[string]any)
 	enum := verb["enum"].([]string)
@@ -318,7 +326,9 @@ func TestArityIsCheckedForEveryShape(t *testing.T) {
 		{"question без темы", `{"outcome":"intent","verb":"question","target":"` + target + `"}`},
 		{"question без цели", `{"outcome":"intent","verb":"question","topic":"x"}`},
 		{"move_zone без узла", `{"outcome":"intent","verb":"move_zone"}`},
-		{"theorize без текста", `{"outcome":"intent","verb":"theorize"}`},
+		// theorize/say/emote в этот список не входят: их обязательный
+		// аргумент — свободный текст, и он берётся из фразы игрока, а не
+		// выспрашивается у него же (TestFreeTextVerbTakesThePlayersOwnWords).
 		{"use_item без предмета", `{"outcome":"intent","verb":"use_item"}`},
 		{"compare с одним фактом", `{"outcome":"intent","verb":"compare","facts":["f_x"]}`},
 		{"examine без цели", `{"outcome":"intent","verb":"examine"}`},
@@ -541,7 +551,7 @@ func TestRepairCountsOnceInMetrics(t *testing.T) {
 func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"talk_to","target":"e_bern"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном")
+	in, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +568,7 @@ func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
 func TestParsedTextWinsWhereItIsTheContent(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"theorize","text":"Токе лжёт про ночь"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь")
+	in, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,4 +587,173 @@ func interpGame(t *testing.T) *core.Game {
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(1).Stream("resolve")
 	return core.NewGame(*cfg)
+}
+
+// --- разбор в контексте разговора ---
+
+// Разбор без контекста разговора не понимает ответа на свой же вопрос.
+// Живой прогон: стражник просит предписание, игрок пишет «достаю из кармана»,
+// парсер спрашивает «чем именно?», игрок отвечает «рукой» — и всё начинается
+// заново, потому что о заданном вопросе никто не помнит.
+func TestPromptCarriesTheConversation(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"say","text":"вот предписание"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{
+		With: "e_bern",
+		Recent: []store.Exchange{
+			{Player: "Поздороваться с Берном", Reply: "Добрый день. Что привело вас в такую погоду?", Turn: 1},
+			{Player: "приехал по заданию — расследование", Reply: "Тогда предъявите предписание.", Turn: 2},
+		},
+		Pending: "чем именно?",
+	}
+
+	if _, err := p.Parse(context.Background(), "рукой", hint, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	in := f.Calls()[0].Input
+	for _, want := range []string{"Тогда предъявите предписание", "e_bern", "чем именно?"} {
+		if !strings.Contains(in, want) {
+			t.Errorf("в промпте нет %q:\n%s", want, in)
+		}
+	}
+	// Разговор обязан стоять до текущей фразы: промпт читается сверху вниз.
+	if strings.Index(in, "предъявите предписание") > strings.Index(in, "рукой") {
+		t.Errorf("разговор встал после фразы игрока:\n%s", in)
+	}
+}
+
+// Без разговора промпт не должен обрастать пустыми заголовками: пустая
+// секция это шум, за который платят токенами каждый ход.
+func TestPromptWithoutConversationStaysClean(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
+	if _, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[0].Input; strings.Contains(in, "Разговор") ||
+		strings.Contains(in, "Ты спросил") {
+		t.Errorf("пустая секция разговора попала в промпт:\n%s", in)
+	}
+}
+
+// Модели прямо сказано, что игрок отвечает на заданный вопрос: иначе она
+// читает «рукой» как новое действие и снова просит уточнить.
+func TestPendingQuestionIsFramedAsAnAnswer(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"unsupported","reason":"предмета нет"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{Pending: "чем именно?"}
+	if _, err := p.Parse(context.Background(), "рукой", hint, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[0].Input; !strings.Contains(in, "отвечает на этот вопрос") {
+		t.Errorf("ответ на вопрос не помечен как ответ:\n%s", in)
+	}
+}
+
+// Спрашивать «что именно ты хочешь сказать?» у того, кто только что это
+// сказал, — допрос игрока о его же фразе. Строка ввода и есть текст.
+func TestFreeTextVerbTakesThePlayersOwnWords(t *testing.T) {
+	for _, verb := range []string{"say", "theorize", "emote"} {
+		t.Run(verb, func(t *testing.T) {
+			p, _ := parserWith(t, `{"outcome":"intent","verb":"`+verb+`"}`)
+			res, err := p.Parse(context.Background(),
+				"приехал по заданию руководства — расследование", harbourHint(t), llm.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !res.Accepted() {
+				t.Fatalf("ход не принят, спросили: %q", res.Clarify)
+			}
+			if res.Intent.Args.Text != "приехал по заданию руководства — расследование" {
+				t.Errorf("текст хода %q", res.Intent.Args.Text)
+			}
+		})
+	}
+}
+
+// Модель, назвавшая текст сама, важнее исходной строки: в дневник пишется
+// гипотеза, а не команда её записать.
+func TestModelTextWinsOverRawInput(t *testing.T) {
+	p, _ := parserWith(t,
+		`{"outcome":"intent","verb":"theorize","text":"писарь врёт про контору"}`)
+	res, err := p.Parse(context.Background(),
+		"запишу-ка догадку: писарь врёт про контору", harbourHint(t), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent.Args.Text != "писарь врёт про контору" {
+		t.Errorf("текст хода %q", res.Intent.Args.Text)
+	}
+}
+
+// --- инструменты сцены ---
+
+// Обязательный аргумент, которого в сцене взять негде, — тупик: игра
+// спрашивает «чем именно?», а ответить нечем, потому что предметов тут нет.
+// Живой прогон упирался в это на «достаю предписание из кармана».
+func TestVerbWithUnsatisfiableSlotLeavesTheGrammar(t *testing.T) {
+	bare := SchemaFor(SceneHint{})
+	verbs := bare["properties"].(map[string]any)["verb"].(map[string]any)["enum"].([]string)
+	for _, v := range verbs {
+		if v == "use_item" {
+			t.Error("use_item предложен там, где применять нечего")
+		}
+	}
+}
+
+// Там, где инструмент есть, глагол возвращается — и с перечислением, чтобы
+// модель не могла выдумать предмет.
+func TestToolsInSceneRestoreTheVerb(t *testing.T) {
+	hint := SceneHint{Tools: []Named{{"p_hook_lamp", "Фонарь на крюке"}}}
+	props := SchemaFor(hint)["properties"].(map[string]any)
+	verbs := props["verb"].(map[string]any)["enum"].([]string)
+	var found bool
+	for _, v := range verbs {
+		if v == "use_item" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("инструмент в сцене есть, а применить его нельзя")
+	}
+	item := props["item"].(map[string]any)
+	enum, ok := item["enum"].([]string)
+	if !ok || len(enum) != 1 || enum[0] != "p_hook_lamp" {
+		t.Errorf("предмет без перечисления: %v", item)
+	}
+	if !strings.Contains(hint.Render(), "p_hook_lamp") {
+		t.Errorf("инструмент не назван в подсказке:\n%s", hint.Render())
+	}
+}
+
+// Инструменты берутся из сцены: проп с меткой tool в текущем узле, и ничего
+// кроме — иначе игрок «применяет» бочки.
+func TestBuildHintCollectsToolsOfTheNode(t *testing.T) {
+	g := harbourGame(t)
+	if got := BuildHint(g).Tools; len(got) != 0 {
+		t.Errorf("на пристани нашлись инструменты: %v", got)
+	}
+	g.Node = "n_forge"
+	tools := BuildHint(g).Tools
+	if len(tools) == 0 {
+		t.Fatal("в кузнице нет инструментов — фикстура сломана")
+	}
+	for _, tool := range tools {
+		if tool.ID != "p_hammers" {
+			t.Errorf("инструментом сочли %q", tool.ID)
+		}
+	}
+}
+
+// Отказ читает игрок, а не разработчик. «В доступных действиях нет глагола
+// для использования предметов» — это сообщение компилятора, а не мира.
+func TestPromptDemandsWorldLanguageInRefusals(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"unsupported","reason":"нечего применить"}`)
+	if _, err := p.Parse(context.Background(), "достаю предписание",
+		harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.Calls()[0].System
+	if !strings.Contains(sys, "языком мира") {
+		t.Errorf("промпт не требует говорить с игроком языком мира:\n%s", sys)
+	}
 }

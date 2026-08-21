@@ -133,10 +133,16 @@ type fakeInterp struct {
 	clarify string
 	err     error
 	seen    []string
+	// with, pending — контекст разговора, доехавший до разбора.
+	with    []store.EntityID
+	pending []string
 }
 
-func (f *fakeInterp) Interpret(_ context.Context, text string) (*core.Intent, string, error) {
+func (f *fakeInterp) Interpret(_ context.Context, text string, with store.EntityID,
+	pending string) (*core.Intent, string, error) {
 	f.seen = append(f.seen, text)
+	f.with = append(f.with, with)
+	f.pending = append(f.pending, pending)
 	return f.intent, f.clarify, f.err
 }
 
@@ -498,5 +504,57 @@ func TestRunEndsOnCorrectAccusation(t *testing.T) {
 	out := transcript(t, 1, "accuse\ntoke\ncord\nnight\naudit\nfacts\n")
 	if strings.Contains(out, "подтверждён тремя") {
 		t.Errorf("прогон продолжился после развязки:\n%s", out)
+	}
+}
+
+// --- контекст разговора для разбора ---
+
+// Игра спросила — значит следующая фраза игрока это ответ, и разбор обязан
+// знать вопрос. Живой прогон зациклился ровно здесь: «чем именно?» → «рукой»
+// → снова «уточни, что именно ты делаешь».
+func TestPendingQuestionReachesTheNextParse(t *testing.T) {
+	fi := &fakeInterp{clarify: "чем именно?"}
+	out, _ := runWith(t, fi, "достаю предписание\nрукой\nquit\n")
+
+	if len(fi.pending) < 2 {
+		t.Fatalf("разбор вызван %d раз: %v", len(fi.pending), fi.seen)
+	}
+	if fi.pending[0] != "" {
+		t.Errorf("первый ввод пришёл с вопросом из ниоткуда: %q", fi.pending[0])
+	}
+	if fi.pending[1] != "чем именно?" {
+		t.Errorf("заданный вопрос не доехал до следующего разбора: %q", fi.pending[1])
+	}
+	if !strings.Contains(out, "чем именно?") {
+		t.Errorf("вопрос не показан игроку:\n%s", out)
+	}
+}
+
+// Ответ пришёл — вопрос закрыт. Иначе старый контекст навязывается модели
+// сколько угодно ходов подряд.
+func TestAnsweredQuestionIsNotAskedAgain(t *testing.T) {
+	fi := &fakeInterp{intent: &core.Intent{Verb: "look"}}
+	fi.clarify = ""
+	runWith(t, fi, "осмотреться\nещё раз осмотреться\nquit\n")
+
+	for i, p := range fi.pending {
+		if p != "" {
+			t.Errorf("разбор %d получил вопрос, которого не задавали: %q", i, p)
+		}
+	}
+}
+
+// Собеседник доезжает до разбора: разговор идёт с ним, и «спрошу его же»
+// иначе не разобрать.
+func TestInterlocutorReachesTheParse(t *testing.T) {
+	fi := &fakeInterp{intent: &core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_toke"}}}
+	runWith(t, fi, "поздороваться с Токе\nа что нового\nquit\n")
+
+	if len(fi.with) < 2 {
+		t.Fatalf("разбор вызван %d раз", len(fi.with))
+	}
+	if fi.with[1] != "e_toke" {
+		t.Errorf("собеседник не доехал: %q", fi.with[1])
 	}
 }

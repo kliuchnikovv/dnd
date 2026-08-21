@@ -101,7 +101,7 @@ func TestGrantGoesCheap(t *testing.T) {
 // Мастер не вправе, поэтому она обязана доехать.
 func TestNarrateCarriesFrameSceneAndOutcome(t *testing.T) {
 	m, f := masterWith(t, "Дождь не унимается, и доски под ногами скользят.")
-	got, err := m.Narrate(context.Background(),
+	got, err := m.Narrate(context.Background(), KindOutcome,
 		"Дождь сечёт доски пристани.", World{Scene: []string{"Место: Пристань"}},
 		[]string{"успех, маржа +3", "узнали: тело найдено на складе"}, llm.Request{})
 	if err != nil {
@@ -123,7 +123,7 @@ func TestNarrateCarriesFrameSceneAndOutcome(t *testing.T) {
 func TestPromptsForbidCaseContent(t *testing.T) {
 	m, f := masterWith(t, `{"grants":[]}`)
 	m.Grant(context.Background(), []string{"аптека"}, nil, World{}, llm.Request{})
-	m.Narrate(context.Background(), "рамка", World{}, nil, llm.Request{})
+	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, llm.Request{})
 
 	for i, call := range f.Calls() {
 		sys := strings.ToLower(call.System)
@@ -159,8 +159,9 @@ func TestGrantSchemaCarriesCanonFlag(t *testing.T) {
 // ближе» там, где игрок озирается по сторонам.
 func TestNarrateTellsSceneFromOutcome(t *testing.T) {
 	m, f := masterWith(t, "проза")
-	m.Narrate(context.Background(), "рамка", World{}, nil, llm.Request{})
-	m.Narrate(context.Background(), "рамка", World{}, []string{"исход: успех"}, llm.Request{})
+	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, llm.Request{})
+	m.Narrate(context.Background(), KindOutcome, "рамка", World{},
+		[]string{"исход: успех"}, llm.Request{})
 
 	if got := f.Calls()[0].Input; !strings.Contains(got, "ОПИСАНИЕ МЕСТА") {
 		t.Errorf("сцена не помечена как описание места:\n%s", got)

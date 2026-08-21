@@ -23,6 +23,63 @@ type SceneHint struct {
 	Entities  []Named `json:"entities"`
 	Topics    []Named `json:"topics"`
 	Reachable []Named `json:"reachable"`
+	// Tools — пропы текущего узла, которыми можно воспользоваться. Без них
+	// use_item — тупик: обязательный аргумент есть, а взять его негде, и игра
+	// спрашивает «чем именно?», не имея ответа.
+	Tools []Named `json:"tools"`
+	// Talk — идущий разговор. Часть сцены: фраза игрока чаще всего продолжает
+	// разговор, а не начинает ход с нуля.
+	Talk Talk `json:"talk"`
+}
+
+// Talk — состояние разговора, в котором произнесена фраза.
+//
+// Без него разбор не понимает ответа на свой же вопрос: «достаю из кармана»
+// после просьбы предъявить предписание читается как загадка, а «рукой» после
+// вопроса «чем именно?» — как новое действие. Игрок при этом уверен, что
+// продолжает один разговор, и он прав.
+type Talk struct {
+	// With — с кем идёт разговор.
+	With store.EntityID `json:"with"`
+	// Recent — последние круги, от старого к новому.
+	Recent []store.Exchange `json:"recent"`
+	// Pending — вопрос, который игре задала сама игра и на который сейчас
+	// отвечает игрок.
+	Pending string `json:"pending"`
+}
+
+// empty сообщает, что разговора нет и печатать в промпт нечего: пустая секция
+// это шум, за который платят токенами каждый ход.
+func (t Talk) empty() bool {
+	return t.With == "" && len(t.Recent) == 0 && strings.TrimSpace(t.Pending) == ""
+}
+
+// render — разговор в виде, который уходит в промпт.
+func (t Talk) render() string {
+	if t.empty() {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nРазговор идёт")
+	if t.With != "" {
+		b.WriteString(" с " + string(t.With))
+	}
+	b.WriteString(":\n")
+	for _, e := range t.Recent {
+		if e.Player != "" {
+			b.WriteString("  игрок: " + e.Player + "\n")
+		}
+		if e.Reply != "" {
+			b.WriteString("  он: " + e.Reply + "\n")
+		}
+	}
+	if q := strings.TrimSpace(t.Pending); q != "" {
+		b.WriteString("Ты спросил игрока: " + q + "\n" +
+			"Фраза ниже отвечает на этот вопрос, а не начинает новое действие. " +
+			"Если ответ всё равно не ложится на глагол — unsupported, а не clarify " +
+			"тем же вопросом: спрашивать второй раз то же самое значит зациклить игру.\n")
+	}
+	return b.String()
 }
 
 // BuildHint собирает подсказку из игры. Единственный источник тем —
@@ -39,6 +96,17 @@ func BuildHint(g *core.Game) SceneHint {
 	for _, n := range g.ReachableNodes() {
 		h.Reachable = append(h.Reachable, Named{string(n), g.DB.Locations[n].Name})
 	}
+	// Инструмент — проп с меткой tool в этом узле: ровно то, что примет
+	// движок. Разойдись эти два списка, игрок «применял» бы бочки.
+	for _, p := range g.DB.Props[g.Node] {
+		for _, tag := range p.Tags {
+			if tag == "tool" {
+				h.Tools = append(h.Tools, Named{string(p.ID), p.Name})
+				break
+			}
+		}
+	}
+	sort.Slice(h.Tools, func(i, j int) bool { return h.Tools[i].ID < h.Tools[j].ID })
 	sort.Slice(h.Entities, func(i, j int) bool { return h.Entities[i].ID < h.Entities[j].ID })
 	return h
 }
@@ -77,7 +145,12 @@ func (h SceneHint) Render() string {
 	for _, n := range h.Reachable {
 		b.WriteString("  " + n.ID + " — " + n.Name + "\n")
 	}
+	if len(h.Tools) > 0 {
+		b.WriteString("Можно применить:\n")
+		for _, tool := range h.Tools {
+			b.WriteString("  " + tool.ID + " — " + tool.Name + "\n")
+		}
+	}
+	b.WriteString(h.Talk.render())
 	return b.String()
 }
-
-var _ = store.FactID("")

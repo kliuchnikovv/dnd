@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // Interpreter — необязательный переводчик свободного текста в интент.
@@ -16,7 +17,13 @@ import (
 type Interpreter interface {
 	// Interpret возвращает либо интент, либо вопрос игроку. Ошибка означает
 	// сбой канала, а не непонятый ввод: непонятое — это вопрос.
-	Interpret(ctx context.Context, text string) (*core.Intent, string, error)
+	//
+	// with — с кем игрок разговаривает, pending — вопрос, который игра задала
+	// ему на прошлом ходу. Без них разбор не понимает ответа на собственный
+	// вопрос: «рукой» после «чем именно?» читается как новое действие, и игра
+	// спрашивает то же самое по кругу.
+	Interpret(ctx context.Context, text string, with store.EntityID,
+		pending string) (*core.Intent, string, error)
 }
 
 // WithInterpreter включает перевод свободного текста.
@@ -49,7 +56,10 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		fmt.Fprintf(s.Out, "нельзя: %v\n", parseErr)
 		return false
 	}
-	in, clarify, err := s.interp.Interpret(s.turnContext(), text)
+	in, clarify, err := s.interp.Interpret(s.turnContext(), text, s.spokenTo, s.pending)
+	// Вопрос задан один раз: ответ на него уже пришёл, и тащить его дальше
+	// значит навязывать модели старый контекст.
+	s.pending = ""
 	switch {
 	case err != nil:
 		// Сбой канала не должен выглядеть как отказ мира: игрок обязан
@@ -60,7 +70,10 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		s.applyIntent(*in)
 		return true
 	default:
-		fmt.Fprintf(s.Out, "%s\n", fallbackClarify(clarify))
+		question := fallbackClarify(clarify)
+		// Помним, о чём спросили: следующая фраза игрока — ответ на это.
+		s.pending = question
+		fmt.Fprintf(s.Out, "%s\n", question)
 		return true
 	}
 }

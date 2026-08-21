@@ -116,6 +116,16 @@ const narrateSystem = `Ты — Мастер настольной игры. Ты
 
 Отвечай на языке рамки.`
 
+// Kind — что именно описывает Мастер. Выводить это из пустого исхода нельзя:
+// у социального хода механики нет вовсе, и он выглядел как описание места —
+// на «поздороваться» игрок получал прозу про погоду вместо разговора.
+type Kind string
+
+const (
+	KindPlace   Kind = "place"   // обстановка: игрок озирается
+	KindOutcome Kind = "outcome" // исход: игрок узнаёт, чем кончилось действие
+)
+
 // Grant решает запросы персонажа. Пустой запрос модель не беспокоит: вызов
 // без нужды это деньги за шум.
 func (m *Master) Grant(ctx context.Context, needs []string, canon []CanonFact,
@@ -170,8 +180,8 @@ func (m *Master) Grant(ctx context.Context, needs []string, canon []CanonFact,
 
 // Narrate описывает сцену и исход прозой. Пустая рамка означает, что автор
 // текста не написал: тогда описывать нечего и придумывать нечего.
-func (m *Master) Narrate(ctx context.Context, frame string, w World, outcome []string,
-	req llm.Request) (string, error) {
+func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
+	outcome []string, req llm.Request) (string, error) {
 	if strings.TrimSpace(frame) == "" {
 		return "", nil
 	}
@@ -184,10 +194,11 @@ func (m *Master) Narrate(ctx context.Context, frame string, w World, outcome []s
 	}
 
 	var b strings.Builder
-	if len(outcome) == 0 {
+	if kind == KindPlace {
 		b.WriteString("Это ОПИСАНИЕ МЕСТА: покажи, что игрок видит вокруг.\n\n")
 	} else {
-		b.WriteString("Это ИСХОД только что сделанного: покажи, чем оно кончилось.\n\n")
+		b.WriteString("Это ИСХОД только что сделанного: покажи, чем оно кончилось. " +
+			"Обстановку не пересказывай — игрок её уже видел.\n\n")
 	}
 	b.WriteString("Рамка автора — главная, не противоречь ей:\n" + frame + "\n")
 	w.render(&b)

@@ -30,6 +30,9 @@ type Session struct {
 	// spokenTo — последний, к кому обращались. Разговор продолжается с тем же
 	// человеком: игроку не надо называть его в каждой реплике.
 	spokenTo store.EntityID
+	// pending — вопрос, заданный игроку игрой. Следующая его фраза — ответ на
+	// этот вопрос, и разбор обязан это знать.
+	pending string
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {

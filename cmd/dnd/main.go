@@ -174,8 +174,13 @@ type narrator struct {
 	game   *core.Game
 }
 
-func (n *narrator) Narrate(ctx context.Context, frame string, scene, outcome []string) (string, error) {
-	return n.master.Narrate(ctx, frame,
+func (n *narrator) Narrate(ctx context.Context, kind cli.ProseKind, frame string,
+	scene, outcome []string) (string, error) {
+	what := master.KindOutcome
+	if kind == cli.ProsePlace {
+		what = master.KindPlace
+	}
+	return n.master.Narrate(ctx, what, frame,
 		master.World{Setting: n.game.Setting, Scene: scene}, outcome, llm.Request{})
 }
 

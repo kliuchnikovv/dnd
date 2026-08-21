@@ -165,10 +165,13 @@ type fakeNarrator struct {
 	calls   int
 	frames  []string
 	outcome []string
+	kinds   []ProseKind
 }
 
-func (n *fakeNarrator) Narrate(_ context.Context, frame string, scene, outcome []string) (string, error) {
+func (n *fakeNarrator) Narrate(_ context.Context, kind ProseKind, frame string,
+	scene, outcome []string) (string, error) {
 	n.calls++
+	n.kinds = append(n.kinds, kind)
 	n.frames = append(n.frames, frame)
 	n.outcome = append(n.outcome, outcome...)
 	return n.prose, n.err
@@ -251,5 +254,27 @@ func TestNarratorFailureIsReported(t *testing.T) {
 	// Названо один раз, а не на каждую строку прозы: шум хуже тишины.
 	if n := strings.Count(out.String(), "роль не зароутена"); n != 1 {
 		t.Errorf("сбой назван %d раз", n)
+	}
+}
+
+// Сцена и исход — разные задачи Мастера, и различает их код, а не догадка по
+// пустому исходу: у социального хода механики нет вовсе, и «поздороваться»
+// описывалось как «игрок озирается по сторонам».
+func TestProseKindTellsPlaceFromOutcome(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{prose: "проза"}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+
+	s.r.Scene(g)
+	s.r.Turn(g, g.Apply(core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}))
+
+	if len(n.kinds) != 2 {
+		t.Fatalf("вызовов прозы %d", len(n.kinds))
+	}
+	if n.kinds[0] != ProsePlace {
+		t.Errorf("сцена описана как %q", n.kinds[0])
+	}
+	if n.kinds[1] != ProseOutcome {
+		t.Errorf("социальный ход описан как %q — механики у него нет, но это исход", n.kinds[1])
 	}
 }

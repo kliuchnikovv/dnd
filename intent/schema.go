@@ -24,9 +24,18 @@ const (
 // verbNames возвращает глаголы реестра в стабильном порядке. Схема обязана
 // быть побайтово одинаковой между вызовами: у провайдеров грамматики
 // кэшируются, и плавающая схема этот кэш обнуляет.
-func verbNames() []string {
+func verbNames() []string { return verbNamesFor(SceneHint{}) }
+
+// verbNamesFor — глаголы, которые в этой сцене вообще исполнимы. Глагол,
+// чей обязательный аргумент взять негде, из грамматики уходит: иначе модель
+// его выбирает, аргумент заполнить не может, и игра спрашивает игрока о том,
+// на что нет ответа.
+func verbNamesFor(hint SceneHint) []string {
 	out := make([]string, 0, len(core.Verbs))
 	for _, d := range core.AllVerbs() {
+		if requires(d.Verb).Item && len(hint.Tools) == 0 {
+			continue
+		}
 		out = append(out, string(d.Verb))
 	}
 	sort.Strings(out)
@@ -65,7 +74,7 @@ func SchemaFor(hint SceneHint) map[string]any {
 				"enum": []string{OutcomeIntent, OutcomeClarify, OutcomeUnsupported},
 			},
 			"verb": map[string]any{
-				"type": "string", "enum": verbNames(),
+				"type": "string", "enum": verbNamesFor(hint),
 				"description": "глагол из реестра; обязателен при outcome=intent",
 			},
 			"target": enumOr(hint.Entities, "id сущности из списка присутствующих"),
@@ -74,7 +83,7 @@ func SchemaFor(hint SceneHint) map[string]any {
 			"facts": map[string]any{"type": "array",
 				"items":       enumOr(hint.Topics, "id известного факта"),
 				"description": "ровно два id известных фактов для compare"},
-			"item":    str,
+			"item":    enumOr(hint.Tools, "id предмета из списка «можно применить»"),
 			"ability": str,
 			"text":    map[string]any{"type": "string", "description": "свободный текст для theorize, say, emote"},
 			"clarify": map[string]any{"type": "string", "description": "вопрос игроку в характере при outcome=clarify"},
