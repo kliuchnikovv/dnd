@@ -49,6 +49,15 @@ func (g *Game) Apply(in Intent) TurnResult {
 		return r
 	}
 
+	// Взять инструмент — отдельный ход без броска. Проп с тегом tool ничего не
+	// даёт, пока лежит: плата за отмену штрафа среды — потраченное действие.
+	if in.Verb == "use_item" {
+		if p, ok := g.DB.PropAt(g.Node, store.PropID(in.Args.Item)); ok && hasTag(p, "tool") {
+			g.tool, g.toolNode = p.ID, g.Node
+			return TurnResult{FlavourKey: "prop." + string(p.ID)}
+		}
+	}
+
 	holder, found := g.holderFor(in)
 
 	// Шаг 2: ветка без броска.
@@ -227,6 +236,9 @@ func (g *Game) SceneView(in Intent) SceneView {
 	if ch != nil {
 		view.Harm, view.Grit, view.Sheet = ch.Harm, ch.Grit, ch.Sheet
 	}
+	if g.tool != "" && g.toolNode == g.Node {
+		view.Tools = []string{string(g.tool)}
+	}
 	if h, ok := g.holderFor(in); ok {
 		view.GateThreshold = h.Gate.Threshold
 	}
@@ -238,6 +250,15 @@ func (g *Game) SceneView(in Intent) SceneView {
 func (g *Game) isProp(target store.EntityID) bool {
 	_, ok := g.DB.PropAt(g.Node, store.PropID(target))
 	return ok
+}
+
+func hasTag(p store.SceneProp, tag string) bool {
+	for _, t := range p.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Game) nodeTags(n store.NodeID) []string {

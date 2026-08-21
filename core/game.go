@@ -70,6 +70,11 @@ type Game struct {
 
 	unlocked map[string]bool
 	solved   bool
+
+	// tool — инструмент, взятый в руки ходом, и узел, где это случилось.
+	// Инструмент не уезжает: фонарь со склада не светит в конторе гильдии.
+	tool     store.PropID
+	toolNode store.NodeID
 }
 
 func NewGame(cfg Config) *Game {

@@ -1154,9 +1154,7 @@
       "node_id": "n_police_office",
       "name": "Filing cabinets",
       "kind": "furniture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "Four cabinets stand shoulder to shoulder, leaving a gap you turn sideways for."
     },
     {
@@ -1164,9 +1162,7 @@
       "node_id": "n_police_office",
       "name": "Coat rack",
       "kind": "furniture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A heavy rack by the door, three oilskins hanging wet on it."
     },
     {
@@ -1184,9 +1180,7 @@
       "node_id": "n_police_office",
       "name": "Iron stove",
       "kind": "fixture",
-      "tags": [
-        "noise"
-      ],
+      "tags": [],
       "text": "The stove ticks and pops as it cools, loud in the quiet room."
     },
     {
@@ -1194,9 +1188,7 @@
       "node_id": "n_kalderes",
       "name": "Market awnings",
       "kind": "fixture",
-      "tags": [
-        "crowd"
-      ],
+      "tags": [],
       "text": "Canvas awnings run the length of the square, and the crowd runs with them."
     },
     {
@@ -1204,9 +1196,7 @@
       "node_id": "n_kalderes",
       "name": "The town well",
       "kind": "fixture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A low stone rim, chest high, with a bucket left on the coping."
     },
     {
@@ -1214,9 +1204,7 @@
       "node_id": "n_kalderes",
       "name": "Church steps",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "Six worn steps that put you a head above everyone in the square."
     },
     {
@@ -1224,9 +1212,7 @@
       "node_id": "n_bar",
       "name": "Card table",
       "kind": "furniture",
-      "tags": [
-        "crowd"
-      ],
+      "tags": [],
       "text": "Four men at cards, and a fifth watching over their shoulders."
     },
     {
@@ -1234,9 +1220,7 @@
       "node_id": "n_bar",
       "name": "Back stairs",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "Stairs to the upper floor, the landing overlooking the whole room."
     },
     {
@@ -1244,9 +1228,7 @@
       "node_id": "n_bar",
       "name": "Crate of empties",
       "kind": "clutter",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A crate of bottles stacked against the wall, waiting for the cart."
     },
     {
@@ -1254,9 +1236,7 @@
       "node_id": "n_emilien_home",
       "name": "Iron bedstead",
       "kind": "furniture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A narrow iron bed, blankets folded square as if for inspection."
     },
     {
@@ -1274,9 +1254,7 @@
       "node_id": "n_emilien_home",
       "name": "Shuttered window",
       "kind": "fixture",
-      "tags": [
-        "dark"
-      ],
+      "tags": [],
       "text": "The shutters are closed and latched; the room keeps the dusk in."
     },
     {
@@ -1284,9 +1262,7 @@
       "node_id": "n_zheber_home",
       "name": "Hall mirror",
       "kind": "furniture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A tall mirror in the hall, spotted with age along one edge."
     },
     {
@@ -1294,9 +1270,7 @@
       "node_id": "n_zheber_home",
       "name": "Umbrella stand",
       "kind": "furniture",
-      "tags": [
-        "tool"
-      ],
+      "tags": [],
       "text": "A brass stand holding two umbrellas and a walking cane."
     },
     {
@@ -1304,9 +1278,7 @@
       "node_id": "n_zheber_home",
       "name": "Stair landing",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "The landing looks down on the front door and everyone who uses it."
     },
     {
@@ -1314,9 +1286,7 @@
       "node_id": "n_bakery",
       "name": "Flour sacks",
       "kind": "clutter",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "Sacks stacked waist high, the topmost split and leaking white."
     },
     {
@@ -1324,9 +1294,7 @@
       "node_id": "n_bakery",
       "name": "Bread oven",
       "kind": "fixture",
-      "tags": [
-        "noise"
-      ],
+      "tags": [],
       "text": "The oven roars behind its iron door; talk here is half shouting."
     },
     {
@@ -1334,9 +1302,7 @@
       "node_id": "n_bakery",
       "name": "Delivery hatch",
       "kind": "fixture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "A hatch to the alley, wide enough for a tray and not much else."
     },
     {
@@ -1344,9 +1310,7 @@
       "node_id": "n_road_to_fort",
       "name": "Milestone",
       "kind": "fixture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A squat stone marker, the numeral on it half eaten by lichen."
     },
     {
@@ -1354,9 +1318,7 @@
       "node_id": "n_road_to_fort",
       "name": "Roadside ditch",
       "kind": "fixture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "The ditch runs deep and close beside the road, brimming after rain."
     },
     {
@@ -1364,9 +1326,7 @@
       "node_id": "n_road_to_fort",
       "name": "Stand of pines",
       "kind": "fixture",
-      "tags": [
-        "dark"
-      ],
+      "tags": [],
       "text": "Pines crowd the verge and keep the road in shadow even at noon."
     },
     {
@@ -1374,9 +1334,7 @@
       "node_id": "n_santa_irene",
       "name": "Votive rack",
       "kind": "fixture",
-      "tags": [
-        "dark"
-      ],
+      "tags": [],
       "text": "Most of the candles have guttered; the rack holds more wax than light."
     },
     {
@@ -1384,9 +1342,7 @@
       "node_id": "n_santa_irene",
       "name": "Bell rope",
       "kind": "fixture",
-      "tags": [
-        "noise"
-      ],
+      "tags": [],
       "text": "The rope hangs to knee height, knotted at the end and slightly swinging."
     },
     {
@@ -1394,9 +1350,7 @@
       "node_id": "n_santa_irene",
       "name": "Gallery stair",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "A stair to the gallery, from which the whole nave is visible."
     },
     {
@@ -1404,9 +1358,7 @@
       "node_id": "n_fort_kpp",
       "name": "Sandbag revetment",
       "kind": "fixture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "Sandbags piled to chest height, the lower course rotted through."
     },
     {
@@ -1414,9 +1366,7 @@
       "node_id": "n_fort_kpp",
       "name": "Striped barrier",
       "kind": "fixture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "A painted pole across the road; foot traffic squeezes past one at a time."
     },
     {
@@ -1424,9 +1374,7 @@
       "node_id": "n_fort_kpp",
       "name": "Sentry box",
       "kind": "fixture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A wooden box barely wide enough for one man and his rifle."
     },
     {
@@ -1434,9 +1382,7 @@
       "node_id": "n_fort_kpp",
       "name": "Watchtower ladder",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "A ladder to the platform, two rungs replaced with fresh timber."
     },
     {
@@ -1444,9 +1390,7 @@
       "node_id": "n_fort_yard",
       "name": "Flagstaff",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "The staff has a maintenance step cleated to it, chest high off the gravel."
     },
     {
@@ -1454,9 +1398,7 @@
       "node_id": "n_fort_yard",
       "name": "Stacked drums",
       "kind": "clutter",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "Empty oil drums stacked three deep at the edge of the ground."
     },
     {
@@ -1464,9 +1406,7 @@
       "node_id": "n_fort_yard",
       "name": "Gravel drill lane",
       "kind": "fixture",
-      "tags": [
-        "noise"
-      ],
+      "tags": [],
       "text": "Gravel crunches under everything; nobody crosses this yard quietly."
     },
     {
@@ -1484,9 +1424,7 @@
       "node_id": "n_fort_hq",
       "name": "Regimental colours",
       "kind": "fixture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "The colours hang on a standing pole beside the inner door."
     },
     {
@@ -1494,9 +1432,7 @@
       "node_id": "n_fort_hq",
       "name": "Balcony door",
       "kind": "fixture",
-      "tags": [
-        "elevation"
-      ],
+      "tags": [],
       "text": "A door to the balcony above the parade ground, its bolt drawn back."
     },
     {
@@ -1504,9 +1440,7 @@
       "node_id": "n_zheber_office",
       "name": "Wall safe",
       "kind": "furniture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "A squat safe under the window, its dial worn smooth at the numerals."
     },
     {
@@ -1515,7 +1449,7 @@
       "name": "Desk lamp",
       "kind": "fixture",
       "tags": [
-        "dark"
+        "tool"
       ],
       "text": "The lamp throws a small circle and leaves the corners entirely dark."
     },
@@ -1524,9 +1458,7 @@
       "node_id": "n_zheber_office",
       "name": "Service door",
       "kind": "fixture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "A servant's door behind the desk, narrow enough to catch a shoulder."
     },
     {
@@ -1534,9 +1466,7 @@
       "node_id": "n_fort_barracks",
       "name": "Rows of bunks",
       "kind": "furniture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "Bunks in two rows with an aisle a rifle's length wide between them."
     },
     {
@@ -1544,9 +1474,7 @@
       "node_id": "n_fort_barracks",
       "name": "Footlockers",
       "kind": "furniture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "Lockers along the wall, one of them standing open and half emptied."
     },
     {
@@ -1554,9 +1482,7 @@
       "node_id": "n_fort_barracks",
       "name": "Barracks stove",
       "kind": "fixture",
-      "tags": [
-        "noise"
-      ],
+      "tags": [],
       "text": "The stove is banked and hissing; the pipe rattles whenever the wind turns."
     },
     {
@@ -1564,9 +1490,7 @@
       "node_id": "n_fort_hospital",
       "name": "Screens on castors",
       "kind": "furniture",
-      "tags": [
-        "cover"
-      ],
+      "tags": [],
       "text": "Folding screens on castors, pushed together at the end of the ward."
     },
     {
@@ -1584,9 +1508,7 @@
       "node_id": "n_fort_hospital",
       "name": "Linen press",
       "kind": "furniture",
-      "tags": [
-        "narrow"
-      ],
+      "tags": [],
       "text": "A press wedged between two beds; the door opens only halfway."
     },
     {
@@ -1594,9 +1516,7 @@
       "node_id": "n_fort_hospital",
       "name": "Lamp above the table",
       "kind": "fixture",
-      "tags": [
-        "dark"
-      ],
+      "tags": [],
       "text": "The lamp above the table is out, and the ward keeps its far end in shadow."
     }
   ],

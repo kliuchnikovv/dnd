@@ -169,3 +169,37 @@ func TestHardVerbOnPropRollsAndFindsNothing(t *testing.T) {
 		t.Errorf("проп выдал факт: %v", res.Learned)
 	}
 }
+
+// Инструмент берётся ходом. Плата за отмену штрафа среды — потраченное
+// действие, и она берётся именно здесь: нарратор может поставить фонарь в
+// сцену, но взять его в руки может только игрок.
+func TestUsingAToolPropMakesItActiveInTheScene(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Props["n_quay"] = []store.SceneProp{{
+		ID: "p_lantern", Node: "n_quay", Name: "Фонарь", Tags: []string{"tool"},
+	}}
+
+	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 0 {
+		t.Fatalf("инструмент активен без хода: %v", tools)
+	}
+	if res := g.Apply(Intent{Verb: "use_item", Args: Args{Item: "p_lantern"}}); res.Refused {
+		t.Fatalf("взять фонарь не вышло: %s", res.Refusal)
+	}
+	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 1 || tools[0] != "p_lantern" {
+		t.Errorf("инструмент не попал в сцену: %v", tools)
+	}
+}
+
+// Инструмент остаётся в узле, где его взяли: фонарь со склада не светит в
+// конторе гильдии.
+func TestToolDoesNotTravelBetweenNodes(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Props["n_quay"] = []store.SceneProp{{
+		ID: "p_lantern", Node: "n_quay", Name: "Фонарь", Tags: []string{"tool"},
+	}}
+	g.Apply(Intent{Verb: "use_item", Args: Args{Item: "p_lantern"}})
+	g.Node = "n_forge"
+	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 0 {
+		t.Errorf("инструмент уехал в другой узел: %v", tools)
+	}
+}
