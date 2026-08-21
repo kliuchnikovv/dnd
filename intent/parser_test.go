@@ -757,3 +757,126 @@ func TestPromptDemandsWorldLanguageInRefusals(t *testing.T) {
 		t.Errorf("промпт не требует говорить с игроком языком мира:\n%s", sys)
 	}
 }
+
+// Разговор идёт с конкретным человеком, и называть его в каждой фразе игрок
+// не обязан — структурированный ввод это уже умеет. Живой прогон: «есть ли
+// слухи?» посреди разговора с Берном получало «к кому или к чему?».
+func TestMissingTargetFallsBackToInterlocutor(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"talk_to"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{With: "e_bern"}
+
+	res, err := p.Parse(context.Background(), "есть ли слухи?", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("ход не принят: %q", res.Clarify)
+	}
+	if res.Intent.Args.Target != "e_bern" {
+		t.Errorf("цель %q — собеседник не подставился", res.Intent.Args.Target)
+	}
+}
+
+// Собеседник подставляется, только если он всё ещё в сцене: иначе игрок
+// обращается к тому, кто ушёл.
+func TestInterlocutorOutsideSceneIsNotSubstituted(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"talk_to"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{With: "e_toke"} // писарь в конторе, а не на пристани
+
+	res, err := p.Parse(context.Background(), "есть ли слухи?", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Accepted() {
+		t.Errorf("цель взялась из ниоткуда: %q", res.Intent.Args.Target)
+	}
+}
+
+// Вопрос о том, чего парти не знает, — не отказ словаря, а разговор. Ровно
+// для этого и заведён диалоговый актёр: он уклонится, намекнёт или спросит
+// Мастера, а гейт фактов при этом не трогается.
+func TestPromptTurnsUnknownTopicQuestionsIntoTalk(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"say","text":"кто тут ночами ходит?"}`)
+	if _, err := p.Parse(context.Background(), "а кто тут ночами ходит?",
+		harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if sys := f.Calls()[0].System; !strings.Contains(sys, "это say") {
+		t.Errorf("промпт не превращает вопрос вне банка тем в разговор:\n%s", sys)
+	}
+}
+
+// Открытый вопрос собеседнику — разговор, а не допрос словаря. «Есть ли
+// слухи?» темы в банке не имеет и иметь не может: это приглашение говорить,
+// и отвечать на него должен персонаж.
+func TestOpenQuestionToInterlocutorBecomesTalk(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{With: "e_bern"}
+
+	res, err := p.Parse(context.Background(),
+		"есть ли какие-нибудь слухи в последнее время?", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("ход не принят: %q", res.Clarify)
+	}
+	if res.Intent.Verb != "say" {
+		t.Errorf("глагол %q — открытый вопрос должен стать разговором", res.Intent.Verb)
+	}
+	if res.Intent.Args.Target != "e_bern" || res.Intent.Args.Text == "" {
+		t.Errorf("разговор без адресата или без слов: %+v", res.Intent.Args)
+	}
+}
+
+// Названную тему подменять разговором нельзя: это настоящий ход
+// расследования, и терять его ради живой реплики — прямая потеря игры.
+func TestNamedTopicSurvivesAsAQuestion(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{With: "e_bern"}
+
+	res, err := p.Parse(context.Background(),
+		"спрошу про тело Халдена на складе", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil || res.Intent.Verb != "question" {
+		t.Fatalf("ход расследования потерян: %+v", res)
+	}
+	if res.Intent.Args.Topic != "f_body_found" {
+		t.Errorf("тема %q — названная тема не найдена в фразе", res.Intent.Args.Topic)
+	}
+}
+
+// Без собеседника подменять нечем: вопрос в воздух остаётся вопросом игроку.
+func TestOpenQuestionWithoutInterlocutorStillAsks(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
+	res, err := p.Parse(context.Background(), "есть ли слухи?", harbourHint(t), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Accepted() {
+		t.Errorf("ход принят без темы и без собеседника: %+v", res.Intent)
+	}
+}
+
+// Примеры в промпте сильнее правил: пример, учивший отвечать clarify на
+// вопрос вне банка тем, переучивал модель обратно ровно там, где правило
+// требует разговора.
+func TestExamplesAgreeWithTheRules(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
+	if _, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.Calls()[0].System
+	if strings.Contains(sys, `"clarify":"Об этом парти пока ничего не знает."`) {
+		t.Error("в примерах остался clarify на вопрос вне банка тем")
+	}
+	if !strings.Contains(sys, `"verb":"say","target":"e_ivar"`) {
+		t.Error("нет примера, где вопрос вне банка тем становится разговором")
+	}
+}

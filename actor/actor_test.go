@@ -1158,3 +1158,29 @@ func TestMasterFailureIsReported(t *testing.T) {
 		t.Errorf("о сбое Мастера не сообщено: %v", noted)
 	}
 }
+
+// Пустой ответ — почти всегда упёртый потолок вывода: модель с рассуждением
+// тратит его до того, как напишет реплику. Живой прогон отдал ровно
+// MaxTokens и пустую строку, а игрок увидел «реплика не разобралась».
+func TestEmptyResponseNamesTheOutputCap(t *testing.T) {
+	a, _ := actorWith(t, "")
+	_, err := a.Line(context.Background(), Speaker{Name: "Берн", Voice: "сухой"},
+		Situation{Verb: "talk_to"}, llm.Request{})
+	if err == nil {
+		t.Fatal("пустой ответ прошёл как реплика")
+	}
+	if !strings.Contains(err.Error(), "потолок вывода") {
+		t.Errorf("причина не названа: %v", err)
+	}
+}
+
+// Потолок вывода считается не по длине реплики: реплика короткая, но модель
+// с рассуждением тратит вывод раньше, чем доходит до неё.
+func TestOutputCapLeavesRoomForReasoning(t *testing.T) {
+	if got := maxTokensFor(ActProbe); got < 600 {
+		t.Errorf("потолок основного тира %d — рассуждению не хватит", got)
+	}
+	if got := maxTokensFor(ActGreeting); got < 200 {
+		t.Errorf("потолок дешёвого тира %d — рассуждению не хватит", got)
+	}
+}

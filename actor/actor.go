@@ -283,6 +283,13 @@ func (a *Actor) speak(ctx context.Context, s Speaker, sit Situation, req llm.Req
 	if err != nil {
 		return Reply{}, err
 	}
+	if strings.TrimSpace(resp.Text) == "" {
+		// Пустой ответ при полном расходе вывода — обрезка, а не молчание
+		// модели. Называть это «реплика не разобралась» значит прятать
+		// причину: чинится она одним числом, а не промптом.
+		return Reply{}, fmt.Errorf("actor: пустой ответ, похоже упёрлись в потолок вывода (%d токенов)",
+			req.MaxTokens)
+	}
 	var out struct {
 		Line          string   `json:"line"`
 		Needs         []string `json:"needs"`
@@ -370,7 +377,10 @@ func (a *Actor) repair(ctx context.Context, s Speaker, sit Situation,
 	req.Tier = llm.TierCheap
 	req.Schema = schemaJSON(nil)
 	req.System = repairPrompt
-	req.MaxTokens = 120
+	// Ремонт — правка одной фразы, но потолок всё равно с запасом на
+	// рассуждение: обрезанный ремонт уронит реплику в заглушку, ради ухода
+	// от которой он и затеян.
+	req.MaxTokens = 400
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Ты — %s.\nТвой голос: %s\n", s.Name, s.Voice)

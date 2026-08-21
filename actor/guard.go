@@ -95,7 +95,9 @@ func (g *Guard) Check(ctx context.Context, line string, material []string, req l
 	req.Tier = g.tier()
 	req.Schema = g.schema
 	req.System = guardPrompt
-	req.MaxTokens = 200
+	// С запасом на рассуждение: обрезанный вердикт читается как сбой
+	// проверки, а сбой проверки роняет реплику в заглушку.
+	req.MaxTokens = 600
 
 	var b strings.Builder
 	b.WriteString("Материал:\n")

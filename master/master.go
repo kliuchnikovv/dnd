@@ -141,7 +141,7 @@ func (m *Master) Grant(ctx context.Context, needs []string, canon []CanonFact,
 	req.Tier = llm.TierCheap
 	req.Schema = m.schema
 	req.System = grantSystem
-	req.MaxTokens = 400
+	req.MaxTokens = 900
 
 	var b strings.Builder
 	b.WriteString("Спрашивают:\n")
@@ -190,7 +190,9 @@ func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
 	req.Schema = ""
 	req.System = narrateSystem
 	if req.MaxTokens == 0 {
-		req.MaxTokens = 300
+		// Проза плюс запас на рассуждение: обрезка здесь означает пустое
+		// описание сцены, то есть игру без Мастера.
+		req.MaxTokens = 900
 	}
 
 	var b strings.Builder
