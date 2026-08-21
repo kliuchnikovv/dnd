@@ -2,7 +2,6 @@ package actor
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -82,7 +81,7 @@ func TestPromptCarriesOnlyKnownTopics(t *testing.T) {
 			t.Errorf("промпт содержит %q", leak)
 		}
 	}
-	if !strings.Contains(f.Calls()[0].System, "Запрещено, и это проверяется") {
+	if !strings.Contains(f.Calls()[0].System, "НЕ ВЫДУМЫВАЕШЬ") {
 		t.Error("в системном промпте нет запрета на выдумку")
 	}
 }
@@ -175,55 +174,6 @@ func TestSilentOnNonSocialVerbsAndThings(t *testing.T) {
 
 // --- закрытый набор ходов ---
 
-// Ход вне набора и подтверждение неизвестного факта — то, чем реплика
-// превращалась в выдумку. Оба случая падают в шаблон.
-func TestInvalidMoveFallsBackToTemplate(t *testing.T) {
-	g := harbour(t)
-	sp, _ := SpeakerFor(g, "e_bern")
-	cases := map[string]string{
-		"ход вне набора":             `{"move":"рассказать_всё","line":"Фермер Олсен потерял скот."}`,
-		"подтверждение неизвестного": `{"move":"confirm_known","fact":"f_нет_такого","line":"Дежурства удвоили."}`,
-		"факт при неподходящем ходе": `{"move":"deflect","fact":"f_body_found","line":"Патрулируем по графику."}`,
-		"пустая реплика":             `{"move":"deflect","line":""}`,
-	}
-	for name, reply := range cases {
-		t.Run(name, func(t *testing.T) {
-			a, _ := actorWith(t, reply)
-			got, err := a.Line(context.Background(), sp,
-				Situation{Verb: "talk_to", Known: KnownTopics(g)}, llm.Request{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(got, "Олсен") || strings.Contains(got, "Дежурства") ||
-				strings.Contains(got, "Патрулируем") {
-				t.Errorf("выдумка дошла до игрока: %q", got)
-			}
-			if got == "" {
-				t.Error("шаблон не подставился")
-			}
-		})
-	}
-}
-
-func TestConfirmKnownAcceptsFactFromMaterial(t *testing.T) {
-	g := harbour(t)
-	sp, _ := SpeakerFor(g, "e_bern")
-	known := KnownTopics(g)
-	if len(known) == 0 {
-		t.Fatal("в деле нет стартовых фактов")
-	}
-	a, _ := actorWith(t, `{"move":"confirm_known","fact":"`+known[0].ID+
-		`","line":"Тело нашли на складе, всё верно."}`)
-	got, err := a.Line(context.Background(), sp,
-		Situation{Verb: "talk_to", Known: known}, llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "Тело нашли на складе, всё верно." {
-		t.Errorf("реплика %q", got)
-	}
-}
-
 // Слишком длинная реплика почти всегда означает рассказ о том, чего персонаж
 // не знает.
 func TestOverlongLineFallsBackToTemplate(t *testing.T) {
@@ -234,21 +184,6 @@ func TestOverlongLineFallsBackToTemplate(t *testing.T) {
 	got, _ := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
 	if len([]rune(got)) > maxLine {
 		t.Errorf("длинная реплика прошла: %d символов", len([]rune(got)))
-	}
-}
-
-// Схема несёт материал: подтвердить можно только перечисленное.
-func TestSchemaEnumeratesKnownFacts(t *testing.T) {
-	g := harbour(t)
-	props := schemaFor(KnownTopics(g), nil, nil)["properties"].(map[string]any)
-	fact := props["fact"].(map[string]any)
-	enum, ok := fact["enum"].([]string)
-	if !ok || len(enum) == 0 {
-		t.Fatal("у fact нет перечисления известных фактов")
-	}
-	moveEnum := props["move"].(map[string]any)["enum"].([]string)
-	if len(moveEnum) != len(moves()) {
-		t.Errorf("ходов в схеме %d, в наборе %d", len(moveEnum), len(moves()))
 	}
 }
 
@@ -371,24 +306,6 @@ func TestSceneOfCarriesPlaceWeatherAndCompany(t *testing.T) {
 	}
 }
 
-func TestObserveIsAValidMove(t *testing.T) {
-	props := schemaFor(nil, nil, nil)["properties"].(map[string]any)
-	enum := props["move"].(map[string]any)["enum"].([]string)
-	// Каждый ход из набора обязан быть в схеме: ход, которого модель не видит,
-	// существует только на бумаге.
-	for _, want := range moves() {
-		var found bool
-		for _, m := range enum {
-			if m == want {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("хода %q нет в схеме", want)
-		}
-	}
-}
-
 // Промпт обязан различать факты дела и обстановку: правила у них разные.
 func TestPromptSeparatesFactsFromScene(t *testing.T) {
 	g := harbour(t)
@@ -402,29 +319,12 @@ func TestPromptSeparatesFactsFromScene(t *testing.T) {
 	if !strings.Contains(prompt, "Обстановка — об этом можно говорить свободно") {
 		t.Errorf("обстановка не помечена как свободная: %q", prompt)
 	}
-	if !strings.Contains(prompt, "Факты дела — только это и можно подтверждать") {
+	if !strings.Contains(prompt, "Про дело ты можешь утверждать ТОЛЬКО это") {
 		t.Errorf("факты не помечены как ограниченные: %q", prompt)
 	}
 }
 
 // --- темы: не зачитывать и не повторять ---
-
-// Тема, поднятая вне списка, отклоняется — иначе персонаж «упоминает» то,
-// чего не знает.
-func TestVolunteerRequiresTopicFromList(t *testing.T) {
-	g := harbour(t)
-	sp, _ := SpeakerFor(g, "e_bern")
-	a, _ := actorWith(t, `{"move":"volunteer","topic":"t99","line":"А вот был случай."}`)
-	got, err := a.Line(context.Background(), sp, Situation{
-		Verb: "talk_to", Talks: topicsOf(g, "e_bern"), Scene: SceneOf(g, "e_bern"),
-	}, llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == "А вот был случай." {
-		t.Error("принята тема вне списка")
-	}
-}
 
 // Поднятая тема помечается рассказанной: второй раз она звучит как
 // заклинивший автомат.
@@ -474,10 +374,10 @@ func TestPromptDemandsAnsweringThePlayer(t *testing.T) {
 		Talks: topicsOf(g, "e_bern")}, llm.Request{})
 
 	sys := f.Calls()[0].System
-	if !strings.Contains(sys, "реплика ОТВЕЧАЕТ на то, что сказал игрок") {
+	if !strings.Contains(sys, "Отвечай на сказанное") {
 		t.Error("в промпте нет требования отвечать на сказанное")
 	}
-	if !strings.Contains(sys, "не зачитывай") {
+	if !strings.Contains(f.Calls()[0].Input, "своими словами") {
 		t.Error("в промпте нет запрета зачитывать заметку")
 	}
 	if strings.Contains(sys, "Предпочитай") {
@@ -556,72 +456,6 @@ func TestConfirmKnownAvailableWheneverFactsExist(t *testing.T) {
 		if !allowedMove(MoveConfirmKnown, movesFor(act, sit)) {
 			t.Errorf("при акте %q нельзя подтвердить известный факт", act)
 		}
-	}
-}
-
-// Ход вне разрешённого набора не проходит: набор — это грамматика, а не совет.
-func TestMoveOutsideAllowedSetIsRejected(t *testing.T) {
-	g := harbour(t)
-	sp, _ := SpeakerFor(g, "e_bern")
-	a, _ := actorWith(t, `{"move":"smalltalk","line":"Погодка-то какая."}`)
-	got, err := a.Line(context.Background(), sp, Situation{
-		Verb: "talk_to", PlayerText: "что слышно?",
-		Talks: topicsOf(g, "e_bern"), Scene: SceneOf(g, "e_bern"),
-	}, llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == "Погодка-то какая." {
-		t.Error("болтовня прошла там, где игрок прямо спросил")
-	}
-}
-
-// Схема отдаёт модели только разрешённые ходы: ход, которого нет в грамматике,
-// выбрать невозможно.
-func TestSchemaCarriesOnlyAllowedMoves(t *testing.T) {
-	g := harbour(t)
-	a, f := actorWith(t, `{"move":"volunteer","topic":"t1","line":"Книгу таскают без замка."}`)
-	sp, _ := SpeakerFor(g, "e_bern")
-	a.Line(context.Background(), sp, Situation{Verb: "talk_to",
-		PlayerText: "что слышно?", Talks: topicsOf(g, "e_bern")}, llm.Request{})
-
-	var probe map[string]any
-	if err := json.Unmarshal([]byte(f.Calls()[0].Schema), &probe); err != nil {
-		t.Fatal(err)
-	}
-	enum := probe["properties"].(map[string]any)["move"].(map[string]any)["enum"].([]any)
-	for _, m := range enum {
-		if m == string(MoveSmalltalk) {
-			t.Error("в схеме на открытый вопрос осталась болтовня")
-		}
-	}
-	if !strings.Contains(f.Calls()[0].Input, "открытый вопрос") {
-		t.Error("модели не сказано, на какой акт она отвечает")
-	}
-}
-
-// Промах модели не имеет права выводить персонажа за пределы разрешённого
-// набора. Если игрок прямо пригласил рассказать, «промолчать про три
-// известные вещи» невозможно — и когда модель называет несуществующий факт,
-// откат обязан остаться внутри набора, а не превращаться в отказ.
-func TestBadFactFallsBackInsideTheAllowedSet(t *testing.T) {
-	sit := Situation{
-		PlayerText: "Что-нибудь слышно?",
-		Known:      []Known{{ID: "f1", Text: "тело нашли на складе"}},
-		Talks:      []Topic{{ID: "t1", Note: "гроссбух носят через пристань не запирая"}},
-	}
-	allowed := movesFor(Classify(sit.PlayerText), sit)
-	if containsMove(allowed, string(MoveDeflect)) {
-		t.Fatal("тест не о том: deflect и так разрешён")
-	}
-
-	a, _ := actorWith(t, `{"move":"confirm_known","fact":"нет-такого","line":"..."}`)
-	line, err := a.Line(context.Background(), Speaker{Name: "Берн"}, sit, llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if line == template(MoveDeflect, sit) {
-		t.Errorf("промах модели дал отказ вне набора: %q", line)
 	}
 }
 
@@ -798,5 +632,153 @@ func TestVoiceDoesNotRememberSilence(t *testing.T) {
 	}
 	if got := g.D.Recent("e_bern"); len(got) != 0 {
 		t.Errorf("молчание попало в память: %+v", got)
+	}
+}
+
+// --- диалоговый актёр: реплика без закрытого набора ходов ---
+
+// Свободная реплика доходит до игрока как есть. Набор ходов больше не
+// грамматика: ограничивать надо не то, КАК персонаж говорит, а то, ЧТО он
+// вправе утверждать о деле.
+func TestFreeLinePassesThrough(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"line":"И вам не хворать. Сыро, да."}`)
+	got, err := a.Line(context.Background(), sp, Situation{
+		Verb: "talk_to", PlayerText: "здравствуйте",
+		Known: KnownTopics(g), Scene: SceneOf(g, "e_bern"),
+	}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "И вам не хворать. Сыро, да." {
+		t.Errorf("реплика %q — свободная речь не прошла", got)
+	}
+}
+
+// Чего персонаж не знает, он запрашивает, а не сочиняет. Мастера ещё нет,
+// поэтому запрос пока только разбирается.
+func TestNeedsAndSecretHintAreParsed(t *testing.T) {
+	a, _ := actorWith(t, `{"line":"Спросите в конторе.","needs":["кто держит ключи от весовой"],`+
+		`"hinting_secret":true}`)
+	out, err := a.speak(context.Background(), Speaker{Name: "Берн", Voice: "сухой"},
+		Situation{Verb: "talk_to"}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Line != "Спросите в конторе." {
+		t.Errorf("реплика %q", out.Line)
+	}
+	if len(out.Needs) != 1 || out.Needs[0] != "кто держит ключи от весовой" {
+		t.Errorf("запрос к Мастеру не разобрался: %v", out.Needs)
+	}
+	if !out.HintingSecret {
+		t.Error("намёк на секрет не разобрался")
+	}
+}
+
+// Схема — это то, что модель вообще может сказать. Закрытого набора ходов в
+// ней больше нет; запрос к Мастеру есть.
+func TestSchemaIsDialogueShaped(t *testing.T) {
+	g := harbour(t)
+	props := schemaFor(topicsOf(g, "e_bern"))["properties"].(map[string]any)
+	if _, ok := props["move"]; ok {
+		t.Error("в схеме остался закрытый набор ходов")
+	}
+	if _, ok := props["fact"]; ok {
+		t.Error("в схеме осталось подтверждение факта по идентификатору")
+	}
+	for _, want := range []string{"line", "needs", "hinting_secret"} {
+		if _, ok := props[want]; !ok {
+			t.Errorf("в схеме нет поля %q", want)
+		}
+	}
+}
+
+// Персонаж говорит от себя, а не «озвучивает NPC»: из роли не выходит.
+func TestSystemPromptSpeaksAsThePerson(t *testing.T) {
+	a, f := actorWith(t, `{"line":"Сыро."}`)
+	if _, err := a.Line(context.Background(), Speaker{Name: "Берн", Voice: "сухой"},
+		Situation{Verb: "talk_to"}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.Calls()[0].System
+	if !strings.Contains(sys, "Ты —") {
+		t.Errorf("промпт не от лица человека:\n%s", sys)
+	}
+	if strings.Contains(sys, "озвучиваешь") {
+		t.Errorf("промпт всё ещё про озвучку роли:\n%s", sys)
+	}
+	// Три источника знания и запрос вместо выдумки — несущая часть промпта.
+	if !strings.Contains(sys, "needs") {
+		t.Errorf("промпт не говорит, как запросить у Мастера:\n%s", sys)
+	}
+}
+
+// Затравка мира — рамка, за которую можно цепляться, не выдумывая. Без неё
+// персонажу нечего сказать о себе и о посёлке.
+func TestSettingAndLifeReachThePrompt(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"line":"Сыро."}`)
+	if _, err := v.Voice(context.Background(),
+		core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern"}},
+		core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	in := f.Calls()[0].Input
+	if !strings.Contains(in, "посёлок в устье") {
+		t.Errorf("сеттинг не доехал в промпт:\n%s", in)
+	}
+	if !strings.Contains(in, "караулке") {
+		t.Errorf("быт персонажа не доехал в промпт:\n%s", in)
+	}
+}
+
+// Пустая реплика — не молчание, а сбой: игрок обязан получить фразу.
+func TestEmptyLineFallsBackToTemplate(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"line":""}`)
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", Scene: SceneOf(g, "e_bern")}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" {
+		t.Error("шаблон не подставился")
+	}
+}
+
+// Тема остаётся структурным хинтом: названная — помечается рассказанной,
+// чтобы не звучать второй раз. Но названная неверно реплику не рубит:
+// грамматикой набор больше не является.
+func TestUnknownTopicDoesNotKillTheLine(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"line":"Книгу через пристань таскают, я докладывал.","topic":"t99"}`)
+	got, err := a.Line(context.Background(), sp, Situation{
+		Verb: "talk_to", PlayerText: "что слышно?", Talks: topicsOf(g, "e_bern"),
+	}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Книгу через пристань таскают, я докладывал." {
+		t.Errorf("реплика срезана из-за хинта: %q", got)
+	}
+}
+
+// Отсутствующий ключ флейвора отдаёт «[ключ]». В промпте это дыра, а не
+// рамка: персонаж начинает объяснять модели самому себе, что описано пусто.
+func TestMissingFrameDoesNotReachThePrompt(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"line":"Сыро."}`)
+	if _, err := v.Voice(context.Background(),
+		core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern"}},
+		core.TurnResult{FlavourKey: "нет.такого.ключа"}); err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[0].Input; strings.Contains(in, "[нет.такого.ключа]") ||
+		strings.Contains(in, "Что уже описано: []") {
+		t.Errorf("дыра флейвора доехала в промпт:\n%s", in)
 	}
 }
