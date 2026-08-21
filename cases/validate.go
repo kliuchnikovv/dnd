@@ -212,8 +212,10 @@ func validateFile(f File) error {
 		"who": f.Truth.Who, "how": f.Truth.How, "when": f.Truth.When, "why": f.Truth.Why,
 	}
 	clause := map[store.FactID]string{}
+	kind := map[store.FactID]store.FactKind{}
 	for _, fact := range f.Facts {
 		clause[fact.ID] = fact.SummationClause
+		kind[fact.ID] = fact.Kind
 	}
 	for _, t := range f.Tokens {
 		if truthTokens[t.Slot] != t.Token {
@@ -221,6 +223,11 @@ func validateFile(f File) error {
 		}
 		if strings.TrimSpace(clause[t.Fact]) == "" {
 			add("у факта %s нет клаузы развязки, а он стоит за токеном %s", t.Fact, t.Token)
+		}
+		// Факт за токеном правды по определению объясняет, что произошло.
+		if kind[t.Fact] != store.FactConcept {
+			add("факт %s стоит за токеном правды, но размечен как %s, а должен быть concept",
+				t.Fact, kind[t.Fact])
 		}
 	}
 	// Напарник — единственный канал диегетической подсказки. Без него игрок,

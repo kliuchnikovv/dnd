@@ -175,12 +175,12 @@
     {
       "id": "f_body_found",
       "key": "Тело сборщика податей Халдена найдено на складе у пристани",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_ligature",
       "key": "На шее тела — узкая борозда от шнура",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_seal_cord",
@@ -191,17 +191,17 @@
     {
       "id": "f_lock_intact",
       "key": "Замок складских ворот не взломан — открывали ключом",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_toke_has_key",
       "key": "Второй ключ от склада есть у писаря Токе",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_ledger_erasure",
       "key": "В гроссбухе гильдии подчищена страница",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_shortfall",
@@ -212,7 +212,7 @@
     {
       "id": "f_toke_keeps_ledger",
       "key": "Гроссбух гильдии ведёт лично Токе",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_halden_asked_audit",
@@ -228,22 +228,22 @@
     {
       "id": "f_toke_at_quay",
       "key": "Токе видели на пристани в ночь убийства",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_ivar_debt",
       "key": "Ивар задолжал Халдену крупную сумму",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_ivar_alibi",
       "key": "Ивар всю ночь просидел в таверне на виду у всех",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_toke_paid_debts",
       "key": "Токе на днях внезапно расплатился со своими долгами",
-      "kind": "concept"
+      "kind": "transition"
     },
     {
       "id": "f_toke_lied",

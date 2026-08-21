@@ -205,3 +205,13 @@ func TestVerbWithoutGenericFlavourIsRejected(t *testing.T) {
 		t.Fatalf("глагол без общего текста принят: %v", err)
 	}
 }
+
+// Факт, стоящий за токеном правильного ответа, по определению объясняет, что
+// произошло, — значит concept. Разметка ни на что не влияет в M1a, но станет
+// входом валидатора генератора в M1b, и неверной она туда попасть не должна.
+func TestTruthFactMarkedAsTransitionIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) { f.Facts[0].Kind = store.FactTransition })
+	if err == nil || !strings.Contains(err.Error(), "concept") {
+		t.Fatalf("факт правильного ответа с разметкой transition принят: %v", err)
+	}
+}
