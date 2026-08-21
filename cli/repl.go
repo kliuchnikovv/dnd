@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
-	"github.com/kliuchnikovv/dnd/core/accusation"
 	"github.com/kliuchnikovv/dnd/naming"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -37,6 +36,10 @@ type Session struct {
 	// pending — вопрос, заданный игроку игрой. Следующая его фраза — ответ на
 	// этот вопрос, и разбор обязан это знать.
 	pending string
+	// accusing — открытый набор слотов обвинения. Не nil, пока сессия ждёт
+	// очередной токен: полноэкранный режим отдаёт ввод по одной строке и
+	// не может сам дождаться следующей внутри одного хода.
+	accusing *accusation4
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
@@ -76,6 +79,13 @@ func (s *Session) Run() error {
 	for s.sc.Scan() {
 		line := s.sc.Text()
 		s.turn++
+		if s.awaitingAccusation() {
+			s.feedAccusation(line)
+			if s.ended() {
+				return nil
+			}
+			continue
+		}
 		cmd, err := Parse(line)
 		if err != nil {
 			s.interpret(line, err)
@@ -124,7 +134,7 @@ func (s *Session) dispatch(cmd Command) bool {
 	case CmdCompare:
 		s.emitText(EventProse, r.Turn(g, core.Intent{Verb: "compare"}, g.Compare(cmd.Facts[0], cmd.Facts[1])))
 	case CmdAccuse:
-		s.accuse()
+		s.startAccusation()
 	case CmdRest:
 		kind := core.RestShort
 		if cmd.Text == "long" {
@@ -138,56 +148,6 @@ func (s *Session) dispatch(cmd Command) bool {
 		s.applyIntentWithHint(cmd.Intent, cmd.Text)
 	}
 	return false
-}
-
-// accuse собирает форму из доступных токенов. Ошибочная форма не сообщает,
-// какой слот неверен: иначе слоты брутфорсятся по одному.
-func (s *Session) accuse() {
-	g := s.Game
-	form := accusation.Form{}
-	slots := []struct {
-		name string
-		dst  *store.Token
-	}{
-		{"who", &form.Who}, {"how", &form.How},
-		{"when", &form.When}, {"why", &form.Why},
-	}
-	for _, slot := range slots {
-		avail := g.AvailableTokens(slot.name)
-		if len(avail) == 0 {
-			fmt.Fprintf(s.Out, "слот %s пуст: нужных фактов ещё нет\n", slot.name)
-			return
-		}
-		parts := make([]string, len(avail))
-		for i, a := range avail {
-			parts[i] = string(a)
-		}
-		fmt.Fprintf(s.Out, "%s: %s\n> ", slot.name, strings.Join(parts, " | "))
-		if !s.sc.Scan() {
-			return
-		}
-		*slot.dst = store.Token(strings.TrimSpace(s.sc.Text()))
-	}
-	res := g.Accuse(form)
-	switch {
-	case res.Refused:
-		fmt.Fprintf(s.Out, "нельзя: %s\n", res.Refusal)
-	case res.Correct:
-		fmt.Fprintf(s.Out, "Обвинение верно. Попыток: %d.\n\n", res.Attempt)
-		// Развязка — речь игрока, собранная из его же выводов. Игра здесь
-		// ничего не объясняет: она повторяет то, что он собрал сам.
-		for _, clause := range res.Summation {
-			fmt.Fprintf(s.Out, "  — %s\n", clause)
-		}
-		if after := g.Aftermath(); after != "" {
-			fmt.Fprintf(s.Out, "\n%s\n", after)
-		}
-	default:
-		fmt.Fprintf(s.Out, "В обвинении есть ошибки. Попыток: %d.\n", res.Attempt)
-	}
-	for _, c := range res.Fired {
-		fmt.Fprintf(s.Out, "  ⏱ %s\n", g.Flavour(c.FlavourKey))
-	}
 }
 
 // afterAction — последствия действия, не выражаемые мутацией. Перемещение
