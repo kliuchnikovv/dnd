@@ -87,22 +87,18 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		router := llm.NewRouter().
-			Route(llm.RoleIntentParser, target).
-			Route(llm.RoleActor, target).
-			Route(llm.RoleCanonGuard, target)
+		var cheap llm.Target
 		// Ход, не меняющий мир, не обязан стоить как ход, который его меняет.
 		// Без флага всё идёт основной моделью — молча дешеветь за счёт
 		// качества нельзя.
 		if *modelCheap != "" {
-			cheap := llm.Target{Provider: target.Provider, Model: *modelCheap}
+			cheap = llm.Target{Provider: target.Provider, Model: *modelCheap}
 			if err := ensurePrice(cheap.Model, *priceInCheap, *priceOutCheap); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			router.RouteCheap(llm.RoleActor, cheap).
-				RouteCheap(llm.RoleCanonGuard, cheap)
 		}
+		router := buildRouter(target, cheap)
 		gw := llm.NewGateway(router,
 			llm.NewLedger(llm.Caps{
 				GlobalDailyMicro:   int64(*capDay * 1_000_000),
@@ -122,7 +118,10 @@ func main() {
 		}
 		gm := master.New(gw)
 		session.WithVoicer(&actor.GameVoicer{
-			Actor: act, Game: game, Turn: session.Turn, Master: gm})
+			Actor: act, Game: game, Turn: session.Turn, Master: gm,
+			Notify: func(err error) {
+				fmt.Fprintf(os.Stderr, "(Мастер не ответил: %v)\n", err)
+			}})
 		session.WithNarrator(&narrator{master: gm, game: game})
 		defer func() { reportMetrics(gw, parser) }()
 	}
@@ -131,6 +130,41 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// appRoles — роли, которыми игра пользуется, и тир, которым каждая
+// спрашивает. Список объявлен рядом с проводкой не для красоты: роль,
+// которой пользуются, но которую забыли зароутить, падает в ErrNoProvider, а
+// откат надстройки молчит — и это уже однажды выключило прозу Мастера на
+// целую фазу, не сломав ни одного теста.
+var appRoles = []struct {
+	Role llm.Role
+	Tier llm.Tier
+}{
+	{llm.RoleIntentParser, llm.TierMain},
+	{llm.RoleActor, llm.TierMain},
+	{llm.RoleActor, llm.TierCheap},    // приветствие, прощание, ремонт реплики
+	{llm.RoleNarrator, llm.TierMain},  // проза сцены и исхода
+	{llm.RoleNarrator, llm.TierCheap}, // решение ambient-детали по запросу
+	{llm.RoleCanonGuard, llm.TierMain},
+}
+
+// buildRouter разводит роли по целям. Пустая дешёвая цель означает «всё
+// основной моделью»: тир тогда не разводится, и фолбэк шлюза сам отдаёт
+// основную цель.
+func buildRouter(target, cheap llm.Target) *llm.Router {
+	router := llm.NewRouter().
+		Route(llm.RoleIntentParser, target).
+		Route(llm.RoleActor, target).
+		Route(llm.RoleNarrator, target).
+		Route(llm.RoleCanonGuard, target)
+	if cheap.Provider != nil && cheap.Model != "" {
+		// Проверка реплики дешёвого тира не просит и потому по тирам не
+		// разводится: дешёвый судья пропускает утечки.
+		router.RouteCheap(llm.RoleActor, cheap).
+			RouteCheap(llm.RoleNarrator, cheap)
+	}
+	return router
 }
 
 // narrator связывает Мастера с презентацией. Проза необязательна: без -nl

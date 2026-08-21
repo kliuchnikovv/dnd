@@ -698,6 +698,9 @@ type GameVoicer struct {
 	// Master — власть над миром. Без него запросы персонажа просто
 	// игнорируются: игра работает как раньше, авторским материалом.
 	Master WorldMaster
+	// Notify — куда сообщить о поломке надстройки. Молча откатываясь, игра
+	// выглядит рабочей при выключенном Мастере, и поломка живёт долго.
+	Notify func(error)
 }
 
 func (v *GameVoicer) turn() int {
@@ -794,6 +797,9 @@ func (v *GameVoicer) resolveNeeds(ctx context.Context, needs []string,
 	granted, refused, err := v.Master.Grant(ctx, needs, canonFor(v.Game),
 		master.World{Setting: v.Game.Setting, Scene: sit.Scene}, v.Req)
 	if err != nil {
+		if v.Notify != nil {
+			v.Notify(err)
+		}
 		return nil, nil
 	}
 	out := make([]master.Grant, 0, len(granted))

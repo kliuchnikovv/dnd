@@ -1139,3 +1139,22 @@ func TestFloorPhrasesAreHuman(t *testing.T) {
 		t.Errorf("дно однообразно: %d разных фраз на %d ходов", len(seen), len(moves()))
 	}
 }
+
+// Сбой Мастера не рушит ход, но и молчать о нём нельзя: незароученная роль
+// выглядит как «модель ответила бледно», и так она живёт неделями.
+func TestMasterFailureIsReported(t *testing.T) {
+	g := harbour(t)
+	a, _ := repliesInOrder(t, `{"line":"Кто ж его знает.","needs":["кто держит ключи"]}`)
+	var noted []string
+	v := &GameVoicer{Actor: a, Game: g,
+		Master: &fakeMaster{err: errors.New("роль не зароутена")},
+		Notify: func(err error) { noted = append(noted, err.Error()) }}
+
+	if _, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "ключи?"}}, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(noted) != 1 || !strings.Contains(noted[0], "роль не зароутена") {
+		t.Errorf("о сбое Мастера не сообщено: %v", noted)
+	}
+}

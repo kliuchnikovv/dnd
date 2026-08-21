@@ -76,11 +76,33 @@ func (s *Session) WithNarrator(n Narrator) *Session {
 	s.r.Prose = func(frame string, scene, outcome []string) string {
 		// Сбой надстройки не рушит ход: печатается авторский текст, как без
 		// -nl. Проза необязательна, а ход уже сыгран.
+		//
+		// Но молчать о сбое нельзя. Молча откатываясь, игра выглядит рабочей
+		// при выключенном Мастере: код написан, вызов не доходит до модели,
+		// игрок видит бледный текст и не знает, что это поломка. Именно так
+		// незароученная роль прожила целую фазу.
 		out, err := n.Narrate(s.turnContext(), frame, scene, outcome)
-		if err != nil || strings.TrimSpace(out) == "" {
+		if err != nil {
+			s.noteOnce("Мастер промолчал: " + err.Error())
+			return frame
+		}
+		if strings.TrimSpace(out) == "" {
 			return frame
 		}
 		return out
 	}
 	return s
+}
+
+// noteOnce сообщает о поломке надстройки один раз на прогон. Каждая строка
+// прозы жаловалась бы отдельно, а шум читается хуже тишины.
+func (s *Session) noteOnce(text string) {
+	if s.noted == nil {
+		s.noted = map[string]bool{}
+	}
+	if s.noted[text] {
+		return
+	}
+	s.noted[text] = true
+	fmt.Fprintf(s.Out, "(%s)\n", text)
 }

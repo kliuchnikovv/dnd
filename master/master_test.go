@@ -154,3 +154,18 @@ func TestGrantSchemaCarriesCanonFlag(t *testing.T) {
 		t.Error("в схеме нет отказа — а отказ законный исход")
 	}
 }
+
+// Сцена и исход — разные задачи. Один промпт на оба давал «ты подходишь
+// ближе» там, где игрок озирается по сторонам.
+func TestNarrateTellsSceneFromOutcome(t *testing.T) {
+	m, f := masterWith(t, "проза")
+	m.Narrate(context.Background(), "рамка", World{}, nil, llm.Request{})
+	m.Narrate(context.Background(), "рамка", World{}, []string{"исход: успех"}, llm.Request{})
+
+	if got := f.Calls()[0].Input; !strings.Contains(got, "ОПИСАНИЕ МЕСТА") {
+		t.Errorf("сцена не помечена как описание места:\n%s", got)
+	}
+	if got := f.Calls()[1].Input; !strings.Contains(got, "ИСХОД") {
+		t.Errorf("исход не помечен как исход:\n%s", got)
+	}
+}

@@ -23,7 +23,10 @@ type Session struct {
 	interp   Interpreter
 	voicer   Voicer
 	narrator Narrator
-	turn     int
+	// noted — о какой поломке надстройки уже сказано. Жаловаться на неё
+	// каждой строкой значит топить в шуме сам вывод игры.
+	noted map[string]bool
+	turn  int
 	// spokenTo — последний, к кому обращались. Разговор продолжается с тем же
 	// человеком: игроку не надо называть его в каждой реплике.
 	spokenTo store.EntityID

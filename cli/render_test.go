@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -231,5 +232,24 @@ func TestWithoutNarratorAuthoredProseIsPrinted(t *testing.T) {
 	s := NewSession(g, strings.NewReader(""), &strings.Builder{})
 	if got := s.r.Scene(g); !strings.Contains(got, g.Flavour("look."+string(g.Node))) {
 		t.Errorf("авторская проза не напечатана: %q", got)
+	}
+}
+
+// Молчащий сбой надстройки — худший вид сбоя: игрок видит просто бледный
+// текст, а разработчик — ничего. Именно так проза Мастера не работала целую
+// фазу при написанном коде и зелёных тестах.
+func TestNarratorFailureIsReported(t *testing.T) {
+	g := renderGame(t)
+	var out strings.Builder
+	s := NewSession(g, strings.NewReader(""), &out).
+		WithNarrator(&fakeNarrator{err: errors.New("роль не зароутена")})
+
+	fmt.Fprint(&out, s.r.Scene(g))
+	if !strings.Contains(out.String(), "роль не зароутена") {
+		t.Errorf("сбой Мастера не назван игроку:\n%s", out.String())
+	}
+	// Названо один раз, а не на каждую строку прозы: шум хуже тишины.
+	if n := strings.Count(out.String(), "роль не зароутена"); n != 1 {
+		t.Errorf("сбой назван %d раз", n)
 	}
 }
