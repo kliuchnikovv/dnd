@@ -180,3 +180,18 @@ func TestCaseWithoutColdCaseTextIsRejected(t *testing.T) {
 		t.Fatalf("дело без текста висяка принято: %v", err)
 	}
 }
+
+// Гарантия нужна ровно одна. Второй держатель того же факта — это
+// подтверждение, а подтверждение обязано стоить броска: иначе корроборация
+// собирается сама собой и кубик не участвует в расследовании вовсе.
+func TestSecondMandatoryHolderOfTheSameFactIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		second := f.FactHolders[0]
+		second.HolderID = "e_toke"
+		second.Gate.Verbs = []string{"question"}
+		f.FactHolders = append(f.FactHolders, second)
+	})
+	if err == nil || !strings.Contains(err.Error(), "подтверждение") {
+		t.Fatalf("второй mandatory-держатель принят: %v", err)
+	}
+}

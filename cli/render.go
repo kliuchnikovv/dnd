@@ -35,7 +35,9 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 	if t.FlavourKey != "" {
 		fmt.Fprintf(&b, "%s\n", g.Flavour(t.FlavourKey))
 	}
-	if t.Res != nil {
+	// Бросок печатается, только если он был: у безопасного действия кость не
+	// трогается, и Log.Die остаётся нулём.
+	if t.Res != nil && t.Res.Log.Die != 0 {
 		b.WriteString(r.roll(*t.Res))
 	}
 	for _, l := range t.Learned {

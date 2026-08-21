@@ -69,6 +69,10 @@ func validateFile(f File) error {
 			}
 		}
 		if h.Mandatory {
+			if mandatory[h.FactID] {
+				add("у факта %s больше одного mandatory-держателя: второй источник — "+
+					"это подтверждение, и оно обязано стоить броска", h.FactID)
+			}
 			mandatory[h.FactID] = true
 		}
 	}

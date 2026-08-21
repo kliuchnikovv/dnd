@@ -608,7 +608,7 @@
         ],
         "threshold": "normal"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -632,7 +632,7 @@
         ],
         "threshold": "normal"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -692,7 +692,7 @@
         ],
         "threshold": "easy"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -740,7 +740,7 @@
         ],
         "threshold": "normal"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -800,7 +800,7 @@
           "n": 1
         }
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -836,7 +836,7 @@
           "n": 1
         }
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -1011,7 +1011,7 @@
         ],
         "threshold": "normal"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -1055,7 +1055,7 @@
         ],
         "threshold": "normal"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     },
     {
@@ -1067,7 +1067,7 @@
         ],
         "threshold": "hard"
       },
-      "mandatory": true,
+      "mandatory": false,
       "latent": false
     }
   ],

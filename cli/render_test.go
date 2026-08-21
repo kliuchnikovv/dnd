@@ -118,3 +118,13 @@ func TestSurveyOrderIsStable(t *testing.T) {
 		}
 	}
 }
+
+// Безопасный переход кости не трогает, и печатать «[d20=0 против 0]» значит
+// показывать игроку бросок, которого не было.
+func TestNoRollNoRollLine(t *testing.T) {
+	g := renderGame(t)
+	out := Render{}.Turn(g, core.TurnResult{Res: &core.Resolution{Class: core.OutcomeSuccess}})
+	if strings.Contains(out, "d20") {
+		t.Errorf("напечатан несуществующий бросок: %q", out)
+	}
+}
