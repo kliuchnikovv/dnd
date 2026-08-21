@@ -1,6 +1,8 @@
 package core
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/store"
@@ -94,3 +96,88 @@ func TestViewMergesBothLayers(t *testing.T) {
 		t.Errorf("тем %d, ожидалось 2 — слои не слились: %v", len(view.TalksAbout), view.TalksAbout)
 	}
 }
+
+// Актёр без памяти не помнит, что игрок представился ходом раньше. Порядок
+// реплик несущий: разговор читается сверху вниз, иначе модель видит кашу.
+func TestRememberKeepsOrder(t *testing.T) {
+	d := NewDossiers(dossierDB(), "party")
+
+	d.Remember("e_bern", "здравствуйте", "и вам", 1)
+	d.Remember("e_bern", "я из магистрата", "вижу", 2)
+
+	got := d.Recent("e_bern")
+	if len(got) != 2 {
+		t.Fatalf("вспомнилось %d реплик, ждали 2", len(got))
+	}
+	if got[0].Player != "здравствуйте" || got[0].Reply != "и вам" || got[0].Turn != 1 {
+		t.Errorf("первая реплика не та: %+v", got[0])
+	}
+	if got[1].Player != "я из магистрата" {
+		t.Errorf("порядок сбился: %+v", got[1])
+	}
+}
+
+// Память растит промпт, поэтому у неё есть потолок: старое сворачивается в
+// впечатления, а не копится до бесконечности.
+func TestRememberFoldsOldestIntoSummary(t *testing.T) {
+	db := dossierDB()
+	d := NewDossiers(db, "party")
+
+	for i := 1; i <= historyCap+3; i++ {
+		d.Remember("e_bern", "вопрос "+itoa(i), "ответ "+itoa(i), i)
+	}
+
+	if got := len(d.Recent("e_bern")); got != historyCap {
+		t.Errorf("в истории %d реплик, потолок %d", got, historyCap)
+	}
+	if first := d.Recent("e_bern")[0]; first.Turn != 4 {
+		t.Errorf("обрезали не с начала: первый ход %d, ждали 4", first.Turn)
+	}
+	summary := db.DossierFor("e_bern", "party").Summary
+	if !strings.Contains(summary, "вопрос 1") {
+		t.Errorf("вытесненное не свернулось в впечатления: %q", summary)
+	}
+	if n := len([]rune(summary)); n > summaryCap {
+		t.Errorf("впечатления разрослись до %d рун, потолок %d", n, summaryCap)
+	}
+}
+
+// Впечатления тоже не растут без предела: очень долгий разговор вытесняет
+// самое старое, а не переполняет промпт.
+func TestSummaryStaysBounded(t *testing.T) {
+	db := dossierDB()
+	d := NewDossiers(db, "party")
+
+	for i := 1; i <= historyCap*20; i++ {
+		d.Remember("e_bern", "вопрос "+itoa(i), "ответ "+itoa(i), i)
+	}
+
+	summary := db.DossierFor("e_bern", "party").Summary
+	if n := len([]rune(summary)); n > summaryCap {
+		t.Errorf("впечатления %d рун, потолок %d", n, summaryCap)
+	}
+	if !strings.Contains(summary, "вопрос "+itoa(historyCap*20-historyCap)) {
+		t.Errorf("свежее вытесненное потерялось: %q", summary)
+	}
+}
+
+// Разговор — отношенческий слой: что человек рассказал одной парти, второй он
+// не рассказывал.
+func TestHistoryIsPerParty(t *testing.T) {
+	db := dossierDB()
+	a, b := NewDossiers(db, "party-a"), NewDossiers(db, "party-b")
+
+	a.Remember("e_bern", "здравствуйте", "и вам", 1)
+
+	if len(a.Recent("e_bern")) != 1 {
+		t.Error("первая парти забыла свой разговор")
+	}
+	if got := b.Recent("e_bern"); len(got) != 0 {
+		t.Errorf("вторая парти видит чужой разговор: %+v", got)
+	}
+	if world, _ := db.WorldDossier("e_bern"); len(world.History) != 0 {
+		t.Error("разговор протёк в мировой слой")
+	}
+}
+
+func itoa(i int) string { return strconv.Itoa(i) }

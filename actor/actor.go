@@ -35,6 +35,10 @@ type Situation struct {
 	Verb string
 	// PlayerText — фраза игрока, если он писал свободным текстом.
 	PlayerText string
+	// History — что уже сказано в ЭТОМ разговоре, от старого к новому.
+	// Однокадровая реплика не помнит, что игрок представился ходом раньше, и
+	// персонаж звучит как автомат при любом промпте.
+	History []store.Exchange
 	// Known — материал: факты, на которые персонажу разрешено ссылаться.
 	// Всё, чего здесь нет, персонаж сообщить не может.
 	Known []Known
@@ -424,6 +428,17 @@ func renderPrompt(s Speaker, sit Situation, act Act) string {
 	fmt.Fprintf(&b, "Персонаж: %s\nГолос: %s\nРасположение к парти: %s\n",
 		s.Name, s.Voice, dispositionWord(s.Disposition))
 	fmt.Fprintf(&b, "Игрок к нему: %s (%s)\n", sit.Verb, actHint(act))
+	if len(sit.History) > 0 {
+		b.WriteString("Из этого разговора (раньше — выше):\n")
+		for _, e := range sit.History {
+			if e.Player != "" {
+				b.WriteString("  игрок: " + e.Player + "\n")
+			}
+			if e.Reply != "" {
+				b.WriteString("  он: " + e.Reply + "\n")
+			}
+		}
+	}
 	if sit.PlayerText != "" {
 		fmt.Fprintf(&b, "Слова игрока: %s\n", sit.PlayerText)
 	}
@@ -518,6 +533,16 @@ type GameVoicer struct {
 	Actor *Actor
 	Game  *core.Game
 	Req   llm.Request
+	// Turn — номер текущего хода. Нужен только памяти: транскрипт читается
+	// как разговор, а не как список. Без него круги нумеруются нулём.
+	Turn func() int
+}
+
+func (v *GameVoicer) turn() int {
+	if v.Turn == nil {
+		return 0
+	}
+	return v.Turn()
 }
 
 // Voice возвращает реплику или пустую строку, если сейчас говорить нечему.
@@ -540,9 +565,10 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 	if !ok {
 		return "", nil
 	}
-	return v.Actor.Line(ctx, speaker, Situation{
+	line, err := v.Actor.Line(ctx, speaker, Situation{
 		Verb:       string(in.Verb),
 		PlayerText: in.Args.Text,
+		History:    v.Game.D.Recent(in.Args.Target),
 		Known:      KnownTopics(v.Game),
 		Talks:      topicsOf(v.Game, in.Args.Target),
 		MarkTold: func(t Topic) {
@@ -554,6 +580,18 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		Scene:          SceneOf(v.Game, speaker.ID),
 		Frame:          v.Game.Flavour(res.FlavourKey),
 	}, v.Req)
+	if err != nil || line == "" {
+		return "", err
+	}
+	// Помним сказанное на месте: иначе следующий ход снова начнёт с нуля.
+	// Реплику игрока храним его словами, а при структурной команде — глаголом:
+	// «он спросил» без вопроса нечитаемо.
+	said := strings.TrimSpace(in.Args.Text)
+	if said == "" {
+		said = string(in.Verb)
+	}
+	v.Game.D.Remember(in.Args.Target, said, line, v.turn())
+	return line, nil
 }
 
 // SceneOf собирает обстановку: то, что персонаж видит своими глазами и о чём

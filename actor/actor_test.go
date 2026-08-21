@@ -11,6 +11,7 @@ import (
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 func actorWith(t *testing.T, reply string) (*Actor, *llm.Fake) {
@@ -723,5 +724,79 @@ func TestPromptCarriesTheWant(t *testing.T) {
 	got := renderPrompt(Speaker{Name: "Берн", Voice: "сухой"}, sit, Classify(sit.PlayerText))
 	if !strings.Contains(got, "передать Ивару") {
 		t.Errorf("желания нет в промпте:\n%s", got)
+	}
+}
+
+// --- память разговора ---
+
+// Однокадровый актёр не помнит, что игрок представился ходом раньше. История
+// уходит в промпт, иначе «держать контекст» для него невозможно в принципе.
+func TestPromptCarriesConversationHistory(t *testing.T) {
+	a, f := actorWith(t, `{"move":"deflect","line":"Ничего."}`)
+	_, err := a.Line(context.Background(), Speaker{Name: "Берн", Voice: "сухой"},
+		Situation{Verb: "talk_to", PlayerText: "а про лодку?",
+			History: []store.Exchange{
+				{Player: "здравствуйте", Reply: "и вам не хворать", Turn: 1},
+			}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := f.Calls()[0].Input
+	if !strings.Contains(in, "здравствуйте") || !strings.Contains(in, "и вам не хворать") {
+		t.Errorf("разговор не доехал в промпт:\n%s", in)
+	}
+	// Прошлое обязано стоять до текущей реплики: промпт читается сверху вниз.
+	if strings.Index(in, "здравствуйте") > strings.Index(in, "а про лодку?") {
+		t.Errorf("прошлое встало после текущей реплики:\n%s", in)
+	}
+}
+
+// Сказанное запоминается на месте: иначе следующий ход снова начнёт с нуля.
+func TestVoiceRemembersExchange(t *testing.T) {
+	g := harbour(t)
+	v, _ := voicer(t, g, `{"move":"smalltalk","line":"Мокро сегодня."}`)
+	v.Turn = func() int { return 7 }
+
+	in := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern", Text: "здравствуйте"}}
+	if _, err := v.Voice(context.Background(), in, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := g.D.Recent("e_bern")
+	if len(got) != 1 {
+		t.Fatalf("запомнилось %d кругов, ждали 1", len(got))
+	}
+	if got[0].Player != "здравствуйте" || got[0].Reply != "Мокро сегодня." || got[0].Turn != 7 {
+		t.Errorf("круг записан неверно: %+v", got[0])
+	}
+}
+
+// Второй ход видит первый: память замкнута, а не только пишется.
+func TestVoiceFeedsRememberedBack(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"move":"smalltalk","line":"Мокро сегодня."}`)
+	in := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern", Text: "здравствуйте"}}
+	if _, err := v.Voice(context.Background(), in, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.Voice(context.Background(), in, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Calls()[1].Input; !strings.Contains(got, "Мокро сегодня.") {
+		t.Errorf("второй ход не увидел первого:\n%s", got)
+	}
+}
+
+// Молчание не запоминается: пустой круг в транскрипте — это шум, который
+// вытесняет сказанное.
+func TestVoiceDoesNotRememberSilence(t *testing.T) {
+	g := harbour(t)
+	v, _ := voicer(t, g, `{"move":"deflect","line":"тишина"}`)
+	in := core.Intent{Verb: "examine", Args: core.Args{Target: "e_body"}}
+	if _, err := v.Voice(context.Background(), in, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := g.D.Recent("e_bern"); len(got) != 0 {
+		t.Errorf("молчание попало в память: %+v", got)
 	}
 }

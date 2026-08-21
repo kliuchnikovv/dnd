@@ -110,7 +110,7 @@ func main() {
 		if *guardLines {
 			act = act.WithGuard(actor.NewGuard(gw))
 		}
-		session.WithVoicer(&actor.GameVoicer{Actor: act, Game: game})
+		session.WithVoicer(&actor.GameVoicer{Actor: act, Game: game, Turn: session.Turn})
 		defer func() { reportMetrics(gw, parser) }()
 	}
 

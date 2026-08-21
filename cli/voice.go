@@ -16,6 +16,10 @@ func (s *Session) turnContext() context.Context {
 	return llm.WithTurnID(context.Background(), "turn-"+strconv.Itoa(s.turn))
 }
 
+// Turn — номер текущего хода. Нужен надстройкам, которые ведут память
+// разговора: транскрипт читается как разговор, а не как список.
+func (s *Session) Turn() int { return s.turn }
+
 // Voicer — необязательный голос NPC. Без него игра работает как раньше,
 // авторской прозой: озвучка это надстройка, а не условие работы.
 type Voicer interface {
