@@ -45,6 +45,9 @@ type File struct {
 		Wants       []string       `json:"wants"`
 		TalksAbout  []string       `json:"talks_about"`
 		Summary     string         `json:"summary"`
+		// Life — быт персонажа: смена, привычки, о чём ворчит. Мировой слой:
+		// быт объективен, в отличие от впечатлений о парти.
+		Life string `json:"life"`
 	} `json:"dossiers"`
 
 	Tokens []struct {
@@ -75,6 +78,11 @@ type File struct {
 	// обвинения нет.
 	Aftermath string `json:"aftermath"`
 	ColdCase  string `json:"cold_case_text"`
+
+	// Setting — сеттинг-библия дела: место, время, уклад, погода, то, что «все
+	// и так знают». Рамка для разговора: за неё можно цепляться, не выдумывая.
+	// Необязательна — дело без неё играется как раньше.
+	Setting string `json:"setting"`
 
 	Flavour map[string]string `json:"flavour"`
 }

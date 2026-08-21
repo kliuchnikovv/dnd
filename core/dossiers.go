@@ -25,6 +25,7 @@ func (d *Dossiers) view(e store.EntityID) store.Dossier {
 	out := store.Dossier{EntityID: e, PartyID: d.party, Kind: "npc"}
 	if world, ok := d.db.WorldDossier(e); ok {
 		out.Voice = world.Voice
+		out.Life = world.Life
 		out.Kind = world.Kind
 		out.KnowsAbout = append(out.KnowsAbout, world.KnowsAbout...)
 		out.TalksAbout = append(out.TalksAbout, world.TalksAbout...)
@@ -124,6 +125,13 @@ func (d *Dossiers) Voice(e store.EntityID) string {
 		return v
 	}
 	return d.db.Entities[e].Voice
+}
+
+// Life — быт персонажа из мирового слоя: авторская затравка, за которую
+// разговор цепляется, не выдумывая. Пустая строка означает, что автор быта
+// не написал.
+func (d *Dossiers) Life(e store.EntityID) string {
+	return strings.TrimSpace(d.view(e).Life)
 }
 
 // CloseThread снимает незакрытое дело: обещание выполнено, долг отдан.

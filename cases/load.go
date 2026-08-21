@@ -90,6 +90,7 @@ func Parse(raw []byte) (*core.Config, error) {
 		world := db.DossierFor(d.Entity, "")
 		world.Kind = "npc"
 		world.Voice = d.Voice
+		world.Life = d.Life
 		world.KnowsAbout = append(world.KnowsAbout, d.KnowsAbout...)
 		world.TalksAbout = append(world.TalksAbout, d.TalksAbout...)
 		world.Wants = append(world.Wants, d.Wants...)
@@ -114,6 +115,7 @@ func Parse(raw []byte) (*core.Config, error) {
 		DB:        db,
 		Truth:     accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
 		Flavour:   f.Flavour,
+		Setting:   f.Setting,
 		Tokens:    tokens,
 		Start:     f.Start,
 		Aftermath: f.Aftermath,
@@ -122,4 +124,10 @@ func Parse(raw []byte) (*core.Config, error) {
 		Hints:     f.Hints,
 		Actor:     store.CharacterID(f.Actor),
 	}, nil
+}
+
+// dossierKeyFor — ключ отношенческого слоя парти по умолчанию. Нужен тестам
+// и вызывающим, которым иначе пришлось бы знать имя парти загрузчика.
+func dossierKeyFor(e store.EntityID) store.DossierKey {
+	return store.DossierKey{EntityID: e, PartyID: defaultParty}
 }

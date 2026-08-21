@@ -102,3 +102,37 @@ func TestDossierKnowledgeDerivedFromHolders(t *testing.T) {
 		t.Errorf("держатель не знает своего факта: %v", world.KnowsAbout)
 	}
 }
+
+// Затравка мира — авторская рамка, за которую можно цепляться, не выдумывая.
+// Без неё персонажу нечего сказать о быте, и он либо молчит, либо сочиняет.
+func TestSettingAndLifeReachTheGame(t *testing.T) {
+	cfg, err := Load("harbour/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(cfg.Setting) == "" {
+		t.Error("сеттинг дела не доехал в конфиг")
+	}
+	world, ok := cfg.DB.WorldDossier("e_bern")
+	if !ok {
+		t.Fatal("у Берна нет мирового слоя — фикстура сломана")
+	}
+	if strings.TrimSpace(world.Life) == "" {
+		t.Error("быт Берна не доехал в мировой слой")
+	}
+	// Быт объективен: он у человека один, а не свой для каждой парти.
+	if rel := cfg.DB.Dossiers[dossierKeyFor("e_bern")]; rel != nil && rel.Life != "" {
+		t.Error("быт продублирован в отношенческий слой — два места правды")
+	}
+}
+
+// Оба поля необязательны: старое дело обязано грузиться без них.
+func TestSettingAndLifeAreOptional(t *testing.T) {
+	cfg, err := Load("testdata/minimal.json")
+	if err != nil {
+		t.Fatalf("дело без затравки не загрузилось: %v", err)
+	}
+	if cfg.Setting != "" {
+		t.Errorf("сеттинг взялся из ниоткуда: %q", cfg.Setting)
+	}
+}

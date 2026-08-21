@@ -181,3 +181,22 @@ func TestHistoryIsPerParty(t *testing.T) {
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
+
+// Быт — мировой слой: он у человека один и общий для всех парти. Держать его
+// ещё и в отношенческом значило бы иметь два места правды.
+func TestLifeComesFromWorldLayer(t *testing.T) {
+	db := dossierDB()
+	world, _ := db.WorldDossier("e_bern")
+	world.Life = "смена с рассвета, ворчит на сырость"
+
+	a, b := NewDossiers(db, "party-a"), NewDossiers(db, "party-b")
+	if a.Life("e_bern") != "смена с рассвета, ворчит на сырость" {
+		t.Errorf("быт не доехал: %q", a.Life("e_bern"))
+	}
+	if a.Life("e_bern") != b.Life("e_bern") {
+		t.Error("быт разошёлся между парти — он объективен")
+	}
+	if got := a.Life("e_никого"); got != "" {
+		t.Errorf("быт взялся из ниоткуда: %q", got)
+	}
+}
