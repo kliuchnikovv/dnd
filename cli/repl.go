@@ -35,19 +35,39 @@ func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
 func (s *Session) Run() error {
 	fmt.Fprint(s.Out, s.r.Scene(s.Game))
 	s.sc = bufio.NewScanner(s.In)
+	if s.ended() {
+		return nil
+	}
 	for s.sc.Scan() {
 		line := s.sc.Text()
 		s.turn++
 		cmd, err := Parse(line)
 		if err != nil {
 			s.interpret(line, err)
-			continue
+		} else if done := s.dispatch(cmd); done {
+			return nil
 		}
-		if done := s.dispatch(cmd); done {
+		if s.ended() {
 			return nil
 		}
 	}
 	return s.sc.Err()
+}
+
+// ended закрывает прогон развязкой. Раскрытое дело уже напечатало речь игрока
+// и последствия; висяку остаётся напечатать свой текст. Продолжать после
+// любого из двух исходов нечего.
+func (s *Session) ended() bool {
+	if s.Game.Solved() {
+		return true
+	}
+	if !s.Game.Stalled() {
+		return false
+	}
+	if cold := s.Game.ColdCase(); cold != "" {
+		fmt.Fprintf(s.Out, "\n%s\n", cold)
+	}
+	return true
 }
 
 func (s *Session) dispatch(cmd Command) bool {
@@ -58,6 +78,8 @@ func (s *Session) dispatch(cmd Command) bool {
 		return true
 	case CmdHelp:
 		fmt.Fprint(s.Out, r.Help())
+	case CmdSurvey:
+		fmt.Fprint(s.Out, r.Survey(g))
 	case CmdFacts:
 		fmt.Fprint(s.Out, r.Facts(g))
 	case CmdState:
@@ -116,7 +138,15 @@ func (s *Session) accuse() {
 	case res.Refused:
 		fmt.Fprintf(s.Out, "нельзя: %s\n", res.Refusal)
 	case res.Correct:
-		fmt.Fprintf(s.Out, "Обвинение верно. Попыток: %d.\n", res.Attempt)
+		fmt.Fprintf(s.Out, "Обвинение верно. Попыток: %d.\n\n", res.Attempt)
+		// Развязка — речь игрока, собранная из его же выводов. Игра здесь
+		// ничего не объясняет: она повторяет то, что он собрал сам.
+		for _, clause := range res.Summation {
+			fmt.Fprintf(s.Out, "  — %s\n", clause)
+		}
+		if after := g.Aftermath(); after != "" {
+			fmt.Fprintf(s.Out, "\n%s\n", after)
+		}
 	default:
 		fmt.Fprintf(s.Out, "В обвинении есть ошибки. Попыток: %d.\n", res.Attempt)
 	}

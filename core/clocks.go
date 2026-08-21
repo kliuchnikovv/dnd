@@ -65,3 +65,23 @@ func (c *Clocks) Snapshot() []store.Clock {
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
+
+// Stalled — часы давления вышли, а верного обвинения нет. Это висяк: прогон
+// заканчивается, но текстом, а не молчанием. Раскрытое дело висяком не
+// становится, сколько бы ни натикало после.
+func (g *Game) Stalled() bool {
+	if g.solved {
+		return false
+	}
+	any := false
+	for _, c := range g.C.Snapshot() {
+		if c.TickPolicy != "on_cost" {
+			continue
+		}
+		any = true
+		if c.Filled < c.Segments {
+			return false
+		}
+	}
+	return any
+}

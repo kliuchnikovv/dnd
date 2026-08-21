@@ -15,6 +15,7 @@ type DB struct {
 	Characters map[CharacterID]*Character
 	Knowledge  []Knowledge
 	Dossiers   map[DossierKey]*Dossier
+	Props      map[NodeID][]SceneProp
 
 	Contradictions []Contradiction
 }
@@ -29,6 +30,7 @@ func NewDB() *DB {
 		Clocks:     map[ClockID]*Clock{},
 		Characters: map[CharacterID]*Character{},
 		Dossiers:   map[DossierKey]*Dossier{},
+		Props:      map[NodeID][]SceneProp{},
 	}
 }
 
@@ -84,4 +86,15 @@ func (db *DB) DossierFor(e EntityID, party string) *Dossier {
 func (db *DB) WorldDossier(e EntityID) (*Dossier, bool) {
 	d, ok := db.Dossiers[DossierKey{EntityID: e}]
 	return d, ok
+}
+
+// PropAt ищет проп по идентификатору в конкретном узле. Пропы не переезжают,
+// поэтому узел — часть ключа поиска, а не фильтр после него.
+func (db *DB) PropAt(n NodeID, id PropID) (SceneProp, bool) {
+	for _, p := range db.Props[n] {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return SceneProp{}, false
 }

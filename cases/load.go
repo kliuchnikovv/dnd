@@ -51,6 +51,10 @@ func Parse(raw []byte) (*core.Config, error) {
 		db.Unlocks[u.FactID] = append(db.Unlocks[u.FactID], u)
 	}
 	db.Contradictions = append(db.Contradictions, f.Contradictions...)
+	for _, p := range f.Props {
+		db.Props[p.Node] = append(db.Props[p.Node], p)
+		f.Flavour["prop."+string(p.ID)] = p.Text
+	}
 	for i := range f.Clocks {
 		c := f.Clocks[i]
 		db.Clocks[c.ID] = &c
@@ -106,11 +110,13 @@ func Parse(raw []byte) (*core.Config, error) {
 	}
 
 	return &core.Config{
-		DB:      db,
-		Truth:   accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
-		Flavour: f.Flavour,
-		Tokens:  tokens,
-		Start:   f.Start,
-		Actor:   store.CharacterID(f.Actor),
+		DB:        db,
+		Truth:     accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
+		Flavour:   f.Flavour,
+		Tokens:    tokens,
+		Start:     f.Start,
+		Aftermath: f.Aftermath,
+		ColdCase:  f.ColdCase,
+		Actor:     store.CharacterID(f.Actor),
 	}, nil
 }

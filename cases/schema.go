@@ -30,6 +30,7 @@ type File struct {
 	FactUnlocks    []store.FactUnlock    `json:"fact_unlocks"`
 	Contradictions []store.Contradiction `json:"contradictions"`
 	Clocks         []store.Clock         `json:"clocks"`
+	Props          []store.SceneProp     `json:"scene_props"`
 
 	// Dossiers — дневники персонажей. В файле дела они пишутся одной записью
 	// на сущность; загрузчик раскладывает её на два слоя, потому что голос и
@@ -62,6 +63,12 @@ type File struct {
 		Fact store.FactID   `json:"fact"`
 		From store.EntityID `json:"from"`
 	} `json:"start_facts"`
+
+	// Aftermath — что стало с виновным, с посёлком, с напарником. Печатается
+	// после речи игрока. ColdCase — текст висяка: часы вышли, верного
+	// обвинения нет.
+	Aftermath string `json:"aftermath"`
+	ColdCase  string `json:"cold_case_text"`
 
 	Flavour map[string]string `json:"flavour"`
 }

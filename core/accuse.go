@@ -13,6 +13,9 @@ type AccusationResult struct {
 	Correct bool
 	Attempt int
 	Fired   []store.Consequence
+	// Summation — развязка: клаузы фактов, чьи токены игрок поставил в слоты,
+	// в порядке who → how → when → why. Пуста при ошибочном обвинении.
+	Summation []string
 }
 
 // AvailableTokens возвращает токены слота, подкреплённые собранными фактами.
@@ -46,10 +49,50 @@ func (g *Game) Accuse(f accusation.Form) AccusationResult {
 
 	g.Attempts++
 	res := AccusationResult{Attempt: g.Attempts, Correct: g.truth.Check(f)}
+	if res.Correct {
+		res.Summation = g.summation(slots)
+		g.solved = true
+	}
 	fired := g.C.TickAll(1)
 	g.applyConsequences(fired)
 	res.Fired = fired
 	return res
+}
+
+// summation собирает речь из клауз тех фактов, что стоят за поставленными
+// токенами. Порядок слотов фиксирован: who → how → when → why. Клауза берётся
+// только у факта, который игрок фактически положил в слот, — поэтому два
+// игрока, пришедшие к верному ответу разными путями, читают разные развязки.
+func (g *Game) summation(slots map[string]store.Token) []string {
+	var out []string
+	said := map[string]bool{}
+	for _, slot := range []string{"who", "how", "when", "why"} {
+		fact, ok := g.factBehind(slot, slots[slot])
+		if !ok {
+			continue
+		}
+		// Один факт может закрывать несколько слотов; повторённая строка
+		// читается как сбой, а не как вывод.
+		clause := g.DB.Facts[fact].SummationClause
+		if clause == "" || said[clause] {
+			continue
+		}
+		said[clause] = true
+		out = append(out, clause)
+	}
+	return out
+}
+
+// factBehind находит факт, открывший токен в этом слоте. Берётся первый
+// собранный: токен может опираться на несколько фактов, но в речь идёт тот,
+// который у парти действительно есть.
+func (g *Game) factBehind(slot string, tok store.Token) (store.FactID, bool) {
+	for _, t := range g.tokens {
+		if t.Slot == slot && t.Token == tok && g.K.Knows(t.Fact) {
+			return t.Fact, true
+		}
+	}
+	return "", false
 }
 
 func (g *Game) tokenAvailable(slot string, tok store.Token) bool {

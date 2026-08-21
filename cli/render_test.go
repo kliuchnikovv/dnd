@@ -80,3 +80,41 @@ func TestHelpListsEveryPlayerCommand(t *testing.T) {
 		}
 	}
 }
+
+// survey — единственный механизм под критерий гейта «понятно ли, что делать
+// дальше, без подсказки». Список обязан быть честным: холдеры и пропы в одном
+// перечне, без разметки. Размеченный список — это карта решения.
+func TestSurveyListsPropsAndHoldersWithoutMarking(t *testing.T) {
+	g := renderGame(t)
+	out := Render{}.Survey(g)
+
+	for _, want := range []string{"Тело Халдена", "Ящики у стены", "Погасший фонарь"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("в survey нет цели %q: %q", want, out)
+		}
+	}
+
+	prefixes := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "·") {
+			continue
+		}
+		prefixes[line[:strings.Index(line, "·")+len("·")]] = true
+	}
+	if len(prefixes) != 1 {
+		t.Errorf("цели размечены по-разному, список выдаёт граф: %q", out)
+	}
+}
+
+// Порядок произвольный, но стабильный: скриптовый прогон обязан быть
+// воспроизводим, а игрок не должен видеть, как список перетасовывается.
+func TestSurveyOrderIsStable(t *testing.T) {
+	g := renderGame(t)
+	first := Render{}.Survey(g)
+	for i := 0; i < 20; i++ {
+		got := Render{}.Survey(g)
+		if got != first {
+			t.Fatalf("порядок survey поплыл на прогоне %d:\n%q\n%q", i, first, got)
+		}
+	}
+}

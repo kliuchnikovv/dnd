@@ -22,6 +22,11 @@ type Fact struct {
 	CaseID CaseID   `json:"case_id"`
 	Key    string   `json:"key"`
 	Kind   FactKind `json:"kind"`
+	// SummationClause — одна авторская строка развязки. Движок собирает из
+	// таких строк речь игрока: состав и порядок задаёт он сам, поставив токены
+	// в слоты. Нарратор в M2 получит готовый набор клауз и право только на
+	// ритм — внести новую посылку он не сможет, потому что не знает ни одной.
+	SummationClause string `json:"summation_clause"`
 }
 
 // Gate — условие выдачи факта держателем. Threshold — одно из
@@ -166,4 +171,33 @@ func (r *Requirement) Satisfied(knows func(FactID) bool) bool {
 		}
 	}
 	return got >= r.N
+}
+
+// SceneProp — интерактивная деталь узла. Проп инертен: он никогда не держит
+// факта, и это не договорённость, а разные таблицы. Смысл пропа — камуфляж:
+// без него список целей узла состоит из одних холдеров и прямо выдаёт граф
+// дела.
+type SceneProp struct {
+	ID   PropID   `json:"id"`
+	Node NodeID   `json:"node_id"`
+	Name string   `json:"name"`
+	Kind string   `json:"kind"`
+	Tags []string `json:"tags"`
+	// Text — проза пробы. Один текст на все глаголы: разная проза на look и
+	// examine намекала бы, что в пропе что-то есть.
+	Text string `json:"text"`
+}
+
+// PropTags — закрытый словарь тегов пропа. Каждый тег обязан менять бросок:
+// тег, которому нет строки в таблице ситуативных модификаторов, декоративен,
+// и валидатор его не пропустит.
+var PropTags = []string{"cover", "elevation", "dark", "crowd", "tool", "noise", "narrow"}
+
+func KnownPropTag(tag string) bool {
+	for _, t := range PropTags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }

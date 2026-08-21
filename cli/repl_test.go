@@ -426,3 +426,65 @@ func TestAddresseeFromTextOutsideQuotes(t *testing.T) {
 		t.Errorf("речь ушла в question вместо say: %q", out.String())
 	}
 }
+
+func TestSurveyIsAvailableAndFree(t *testing.T) {
+	out := transcript(t, 1, "survey\nclocks\nquit\n")
+	if !strings.Contains(out, "Ящики у стены") {
+		t.Errorf("survey не показал проп: %q", out)
+	}
+	if !strings.Contains(out, "0/6") {
+		t.Errorf("свободная проба сдвинула часы: %q", out)
+	}
+}
+
+// Сцена по прибытии — тот же честный список, что и survey. Печатать здесь
+// одних холдеров значило бы выдавать граф каждым переходом.
+func TestSceneListsPropsAlongsideHolders(t *testing.T) {
+	out := transcript(t, 1, "look\nquit\n")
+	if !strings.Contains(out, "Ящики у стены") {
+		t.Errorf("сцена не показала проп: %q", out)
+	}
+}
+
+// DoD M1a — «до прочитанной развязки». Верное обвинение обязано напечатать
+// речь игрока и последствия, а не строку статуса.
+func TestCorrectAccusationPrintsSummationAndAftermath(t *testing.T) {
+	out := transcript(t, 1, "accuse\ntoke\ncord\nnight\naudit\nquit\n")
+	for _, want := range []string{"шнур", "Токе увели"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("в развязке нет %q:\n%s", want, out)
+		}
+	}
+}
+
+// Ошибочное обвинение развязки не печатает: игра не объясняет решение тому,
+// кто его не нашёл.
+func TestWrongAccusationPrintsNoAftermath(t *testing.T) {
+	out := transcript(t, 1, "accuse\ntoke\ncord\nnight\ncord\nquit\n")
+	if strings.Contains(out, "Токе увели") {
+		t.Errorf("развязка напечатана при ошибке:\n%s", out)
+	}
+}
+
+func TestStalledCaseEndsWithColdCaseText(t *testing.T) {
+	g := renderGame(t)
+	g.C.Tick("c_suspicion", 6)
+	in := strings.NewReader("look\nfacts\n")
+	var out bytes.Buffer
+	if err := NewSession(g, in, &out).Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	if !strings.Contains(out.String(), "Прилив пришёл и ушёл") {
+		t.Errorf("висяк закончился молчанием:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "подтверждён тремя") {
+		t.Errorf("прогон продолжился после висяка:\n%s", out.String())
+	}
+}
+
+func TestRunEndsOnCorrectAccusation(t *testing.T) {
+	out := transcript(t, 1, "accuse\ntoke\ncord\nnight\naudit\nfacts\n")
+	if strings.Contains(out, "подтверждён тремя") {
+		t.Errorf("прогон продолжился после развязки:\n%s", out)
+	}
+}

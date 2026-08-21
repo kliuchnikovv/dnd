@@ -131,3 +131,41 @@ func TestSceneViewHidesFactsAndTruth(t *testing.T) {
 		t.Errorf("сложность gate не доехала до правил: %q", view.GateThreshold)
 	}
 }
+
+// Проп — законная цель свободной пробы. Если бы обращение к пропу отвечало
+// «такой сущности в деле нет», отказ сам сообщал бы игроку, какие цели
+// настоящие, — и весь камуфляж не стоил бы ничего.
+func TestPropIsAValidTargetAndGivesProse(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Props["n_quay"] = []store.SceneProp{{
+		ID: "p_crates", Node: "n_quay", Name: "Ящики", Tags: []string{"cover"},
+	}}
+
+	res := g.Apply(Intent{Verb: "look", Args: Args{Target: "p_crates"}})
+	if res.Refused {
+		t.Fatalf("проп отвергнут как цель: %s", res.Refusal)
+	}
+	if res.FlavourKey != "prop.p_crates" {
+		t.Errorf("ключ прозы пропа %q, ожидался prop.p_crates", res.FlavourKey)
+	}
+}
+
+// Жёсткая проба по пропу ведёт себя ровно как по сущности без фактов: бросок
+// есть, факта нет. Разница в поведении выдала бы граф не хуже разметки.
+func TestHardVerbOnPropRollsAndFindsNothing(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Props["n_quay"] = []store.SceneProp{{
+		ID: "p_crates", Node: "n_quay", Name: "Ящики", Tags: []string{"cover"},
+	}}
+
+	res := g.Apply(Intent{Verb: "examine", Args: Args{Target: "p_crates"}})
+	if res.Refused {
+		t.Fatalf("осмотр пропа отвергнут: %s", res.Refusal)
+	}
+	if res.Res == nil {
+		t.Error("жёсткая проба по пропу прошла без броска")
+	}
+	if len(res.Learned) != 0 {
+		t.Errorf("проп выдал факт: %v", res.Learned)
+	}
+}

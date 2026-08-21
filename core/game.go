@@ -33,6 +33,10 @@ type Config struct {
 	Tokens  []TokenGrant
 	Start   store.NodeID
 	Actor   store.CharacterID
+	// Aftermath — что стало с виновным и с посёлком; печатается после речи
+	// игрока. ColdCase — текст висяка.
+	Aftermath string
+	ColdCase  string
 }
 
 // Game — всё изменяемое состояние прогона. Ядро; системы правил здесь нет
@@ -58,11 +62,14 @@ type Game struct {
 	// оценивает и не тратит на них ход: это заметки игрока, а не факты.
 	Theories []string
 
-	truth   accusation.Truth
-	tokens  []TokenGrant
-	flavour map[string]string
+	truth     accusation.Truth
+	tokens    []TokenGrant
+	flavour   map[string]string
+	aftermath string
+	coldCase  string
 
 	unlocked map[string]bool
+	solved   bool
 }
 
 func NewGame(cfg Config) *Game {
@@ -73,9 +80,17 @@ func NewGame(cfg Config) *Game {
 		D:     NewDossiers(cfg.DB, party(cfg.Party)),
 		Debts: map[store.EntityID]int{},
 		truth: cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
+		aftermath: cfg.Aftermath, coldCase: cfg.ColdCase,
 		unlocked: map[string]bool{},
 	}
 }
+
+// Aftermath — последствия верного обвинения. ColdCase — текст висяка.
+func (g *Game) Aftermath() string { return g.aftermath }
+func (g *Game) ColdCase() string  { return g.coldCase }
+
+// Solved сообщает, что дело закрыто верным обвинением.
+func (g *Game) Solved() bool { return g.solved }
 
 // Flavour отдаёт текст по ключу. Отсутствующий ключ виден в выводе как
 // [ключ]: пустая строка на его месте прячет дыру в деле до самого демо.

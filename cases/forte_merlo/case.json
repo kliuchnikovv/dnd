@@ -492,12 +492,14 @@
     {
       "id": "f_shards_match",
       "key": "The glass from Emilien's boot matches the break of the shards in the office",
-      "kind": "concept"
+      "kind": "concept",
+      "summation_clause": "Start with your boot: the glass ground into the heel matches the break of the shards on that office floor, edge for edge."
     },
     {
       "id": "f_diary_in_desk",
       "key": "Miguel Sanchez's diary lies in the bottom drawer of Emilien's desk",
-      "kind": "concept"
+      "kind": "concept",
+      "summation_clause": "And the reason is in your own bottom drawer: Sanchez's diary, which Zheber had begun to read."
     },
     {
       "id": "f_riff_alibi_madelaine",
@@ -557,12 +559,14 @@
     {
       "id": "f_strangled_and_staged",
       "key": "Zheber was strangled with his own curtain; the drug was planted after death",
-      "kind": "concept"
+      "kind": "concept",
+      "summation_clause": "He was strangled with his own curtain cord, and the drug went into him afterwards, by a hand that wanted a different story told."
     },
     {
       "id": "f_night_window",
       "key": "The killing falls between 23:30 and 03:00 on the night of the 14th",
-      "kind": "concept"
+      "kind": "concept",
+      "summation_clause": "It happened between half past eleven and three, on the night of the fourteenth — the window the infirmary clock leaves open and no alibi of yours covers."
     },
     {
       "id": "f_drug_program",
@@ -1144,6 +1148,458 @@
       }
     }
   ],
+  "scene_props": [
+    {
+      "id": "p_cabinets",
+      "node_id": "n_police_office",
+      "name": "Filing cabinets",
+      "kind": "furniture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "Four cabinets stand shoulder to shoulder, leaving a gap you turn sideways for."
+    },
+    {
+      "id": "p_coat_rack",
+      "node_id": "n_police_office",
+      "name": "Coat rack",
+      "kind": "furniture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A heavy rack by the door, three oilskins hanging wet on it."
+    },
+    {
+      "id": "p_typewriter",
+      "node_id": "n_police_office",
+      "name": "Office typewriter",
+      "kind": "tool",
+      "tags": [
+        "tool"
+      ],
+      "text": "A squat machine with the letter e worn pale on its key."
+    },
+    {
+      "id": "p_office_stove",
+      "node_id": "n_police_office",
+      "name": "Iron stove",
+      "kind": "fixture",
+      "tags": [
+        "noise"
+      ],
+      "text": "The stove ticks and pops as it cools, loud in the quiet room."
+    },
+    {
+      "id": "p_awnings",
+      "node_id": "n_kalderes",
+      "name": "Market awnings",
+      "kind": "fixture",
+      "tags": [
+        "crowd"
+      ],
+      "text": "Canvas awnings run the length of the square, and the crowd runs with them."
+    },
+    {
+      "id": "p_well",
+      "node_id": "n_kalderes",
+      "name": "The town well",
+      "kind": "fixture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A low stone rim, chest high, with a bucket left on the coping."
+    },
+    {
+      "id": "p_church_steps",
+      "node_id": "n_kalderes",
+      "name": "Church steps",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "Six worn steps that put you a head above everyone in the square."
+    },
+    {
+      "id": "p_card_table",
+      "node_id": "n_bar",
+      "name": "Card table",
+      "kind": "furniture",
+      "tags": [
+        "crowd"
+      ],
+      "text": "Four men at cards, and a fifth watching over their shoulders."
+    },
+    {
+      "id": "p_back_stairs",
+      "node_id": "n_bar",
+      "name": "Back stairs",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "Stairs to the upper floor, the landing overlooking the whole room."
+    },
+    {
+      "id": "p_empties",
+      "node_id": "n_bar",
+      "name": "Crate of empties",
+      "kind": "clutter",
+      "tags": [
+        "cover"
+      ],
+      "text": "A crate of bottles stacked against the wall, waiting for the cart."
+    },
+    {
+      "id": "p_bedstead",
+      "node_id": "n_emilien_home",
+      "name": "Iron bedstead",
+      "kind": "furniture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A narrow iron bed, blankets folded square as if for inspection."
+    },
+    {
+      "id": "p_washstand",
+      "node_id": "n_emilien_home",
+      "name": "Washstand",
+      "kind": "furniture",
+      "tags": [
+        "tool"
+      ],
+      "text": "A basin, a razor, a strop hanging from a nail beside it."
+    },
+    {
+      "id": "p_shutters",
+      "node_id": "n_emilien_home",
+      "name": "Shuttered window",
+      "kind": "fixture",
+      "tags": [
+        "dark"
+      ],
+      "text": "The shutters are closed and latched; the room keeps the dusk in."
+    },
+    {
+      "id": "p_hall_mirror",
+      "node_id": "n_zheber_home",
+      "name": "Hall mirror",
+      "kind": "furniture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A tall mirror in the hall, spotted with age along one edge."
+    },
+    {
+      "id": "p_umbrella_stand",
+      "node_id": "n_zheber_home",
+      "name": "Umbrella stand",
+      "kind": "furniture",
+      "tags": [
+        "tool"
+      ],
+      "text": "A brass stand holding two umbrellas and a walking cane."
+    },
+    {
+      "id": "p_stair_landing",
+      "node_id": "n_zheber_home",
+      "name": "Stair landing",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "The landing looks down on the front door and everyone who uses it."
+    },
+    {
+      "id": "p_flour_sacks",
+      "node_id": "n_bakery",
+      "name": "Flour sacks",
+      "kind": "clutter",
+      "tags": [
+        "cover"
+      ],
+      "text": "Sacks stacked waist high, the topmost split and leaking white."
+    },
+    {
+      "id": "p_oven",
+      "node_id": "n_bakery",
+      "name": "Bread oven",
+      "kind": "fixture",
+      "tags": [
+        "noise"
+      ],
+      "text": "The oven roars behind its iron door; talk here is half shouting."
+    },
+    {
+      "id": "p_hatch",
+      "node_id": "n_bakery",
+      "name": "Delivery hatch",
+      "kind": "fixture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "A hatch to the alley, wide enough for a tray and not much else."
+    },
+    {
+      "id": "p_milestone",
+      "node_id": "n_road_to_fort",
+      "name": "Milestone",
+      "kind": "fixture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A squat stone marker, the numeral on it half eaten by lichen."
+    },
+    {
+      "id": "p_ditch",
+      "node_id": "n_road_to_fort",
+      "name": "Roadside ditch",
+      "kind": "fixture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "The ditch runs deep and close beside the road, brimming after rain."
+    },
+    {
+      "id": "p_pines",
+      "node_id": "n_road_to_fort",
+      "name": "Stand of pines",
+      "kind": "fixture",
+      "tags": [
+        "dark"
+      ],
+      "text": "Pines crowd the verge and keep the road in shadow even at noon."
+    },
+    {
+      "id": "p_votive_rack",
+      "node_id": "n_santa_irene",
+      "name": "Votive rack",
+      "kind": "fixture",
+      "tags": [
+        "dark"
+      ],
+      "text": "Most of the candles have guttered; the rack holds more wax than light."
+    },
+    {
+      "id": "p_bell_rope",
+      "node_id": "n_santa_irene",
+      "name": "Bell rope",
+      "kind": "fixture",
+      "tags": [
+        "noise"
+      ],
+      "text": "The rope hangs to knee height, knotted at the end and slightly swinging."
+    },
+    {
+      "id": "p_gallery_stair",
+      "node_id": "n_santa_irene",
+      "name": "Gallery stair",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "A stair to the gallery, from which the whole nave is visible."
+    },
+    {
+      "id": "p_sandbags",
+      "node_id": "n_fort_kpp",
+      "name": "Sandbag revetment",
+      "kind": "fixture",
+      "tags": [
+        "cover"
+      ],
+      "text": "Sandbags piled to chest height, the lower course rotted through."
+    },
+    {
+      "id": "p_barrier",
+      "node_id": "n_fort_kpp",
+      "name": "Striped barrier",
+      "kind": "fixture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "A painted pole across the road; foot traffic squeezes past one at a time."
+    },
+    {
+      "id": "p_sentry_box",
+      "node_id": "n_fort_kpp",
+      "name": "Sentry box",
+      "kind": "fixture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A wooden box barely wide enough for one man and his rifle."
+    },
+    {
+      "id": "p_tower_ladder",
+      "node_id": "n_fort_kpp",
+      "name": "Watchtower ladder",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "A ladder to the platform, two rungs replaced with fresh timber."
+    },
+    {
+      "id": "p_flagstaff",
+      "node_id": "n_fort_yard",
+      "name": "Flagstaff",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "The staff has a maintenance step cleated to it, chest high off the gravel."
+    },
+    {
+      "id": "p_drums",
+      "node_id": "n_fort_yard",
+      "name": "Stacked drums",
+      "kind": "clutter",
+      "tags": [
+        "cover"
+      ],
+      "text": "Empty oil drums stacked three deep at the edge of the ground."
+    },
+    {
+      "id": "p_drill_lane",
+      "node_id": "n_fort_yard",
+      "name": "Gravel drill lane",
+      "kind": "fixture",
+      "tags": [
+        "noise"
+      ],
+      "text": "Gravel crunches under everything; nobody crosses this yard quietly."
+    },
+    {
+      "id": "p_map_table",
+      "node_id": "n_fort_hq",
+      "name": "Map table",
+      "kind": "tool",
+      "tags": [
+        "tool"
+      ],
+      "text": "A table under a pinned map, dividers and a rule laid across it."
+    },
+    {
+      "id": "p_colours",
+      "node_id": "n_fort_hq",
+      "name": "Regimental colours",
+      "kind": "fixture",
+      "tags": [
+        "cover"
+      ],
+      "text": "The colours hang on a standing pole beside the inner door."
+    },
+    {
+      "id": "p_balcony_door",
+      "node_id": "n_fort_hq",
+      "name": "Balcony door",
+      "kind": "fixture",
+      "tags": [
+        "elevation"
+      ],
+      "text": "A door to the balcony above the parade ground, its bolt drawn back."
+    },
+    {
+      "id": "p_safe",
+      "node_id": "n_zheber_office",
+      "name": "Wall safe",
+      "kind": "furniture",
+      "tags": [
+        "cover"
+      ],
+      "text": "A squat safe under the window, its dial worn smooth at the numerals."
+    },
+    {
+      "id": "p_desk_lamp",
+      "node_id": "n_zheber_office",
+      "name": "Desk lamp",
+      "kind": "fixture",
+      "tags": [
+        "dark"
+      ],
+      "text": "The lamp throws a small circle and leaves the corners entirely dark."
+    },
+    {
+      "id": "p_service_door",
+      "node_id": "n_zheber_office",
+      "name": "Service door",
+      "kind": "fixture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "A servant's door behind the desk, narrow enough to catch a shoulder."
+    },
+    {
+      "id": "p_bunks",
+      "node_id": "n_fort_barracks",
+      "name": "Rows of bunks",
+      "kind": "furniture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "Bunks in two rows with an aisle a rifle's length wide between them."
+    },
+    {
+      "id": "p_footlockers",
+      "node_id": "n_fort_barracks",
+      "name": "Footlockers",
+      "kind": "furniture",
+      "tags": [
+        "cover"
+      ],
+      "text": "Lockers along the wall, one of them standing open and half emptied."
+    },
+    {
+      "id": "p_barracks_stove",
+      "node_id": "n_fort_barracks",
+      "name": "Barracks stove",
+      "kind": "fixture",
+      "tags": [
+        "noise"
+      ],
+      "text": "The stove is banked and hissing; the pipe rattles whenever the wind turns."
+    },
+    {
+      "id": "p_screens",
+      "node_id": "n_fort_hospital",
+      "name": "Screens on castors",
+      "kind": "furniture",
+      "tags": [
+        "cover"
+      ],
+      "text": "Folding screens on castors, pushed together at the end of the ward."
+    },
+    {
+      "id": "p_instrument_tray",
+      "node_id": "n_fort_hospital",
+      "name": "Instrument tray",
+      "kind": "tool",
+      "tags": [
+        "tool"
+      ],
+      "text": "A tray of instruments laid out on cloth, boiled and not yet used."
+    },
+    {
+      "id": "p_linen_press",
+      "node_id": "n_fort_hospital",
+      "name": "Linen press",
+      "kind": "furniture",
+      "tags": [
+        "narrow"
+      ],
+      "text": "A press wedged between two beds; the door opens only halfway."
+    },
+    {
+      "id": "p_ward_lamp",
+      "node_id": "n_fort_hospital",
+      "name": "Lamp above the table",
+      "kind": "fixture",
+      "tags": [
+        "dark"
+      ],
+      "text": "The lamp above the table is out, and the ward keeps its far end in shadow."
+    }
+  ],
   "accusation_tokens": [
     {
       "slot": "who",
@@ -1213,6 +1669,8 @@
       "from": "e_riff"
     }
   ],
+  "aftermath": "Emilien was taken to Kalderes under escort before the garrison woke. The Zheber house was closed within the month, and the road to Forte Merlo kept its checkpoint but lost its captain. Sanchez's diary went into evidence and was never returned to his family.",
+  "cold_case_text": "The garrison buried Zheber with honours and the file went to Kalderes marked accidental. Emilien served out his posting and transferred east. The diary stayed in the bottom drawer of a desk that nobody had reason to open again.",
   "flavour": {
     "ask_about": "You ask it sideways, as if it hardly mattered, and watch not the words but the way they are said.",
     "clock.cover_up.filled": "A staff car comes down from the district in the afternoon. By evening the pouch and the syringe are 'not among the effects', and the word going round headquarters is a private weakness, one officer, regrettable, closed.",

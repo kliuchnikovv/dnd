@@ -9,6 +9,7 @@ type (
 	NodeID      string
 	ClockID     string
 	CharacterID string
+	PropID      string
 	CaseID      string
 
 	// Token — значение слота обвинения (who / how / when / why).

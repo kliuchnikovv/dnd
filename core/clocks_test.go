@@ -3,6 +3,7 @@ package core
 import (
 	"testing"
 
+	"github.com/kliuchnikovv/dnd/core/accusation"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -46,5 +47,28 @@ func TestTickOnUnknownClockIsNoop(t *testing.T) {
 	c := NewClocks(clocksDB())
 	if got := c.Tick("c_nonexistent", 1); len(got) != 0 {
 		t.Errorf("тик несуществующих часов дал последствие: %v", got)
+	}
+}
+
+// Висяк — тоже развязка: часы вышли, верного обвинения нет, и прогон обязан
+// закончиться текстом, а не молчанием.
+func TestStalledWhenEveryPressureClockIsFull(t *testing.T) {
+	g := accuseGame()
+	if g.Stalled() {
+		t.Fatal("дело объявлено висяком на первом ходу")
+	}
+	g.C.Tick("c_suspicion", 6)
+	if !g.Stalled() {
+		t.Error("часы заполнены, а дело не висяк")
+	}
+}
+
+func TestSolvedCaseIsNotStalled(t *testing.T) {
+	g := accuseGame()
+	learnAll(g)
+	g.Accuse(accusation.Form{Who: "toke", How: "cord", When: "night", Why: "audit"})
+	g.C.Tick("c_suspicion", 6)
+	if g.Stalled() {
+		t.Error("раскрытое дело объявлено висяком")
 	}
 }

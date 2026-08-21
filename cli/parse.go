@@ -23,6 +23,7 @@ const (
 	CmdHelp
 	CmdQuit
 	CmdRest
+	CmdSurvey
 )
 
 type Command struct {
@@ -96,6 +97,8 @@ func Parse(line string) (Command, error) {
 	head, rest := fields[0], fields[1:]
 
 	switch head {
+	case "survey":
+		return Command{Kind: CmdSurvey}, nil
 	case "facts":
 		return Command{Kind: CmdFacts}, nil
 	case "state":
@@ -158,6 +161,11 @@ func Parse(line string) (Command, error) {
 		cmd.Intent.Args.Ability = rest[0]
 		return cmd, nil
 	case "look":
+		// Цель необязательна: «look» осматривается вокруг, «look p_crates»
+		// разглядывает деталь.
+		if len(rest) == 1 {
+			cmd.Intent.Args.Target = entityID(rest[0])
+		}
 		return cmd, nil
 	}
 
@@ -174,9 +182,16 @@ func entityID(s string) store.EntityID { return store.EntityID(withPrefix(s, "e_
 func factID(s string) store.FactID     { return store.FactID(withPrefix(s, "f_")) }
 func nodeID(s string) store.NodeID     { return store.NodeID(withPrefix(s, "n_")) }
 
+// knownPrefixes — идентификаторы, которые уже размечены. Дописывать «e_»
+// пропу нельзя: игрок ушёл бы в несуществующую сущность, и отказ сообщил бы
+// ему, что цель была инертной.
+var knownPrefixes = []string{"e_", "p_", "f_", "n_"}
+
 func withPrefix(s, prefix string) string {
-	if strings.HasPrefix(s, prefix) {
-		return s
+	for _, p := range knownPrefixes {
+		if strings.HasPrefix(s, p) {
+			return s
+		}
 	}
 	return prefix + s
 }

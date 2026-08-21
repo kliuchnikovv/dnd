@@ -94,7 +94,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 }
 
 func (g *Game) validate(in Intent, def VerbDef) (TurnResult, bool) {
-	if in.Args.Target != "" {
+	if in.Args.Target != "" && !g.isProp(in.Args.Target) {
 		e, ok := g.DB.Entities[in.Args.Target]
 		if !ok {
 			return refuse("такой сущности в деле нет"), true
@@ -233,6 +233,13 @@ func (g *Game) SceneView(in Intent) SceneView {
 	return view
 }
 
+// isProp сообщает, что цель — инертная деталь текущего узла. Проп законная
+// цель любой пробы и никогда не держит факта: холдера у него нет по типу.
+func (g *Game) isProp(target store.EntityID) bool {
+	_, ok := g.DB.PropAt(g.Node, store.PropID(target))
+	return ok
+}
+
 func (g *Game) nodeTags(n store.NodeID) []string {
 	return g.DB.Locations[n].Tags
 }
@@ -255,6 +262,11 @@ func (g *Game) hostileCount() int {
 // откат на verb.target/verb.node.
 func (g *Game) flavourKeyFor(in Intent, holder store.FactHolder, found bool) string {
 	verb := string(in.Verb)
+	// У пропа один текст на все пробы. Так и задумано: проп инертен, и разная
+	// проза на look и examine намекала бы, что в нём что-то есть.
+	if g.isProp(in.Args.Target) {
+		return "prop." + string(in.Args.Target)
+	}
 	if found {
 		return g.resolveFlavour(
 			verb+"."+string(holder.HolderID)+"."+string(holder.FactID),

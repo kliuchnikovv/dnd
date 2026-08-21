@@ -107,3 +107,76 @@ func TestRequirementThresholdOutOfRangeIsRejected(t *testing.T) {
 		t.Fatalf("порог больше числа предпосылок принят: %v", err)
 	}
 }
+
+// Проп инертен: держать факт он не может. Проверка по типу невозможна, пока
+// пропы и сущности — разные таблицы, поэтому её делает загрузчик.
+func TestPropCannotHoldAFact(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Props = append(f.Props, store.SceneProp{
+			ID: "p_crates", Node: "n_quay", Name: "Ящики в углу", Tags: []string{"cover"},
+		})
+		f.FactHolders[0].HolderID = "p_crates"
+	})
+	if err == nil || !strings.Contains(err.Error(), "инертны") {
+		t.Fatalf("проп принят как держатель факта: %v", err)
+	}
+}
+
+// Тег вне словаря модификаторов декоративен, а декоративных тегов быть не
+// должно: проп обязан что-то менять в броске.
+func TestPropTagOutsideVocabularyIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Props = append(f.Props, store.SceneProp{
+			ID: "p_rug", Node: "n_quay", Name: "Ковёр", Tags: []string{"уютный"},
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "уютный") {
+		t.Fatalf("декоративный тег принят: %v", err)
+	}
+}
+
+func TestPropInUnknownNodeIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Props = append(f.Props, store.SceneProp{
+			ID: "p_lamp", Node: "n_nowhere", Name: "Фонарь", Tags: []string{"dark"},
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "n_nowhere") {
+		t.Fatalf("проп в несуществующем узле принят: %v", err)
+	}
+}
+
+// Проп без прозы печатается как «[prop.p_rug]» и тем самым сам себя выдаёт.
+func TestPropWithoutTextIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Props = append(f.Props, store.SceneProp{
+			ID: "p_rug", Node: "n_quay", Name: "Ковёр", Tags: []string{"narrow"},
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "p_rug") {
+		t.Fatalf("проп без текста принят: %v", err)
+	}
+}
+
+// Без клаузы верное обвинение печатает пустоту: игрок доходит до конца и не
+// получает развязки. Это дыра в DoD, а не косметика.
+func TestFactBehindTruthTokenNeedsASummationClause(t *testing.T) {
+	err := mutate(t, func(f *File) { f.Facts[0].SummationClause = "" })
+	if err == nil || !strings.Contains(err.Error(), "клауз") {
+		t.Fatalf("факт правильного ответа без клаузы принят: %v", err)
+	}
+}
+
+func TestCaseWithoutAftermathIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) { f.Aftermath = "" })
+	if err == nil || !strings.Contains(err.Error(), "aftermath") {
+		t.Fatalf("дело без последствий принято: %v", err)
+	}
+}
+
+func TestCaseWithoutColdCaseTextIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) { f.ColdCase = "" })
+	if err == nil || !strings.Contains(err.Error(), "cold_case") {
+		t.Fatalf("дело без текста висяка принято: %v", err)
+	}
+}

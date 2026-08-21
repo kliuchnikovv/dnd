@@ -80,6 +80,31 @@ func validateFile(f File) error {
 		}
 	}
 
+	// Пропы: инертны по построению, но ссылки и теги всё равно надо проверить.
+	props := map[store.PropID]bool{}
+	for _, p := range f.Props {
+		props[p.ID] = true
+		if !hasLocation(f, p.Node) {
+			add("проп %s стоит в несуществующем узле %s", p.ID, p.Node)
+		}
+		if entities[store.EntityID(p.ID)] {
+			add("идентификатор %s занят и пропом, и сущностью", p.ID)
+		}
+		if strings.TrimSpace(p.Text) == "" {
+			add("у пропа %s нет текста — в выводе он станет заглушкой", p.ID)
+		}
+		for _, tag := range p.Tags {
+			if !store.KnownPropTag(tag) {
+				add("проп %s несёт тег %q вне словаря модификаторов", p.ID, tag)
+			}
+		}
+	}
+	for _, h := range f.FactHolders {
+		if props[store.PropID(h.HolderID)] {
+			add("проп %s не может держать факт %s: пропы инертны", h.HolderID, h.FactID)
+		}
+	}
+
 	// Каждый слот правильного ответа должен быть достижим токеном под фактом.
 	tokens := map[string]map[store.Token]bool{}
 	for _, t := range f.Tokens {
@@ -155,6 +180,30 @@ func validateFile(f File) error {
 		if d.Disposition < -3 || d.Disposition > 3 {
 			add("у дневника %s расположение %d вне диапазона -3..3", d.Entity, d.Disposition)
 		}
+	}
+
+	// Развязка: у каждого факта, стоящего за токеном правильного ответа,
+	// обязана быть клауза, иначе верное обвинение печатает пустоту.
+	truthTokens := map[string]store.Token{
+		"who": f.Truth.Who, "how": f.Truth.How, "when": f.Truth.When, "why": f.Truth.Why,
+	}
+	clause := map[store.FactID]string{}
+	for _, fact := range f.Facts {
+		clause[fact.ID] = fact.SummationClause
+	}
+	for _, t := range f.Tokens {
+		if truthTokens[t.Slot] != t.Token {
+			continue
+		}
+		if strings.TrimSpace(clause[t.Fact]) == "" {
+			add("у факта %s нет клаузы развязки, а он стоит за токеном %s", t.Fact, t.Token)
+		}
+	}
+	if strings.TrimSpace(f.Aftermath) == "" {
+		add("у дела нет aftermath — после речи игрока печатать нечего")
+	}
+	if strings.TrimSpace(f.ColdCase) == "" {
+		add("у дела нет cold_case_text — висяк заканчивается молчанием")
 	}
 
 	if len(f.StartFacts) == 0 {

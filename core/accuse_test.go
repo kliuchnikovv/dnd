@@ -121,3 +121,72 @@ func TestIncompleteFormIsRefusedWithoutCost(t *testing.T) {
 		t.Error("неполная форма стоила тика")
 	}
 }
+
+// Развязка — речь игрока, собранная из его же выводов. Строки берутся у тех
+// фактов, чьи токены он поставил в слоты, в порядке who → how → when → why.
+// Ни одной посылки, которой он не собрал, в тексте быть не может.
+func TestSummationIsBuiltFromTheClausesOfPlacedFacts(t *testing.T) {
+	g := accuseGame()
+	learnAll(g)
+	for id, clause := range map[store.FactID]string{
+		"f_who":   "…и это был Токе.",
+		"f_how":   "…потому что шнур с печатью бывает только у него.",
+		"f_when":  "…в ночь перед приливом.",
+		"f_why":   "…из-за недостачи, которую вскрыл бы аудит.",
+		"f_wrong": "…и это был Ивар.",
+	} {
+		f := g.DB.Facts[id]
+		f.SummationClause = clause
+		g.DB.Facts[id] = f
+	}
+
+	res := g.Accuse(accusation.Form{Who: "toke", How: "cord", When: "night", Why: "audit"})
+	if !res.Correct {
+		t.Fatal("верное обвинение не принято")
+	}
+	want := []string{
+		"…и это был Токе.",
+		"…потому что шнур с печатью бывает только у него.",
+		"…в ночь перед приливом.",
+		"…из-за недостачи, которую вскрыл бы аудит.",
+	}
+	if len(res.Summation) != len(want) {
+		t.Fatalf("развязка из %d строк, ожидалось %d: %v", len(res.Summation), len(want), res.Summation)
+	}
+	for i, w := range want {
+		if res.Summation[i] != w {
+			t.Errorf("строка %d: %q, ожидалось %q", i, res.Summation[i], w)
+		}
+	}
+}
+
+// Ошибочное обвинение развязки не даёт: иначе игра объясняла бы решение тому,
+// кто его не нашёл.
+func TestWrongAccusationHasNoSummation(t *testing.T) {
+	g := accuseGame()
+	learnAll(g)
+	g.K.Learn("f_wrong", "e_bern")
+	res := g.Accuse(accusation.Form{Who: "ivar", How: "cord", When: "night", Why: "audit"})
+	if res.Correct {
+		t.Fatal("ошибочное обвинение принято за верное")
+	}
+	if len(res.Summation) != 0 {
+		t.Errorf("развязка выдана при ошибке: %v", res.Summation)
+	}
+}
+
+// Один факт может стоять за несколькими слотами. В речи он звучит один раз:
+// повторённая четырежды строка читается как сбой, а не как вывод.
+func TestSummationSaysEachClauseOnce(t *testing.T) {
+	g := accuseGame()
+	learnAll(g)
+	for _, id := range []store.FactID{"f_who", "f_how", "f_when", "f_why"} {
+		f := g.DB.Facts[id]
+		f.SummationClause = "…одна и та же мысль."
+		g.DB.Facts[id] = f
+	}
+	res := g.Accuse(accusation.Form{Who: "toke", How: "cord", When: "night", Why: "audit"})
+	if len(res.Summation) != 1 {
+		t.Errorf("клауза повторена %d раз: %v", len(res.Summation), res.Summation)
+	}
+}

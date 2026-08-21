@@ -10,13 +10,11 @@ import (
 
 type Render struct{}
 
-func (Render) Scene(g *core.Game) string {
+func (r Render) Scene(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
 	fmt.Fprintf(&b, "%s\n", g.Flavour("look."+string(g.Node)))
-	for _, e := range g.DB.EntitiesAt(g.Node) {
-		fmt.Fprintf(&b, "  · %s (%s)\n", e.Name, e.ID)
-	}
+	b.WriteString(targetList(g))
 	if reach := g.ReachableNodes(); len(reach) > 0 {
 		parts := make([]string, len(reach))
 		for i, n := range reach {
@@ -117,7 +115,8 @@ func (Render) Clocks(g *core.Game) string {
 }
 
 func (Render) Help() string {
-	return `question <источник> <тема>      расспросить
+	return `survey                          что здесь можно трогать
+question <источник> <тема>      расспросить
 examine <предмет>               осмотреть
 search <локация>                обыскать
 compare <факт> <факт>           сопоставить
@@ -134,4 +133,43 @@ clocks                          часы давления
 help                            этот список
 quit                            выйти
 `
+}
+
+// Survey печатает интерактивные цели узла: холдеров и пропы в одном списке,
+// без разметки, в стабильном порядке по имени.
+//
+// Разметка здесь была бы карту решения: игрок, видящий, какие четыре цели
+// «настоящие», не расследует, а перебирает. Половина списка инертна, и узнать,
+// какая именно, можно только потрогав.
+func (Render) Survey(g *core.Game) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
+	b.WriteString(targetList(g))
+	return b.String()
+}
+
+// targetList — холдеры и пропы одним перечнем, отсортированные по имени.
+// Единственное место, где строится список целей: сцена и survey обязаны
+// печатать одно и то же, иначе одна из двух команд начнёт выдавать граф.
+func targetList(g *core.Game) string {
+	type target struct{ name, id string }
+	var all []target
+	for _, e := range g.DB.EntitiesAt(g.Node) {
+		all = append(all, target{e.Name, string(e.ID)})
+	}
+	for _, p := range g.DB.Props[g.Node] {
+		all = append(all, target{p.Name, string(p.ID)})
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].name != all[j].name {
+			return all[i].name < all[j].name
+		}
+		return all[i].id < all[j].id
+	})
+
+	var b strings.Builder
+	for _, t := range all {
+		fmt.Fprintf(&b, "  · %s (%s)\n", t.name, t.id)
+	}
+	return b.String()
 }

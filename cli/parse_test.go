@@ -186,3 +186,16 @@ func TestSpeechFoundInsideLineWithRemainder(t *testing.T) {
 		}
 	}
 }
+
+// Проп набирается своим идентификатором. Дописать ему «e_» значило бы
+// отправить игрока в несуществующую сущность — и отказ выдал бы, что цель
+// была пропом.
+func TestPropIdentifierKeepsItsPrefix(t *testing.T) {
+	cmd, err := Parse("look p_crates")
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if cmd.Intent.Args.Target != "p_crates" {
+		t.Errorf("цель %q, ожидалось p_crates", cmd.Intent.Args.Target)
+	}
+}
