@@ -258,8 +258,13 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 		return template(fallbackMove(allowed), sit), nil
 	}
 	// Подтверждать можно только то, что дано, и только по одному.
+	//
+	// Промах модели не имеет права выводить персонажа за пределы набора: если
+	// игрок прямо пригласил рассказать, отказ там просто отсутствует в
+	// грамматике, и подставлять его через чёрный ход — то же самое, что
+	// разрешить «промолчать про три известные вещи».
 	if move == MoveConfirmKnown && !knownHas(sit.Known, out.Fact) {
-		return template(MoveDeflect, sit), nil
+		return template(fallbackMove(allowed), sit), nil
 	}
 	if move != MoveConfirmKnown && out.Fact != "" {
 		return template(move, sit), nil
@@ -267,7 +272,7 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 	if move == MoveVolunteer {
 		topic, ok := topicByID(sit.Talks, out.Topic)
 		if !ok {
-			return template(MoveObserve, sit), nil
+			return template(fallbackMove(allowed), sit), nil
 		}
 		// Поднятую тему помечаем рассказанной: второй раз она прозвучит как
 		// заклинивший автомат.

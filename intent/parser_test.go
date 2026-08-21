@@ -533,3 +533,48 @@ func TestRepairCountsOnceInMetrics(t *testing.T) {
 		t.Errorf("починенный ввод записан отказом: %.2f", r)
 	}
 }
+
+// Слова игрока обязаны доехать до персонажа. «Поздороваться с Берном»
+// превращается в talk_to, который своего текста не несёт, — и актёр получал
+// пустую реплику, классифицировал акт как «прочее» и отвечал не на
+// приветствие, а ни на что.
+func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"talk_to","target":"e_bern"}`)
+	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
+	in, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in == nil {
+		t.Fatal("намерение не разобралось")
+	}
+	if in.Args.Text != "Поздороваться с Берном" {
+		t.Errorf("слова игрока потеряны: %q", in.Args.Text)
+	}
+}
+
+// У глаголов, где текст — это содержимое хода, разобранное моделью важнее
+// исходной строки: theorize пишет в дневник гипотезу, а не команду.
+func TestParsedTextWinsWhereItIsTheContent(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"theorize","text":"Токе лжёт про ночь"}`)
+	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
+	in, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Args.Text != "Токе лжёт про ночь" {
+		t.Errorf("гипотеза подменена исходной строкой: %q", in.Args.Text)
+	}
+}
+
+// interpGame — «Гавань» на старте: Берн и Нильс в сцене, известен один факт.
+func interpGame(t *testing.T) *core.Game {
+	t.Helper()
+	cfg, err := cases.Load("../cases/harbour/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Rules = threshold.New()
+	cfg.Dice = dice.NewSource(1).Stream("resolve")
+	return core.NewGame(*cfg)
+}

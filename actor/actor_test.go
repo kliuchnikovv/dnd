@@ -598,3 +598,47 @@ func TestSchemaCarriesOnlyAllowedMoves(t *testing.T) {
 		t.Error("модели не сказано, на какой акт она отвечает")
 	}
 }
+
+// Промах модели не имеет права выводить персонажа за пределы разрешённого
+// набора. Если игрок прямо пригласил рассказать, «промолчать про три
+// известные вещи» невозможно — и когда модель называет несуществующий факт,
+// откат обязан остаться внутри набора, а не превращаться в отказ.
+func TestBadFactFallsBackInsideTheAllowedSet(t *testing.T) {
+	sit := Situation{
+		PlayerText: "Что-нибудь слышно?",
+		Known:      []Known{{ID: "f1", Text: "тело нашли на складе"}},
+		Talks:      []Topic{{ID: "t1", Note: "гроссбух носят через пристань не запирая"}},
+	}
+	allowed := movesFor(Classify(sit.PlayerText), sit)
+	if containsMove(allowed, string(MoveDeflect)) {
+		t.Fatal("тест не о том: deflect и так разрешён")
+	}
+
+	a, _ := actorWith(t, `{"move":"confirm_known","fact":"нет-такого","line":"..."}`)
+	line, err := a.Line(context.Background(), Speaker{Name: "Берн"}, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line == template(MoveDeflect, sit) {
+		t.Errorf("промах модели дал отказ вне набора: %q", line)
+	}
+}
+
+func containsMove(all []string, m string) bool {
+	for _, a := range all {
+		if a == m {
+			return true
+		}
+	}
+	return false
+}
+
+// «До встречи» — прощание. Промах словаря сам по себе не страшен, но здесь он
+// открывает deflect там, где игрок просто уходит.
+func TestFarewellRecognisesCommonForms(t *testing.T) {
+	for _, s := range []string{"Жаль, тогда до встречи", "ну бывай", "до встречи"} {
+		if got := Classify(s); got != ActFarewell {
+			t.Errorf("%q классифицировано как %s, ожидалось farewell", s, got)
+		}
+	}
+}
