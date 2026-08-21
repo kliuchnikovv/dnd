@@ -128,3 +128,28 @@ func TestNoRollNoRollLine(t *testing.T) {
 		t.Errorf("напечатан несуществующий бросок: %q", out)
 	}
 }
+
+// Цена провала обязана быть видна в тот же ход. Тик, заметный только когда
+// часы заполнятся, — это не цена, а сюрприз через двадцать минут.
+func TestCostIsShownTheSameTurn(t *testing.T) {
+	g := renderGame(t)
+	out := Render{}.Turn(g, core.TurnResult{
+		Res:   &core.Resolution{Class: core.OutcomeFail, Log: core.RollLog{Die: 4}},
+		Costs: []core.CostKind{core.CostTickClock, core.CostDispositionDown},
+	})
+	for _, want := range []string{"часы", "расположение"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("цена %q не показана: %q", want, out)
+		}
+	}
+}
+
+func TestSuccessShowsNoCostLine(t *testing.T) {
+	g := renderGame(t)
+	out := Render{}.Turn(g, core.TurnResult{
+		Res: &core.Resolution{Class: core.OutcomeSuccess, Log: core.RollLog{Die: 18}},
+	})
+	if strings.Contains(out, "цена") {
+		t.Errorf("у успеха появилась цена: %q", out)
+	}
+}

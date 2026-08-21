@@ -97,23 +97,32 @@ func TestSameSeedSameTranscript(t *testing.T) {
 func TestPartialMoveStillArrives(t *testing.T) {
 	// Таксономия move: ЧАСТИЧНО — «попал + ухудшение позиции». Игрок обязан
 	// оказаться в новом узле, иначе цена прихода берётся без прихода.
+	//
+	// Проверяется правило презентации, а не бросок: сам move_zone в M1a не
+	// бросается вовсе, но flee и всё, что придёт с боем в M1b, пойдут этим же
+	// путём.
 	g := renderGame(t)
 	start := g.Node
 	var out bytes.Buffer
-	// Безопасный переход броска не требует, поэтому Токе враждебен: только
-	// под наблюдением уход из зоны снова становится действием с ценой.
-	// d20=10, edge+1, не обнаружен +2, дождь -2 против порога 14 — маржа -3.
-	g.D.Adjust("e_toke", -2)
-	g.Dice = dice.Fixed(10)
-	in := strings.NewReader("move_zone forge\nquit\n")
-	if err := NewSession(g, in, &out).Run(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "ЧАСТИЧНО") {
-		t.Fatalf("бросок дал не ЧАСТИЧНО, тест не о том:\n%s", out.String())
-	}
+	s := NewSession(g, strings.NewReader(""), &out)
+	partial := core.TurnResult{Res: &core.Resolution{Class: core.OutcomePartial}}
+	s.afterAction(core.Intent{Verb: "move_zone", Args: core.Args{Node: "n_forge"}}, partial)
+
 	if g.Node == start {
 		t.Errorf("на ЧАСТИЧНО игрок остался в %s — цена взята без прихода", start)
+	}
+}
+
+func TestFailedMoveDoesNotArrive(t *testing.T) {
+	g := renderGame(t)
+	start := g.Node
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader(""), &out)
+	fail := core.TurnResult{Res: &core.Resolution{Class: core.OutcomeFail}}
+	s.afterAction(core.Intent{Verb: "move_zone", Args: core.Args{Node: "n_forge"}}, fail)
+
+	if g.Node != start {
+		t.Errorf("на ПРОВАЛЕ игрок всё равно дошёл до %s", g.Node)
 	}
 }
 

@@ -75,6 +75,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 				g.applyUnlocksFor(holder.FactID)
 			}
 		}
+		g.noteTurn(def, len(res.Learned))
 		return res
 	}
 
@@ -105,6 +106,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 			g.applyUnlocksFor(holder.FactID)
 		}
 	}
+	g.noteTurn(def, len(out.Learned))
 	return out
 }
 

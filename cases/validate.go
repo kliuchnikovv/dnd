@@ -3,6 +3,7 @@ package cases
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
@@ -186,6 +187,25 @@ func validateFile(f File) error {
 		}
 	}
 
+	// Общий ключ на глагол — последнее звено цепочки флейвора. Без него проба
+	// по цели, у которой фактов не осталось, печатает служебный [ключ].
+	usedVerbs := map[string]bool{}
+	for _, h := range f.FactHolders {
+		for _, v := range h.Gate.Verbs {
+			usedVerbs[v] = true
+		}
+	}
+	verbs := make([]string, 0, len(usedVerbs))
+	for v := range usedVerbs {
+		verbs = append(verbs, v)
+	}
+	sort.Strings(verbs)
+	for _, v := range verbs {
+		if strings.TrimSpace(f.Flavour[v]) == "" {
+			add("у глагола %s нет общего текста — проба впустую напечатает [%s.цель]", v, v)
+		}
+	}
+
 	// Развязка: у каждого факта, стоящего за токеном правильного ответа,
 	// обязана быть клауза, иначе верное обвинение печатает пустоту.
 	truthTokens := map[string]store.Token{
@@ -203,6 +223,25 @@ func validateFile(f File) error {
 			add("у факта %s нет клаузы развязки, а он стоит за токеном %s", t.Fact, t.Token)
 		}
 	}
+	// Напарник — единственный канал диегетической подсказки. Без него игрок,
+	// застрявший в первой сессии, закрывает консоль молча.
+	if f.Companion == "" {
+		add("у дела нет напарника — подсказке неоткуда прозвучать")
+	} else if !entities[f.Companion] {
+		add("напарник %s не существует", f.Companion)
+	}
+	for id, line := range f.Hints {
+		if !facts[id] {
+			add("подсказка ссылается на несуществующий факт %s", id)
+		}
+		if strings.TrimSpace(line) == "" {
+			add("подсказка про %s пуста", id)
+		}
+	}
+	if len(f.Hints) == 0 {
+		add("у дела нет ни одной подсказки")
+	}
+
 	if strings.TrimSpace(f.Aftermath) == "" {
 		add("у дела нет aftermath — после речи игрока печатать нечего")
 	}

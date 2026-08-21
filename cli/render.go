@@ -43,6 +43,9 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 	for _, l := range t.Learned {
 		fmt.Fprintf(&b, "  + узнали: %s (от %s)\n", g.DB.Facts[l.Fact].Key, l.From)
 	}
+	if names := costNames(t.Costs); names != "" {
+		fmt.Fprintf(&b, "  цена: %s\n", names)
+	}
 	if t.FalseLead {
 		b.WriteString("  ! след оказался ложным\n")
 	}
@@ -178,4 +181,32 @@ func targetList(g *core.Game) string {
 		fmt.Fprintf(&b, "  · %s (%s)\n", t.name, t.id)
 	}
 	return b.String()
+}
+
+// costNames переводит таксономию ядра на язык игрока. Ложный след и половина
+// эффекта сюда не входят: у них своя, более заметная строка, и дублировать её
+// в перечне цен незачем. Цена, видимая только
+// когда часы заполнятся, — это не цена, а сюрприз через двадцать минут.
+var costWords = map[core.CostKind]string{
+	core.CostTickClock:       "часы сдвинулись",
+	core.CostDebt:            "за вами теперь должок",
+	core.CostDispositionDown: "расположение испорчено",
+	core.CostPositionWorse:   "вас заметили",
+	core.CostHarmSelf:        "ранение",
+	core.CostResourceSpent:   "ресурс потрачен впустую",
+}
+
+func costNames(cs []core.CostKind) string {
+	seen := map[core.CostKind]bool{}
+	var out []string
+	for _, c := range cs {
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		if w, ok := costWords[c]; ok {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, ", ")
 }

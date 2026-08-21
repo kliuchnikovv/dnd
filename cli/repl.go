@@ -164,6 +164,14 @@ func (s *Session) accuse() {
 // и платит. Требовать УСПЕХ значило бы брать цену прихода, не давая прийти.
 func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	s.speak(in, res)
+	// Напарник вступает, когда расследование встало. Реплика авторская, момент
+	// выбирает движок: подсказка на каждом ходу читает решение вслух, а
+	// подсказка никогда — это закрытая консоль на первой сессии.
+	if line, ok := s.Game.Hint(); ok {
+		if e, found := s.Game.DB.Entities[s.Game.Companion]; found {
+			fmt.Fprintf(s.Out, "%s: %s\n", e.Name, line)
+		}
+	}
 	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
 		s.Game.Node = in.Args.Node
 		fmt.Fprint(s.Out, s.r.Scene(s.Game))

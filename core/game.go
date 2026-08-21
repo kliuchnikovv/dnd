@@ -37,6 +37,9 @@ type Config struct {
 	// игрока. ColdCase — текст висяка.
 	Aftermath string
 	ColdCase  string
+	// Companion — сущность-напарник; Hints — реплики по фактам.
+	Companion store.EntityID
+	Hints     map[store.FactID]string
 }
 
 // Game — всё изменяемое состояние прогона. Ядро; системы правил здесь нет
@@ -58,6 +61,12 @@ type Game struct {
 	D     *Dossiers
 	Debts map[store.EntityID]int
 
+	// Companion — напарник, через которого приходят диегетические подсказки.
+	// Hints — авторские реплики, по одной на факт: подсказка указывает на
+	// цель, а не на ответ, и придумать её движок не может.
+	Companion store.EntityID
+	Hints     map[store.FactID]string
+
 	// Theories — гипотезы, зафиксированные глаголом theorize. Ядро их не
 	// оценивает и не тратит на них ход: это заметки игрока, а не факты.
 	Theories []string
@@ -70,6 +79,8 @@ type Game struct {
 
 	unlocked map[string]bool
 	solved   bool
+	dry      int
+	hinted   map[store.FactID]bool
 
 	// tool — инструмент, взятый в руки ходом, и узел, где это случилось.
 	// Инструмент не уезжает: фонарь со склада не светит в конторе гильдии.
@@ -86,7 +97,9 @@ func NewGame(cfg Config) *Game {
 		Debts: map[store.EntityID]int{},
 		truth: cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
 		aftermath: cfg.Aftermath, coldCase: cfg.ColdCase,
-		unlocked: map[string]bool{},
+		unlocked:  map[string]bool{},
+		hinted:    map[store.FactID]bool{},
+		Companion: cfg.Companion, Hints: cfg.Hints,
 	}
 }
 

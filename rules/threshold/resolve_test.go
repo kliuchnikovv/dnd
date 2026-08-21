@@ -141,7 +141,7 @@ func TestSystemSatisfiesRuleSystem(t *testing.T) {
 // Переход по улице, где никто не мешает, — не бросок. Провал, означающий «ты
 // не дошёл до соседнего дома», не несёт ни выбора, ни смысла, зато тикает часы
 // и рассинхронизирует всё, что игрок планировал дальше.
-func TestUnopposedMoveDoesNotRoll(t *testing.T) {
+func TestMoveDoesNotRoll(t *testing.T) {
 	view := sheetRaw(t)
 	got := New().Resolve(core.Intent{Verb: "move_zone"}, view, dice.Fixed(1))
 	if got.Class != core.OutcomeSuccess {
@@ -152,13 +152,15 @@ func TestUnopposedMoveDoesNotRoll(t *testing.T) {
 	}
 }
 
-// При враждебных в сцене переход снова становится броском: уйти из-под
-// наблюдения — это уже действие с ценой.
-func TestMoveUnderHostilesStillRolls(t *testing.T) {
+// Недружелюбный свидетель переход не останавливает. Уход из-под опасности —
+// это flee, и он бросается.
+func TestMoveDoesNotRollEvenNearHostiles(t *testing.T) {
 	view := sheetRaw(t)
 	view.Foes = 1
-	got := New().Resolve(core.Intent{Verb: "move_zone"}, view, dice.Fixed(1))
-	if got.Log.Die == 0 {
-		t.Error("переход при враждебных прошёл без броска")
+	if got := New().Resolve(core.Intent{Verb: "move_zone"}, view, dice.Fixed(1)); got.Log.Die != 0 {
+		t.Error("переход при недружелюбном свидетеле стал броском")
+	}
+	if got := New().Resolve(core.Intent{Verb: "flee"}, view, dice.Fixed(1)); got.Log.Die == 0 {
+		t.Error("бегство прошло без броска")
 	}
 }

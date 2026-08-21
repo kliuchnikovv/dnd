@@ -1589,6 +1589,15 @@
       "from": "e_riff"
     }
   ],
+  "companion": "e_kovac",
+  "hints": {
+    "f_portiere_torn": "Kovac taps ash off. 'The office. Nobody's looked at that curtain properly, and somebody should.'",
+    "f_fibers_in_mouth": "'The body's still at the infirmary,' Kovac says. 'Look in his mouth. I would, but they listen to you.'",
+    "f_office_shards_present": "'There was glass on that office floor,' says Kovac. 'Count it, if you have the patience.'",
+    "f_pierre_saw_emilien": "'Old Pierre's up before anyone,' Kovac says. 'He sees the road when it's still dark.'",
+    "f_diary_in_desk": "Kovac studies his cigarette. 'Sanchez kept a diary. It went somewhere after he died, and I never asked where.'",
+    "f_zheber_returned_2305": "'The checkpoint keeps a log,' Kovac says without looking up. 'They keep it badly, which is the interesting part.'"
+  },
   "aftermath": "Emilien was taken to Kalderes under escort before the garrison woke. The Zheber house was closed within the month, and the road to Forte Merlo kept its checkpoint but lost its captain. Sanchez's diary went into evidence and was never returned to his family.",
   "cold_case_text": "The garrison buried Zheber with honours and the file went to Kalderes marked accidental. Emilien served out his posting and transferred east. The diary stayed in the bottom drawer of a desk that nobody had reason to open again.",
   "flavour": {
@@ -1682,6 +1691,13 @@
     "talk_to": "You start a conversation about nothing in particular — the weather, the tide, how anyone lives out here at all. Such talk settles nothing, and afterwards people speak to you differently.",
     "thank": "You thank them, briefly and without flourish. It is noticed: in this town gratitude is heard less often than demands.",
     "theorize.recorded": "You say it aloud to hear how it stands up, and write it in the back of your notebook. Not a charge yet. A shape to keep hold of.",
-    "threaten_verbally": "You do not raise your voice and you promise nothing specific. Sometimes that is enough. Sometimes that is exactly where it goes wrong."
+    "threaten_verbally": "You do not raise your voice and you promise nothing specific. Sometimes that is enough. Sometimes that is exactly where it goes wrong.",
+    "examine": "You look it over carefully and at length. Nothing here adds to what you already have.",
+    "search": "You go through everything within reach. Nothing worth writing down.",
+    "question": "You get an answer, freely given and beside the point — the way people talk when they have nothing to say.",
+    "cross_reference": "You check one against the other, line by line. It all agrees, and none of it matters.",
+    "stake_out": "You stand off to one side and watch. Time passes, people pass, nothing happens.",
+    "persuade": "They hear you out to the end, and stay exactly where they were.",
+    "tail": "You keep the distance for as long as it is worth keeping. The road leads home, and nowhere else."
   }
 }

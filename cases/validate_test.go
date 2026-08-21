@@ -195,3 +195,13 @@ func TestSecondMandatoryHolderOfTheSameFactIsRejected(t *testing.T) {
 		t.Fatalf("второй mandatory-держатель принят: %v", err)
 	}
 }
+
+// Последнее звено цепочки флейвора — общий ключ на глагол. Без него проба по
+// цели, у которой фактов не осталось, печатает «[examine.e_bern]» — и игрок
+// видит служебную строку вместо ответа мира.
+func TestVerbWithoutGenericFlavourIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) { delete(f.Flavour, "examine") })
+	if err == nil || !strings.Contains(err.Error(), "examine") {
+		t.Fatalf("глагол без общего текста принят: %v", err)
+	}
+}
