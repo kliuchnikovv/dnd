@@ -318,3 +318,19 @@ func TestCallsByRoleCountedSeparatelyFromSpend(t *testing.T) {
 		t.Error("роль без вызовов попала в счёт")
 	}
 }
+
+// Слаги OpenRouter пространственные и в таблицу цен не попадают. Спросить про
+// цену надо уметь до вызова: узнать о неизвестной модели из ошибки посреди
+// сессии — значит потерять сессию.
+func TestHasPriceAnswersBeforeTheCall(t *testing.T) {
+	if !HasPrice("claude-opus-5") {
+		t.Error("цена известной модели не найдена")
+	}
+	if HasPrice("anthropic/claude-sonnet-4.5") {
+		t.Error("слаг без цены объявлен известным")
+	}
+	SetPrice("anthropic/claude-sonnet-4.5", Price{3_000_000, 15_000_000})
+	if !HasPrice("anthropic/claude-sonnet-4.5") {
+		t.Error("цена, заданная руками, не подхватилась")
+	}
+}

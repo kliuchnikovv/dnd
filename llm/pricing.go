@@ -27,5 +27,13 @@ func CostMicro(model string, u Usage) (int64, error) {
 	return in + out, nil
 }
 
+// HasPrice сообщает, известна ли цена модели. Спрашивать надо ДО вызова:
+// узнать о неизвестной модели из ошибки посреди сессии — значит потерять
+// сессию.
+func HasPrice(model string) bool {
+	_, ok := prices[model]
+	return ok
+}
+
 // SetPrice регистрирует цену модели. Для моделей вне таблицы по умолчанию.
 func SetPrice(model string, p Price) { prices[model] = p }

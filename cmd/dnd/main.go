@@ -32,6 +32,8 @@ func main() {
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")
+	priceIn := flag.Float64("price-in", 0, "цена ввода, $ за миллион токенов; нужна для моделей вне таблицы")
+	priceOut := flag.Float64("price-out", 0, "цена вывода, $ за миллион токенов; нужна для моделей вне таблицы")
 	guardLines := flag.Bool("guard-lines", true, "проверять реплики NPC на выдумку вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
 	capTurn := flag.Int("cap-turn", 4, "потолок вызовов модели на один ход: разбор до двух, озвучка один")
@@ -65,6 +67,10 @@ func main() {
 	if *nl {
 		target, err := resolveProvider(*provider, *model)
 		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := ensurePrice(target.Model, *priceIn, *priceOut); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
