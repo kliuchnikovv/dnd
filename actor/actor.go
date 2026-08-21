@@ -136,7 +136,10 @@ const systemPrompt = `Ты озвучиваешь одного персонаж�
 
 Отвечай на том же языке, на котором написан голос персонажа.`
 
-func schemaFor(known []Known, talks []Topic) map[string]any {
+func schemaFor(known []Known, talks []Topic, allowed []string) map[string]any {
+	if len(allowed) == 0 {
+		allowed = moves()
+	}
 	factField := map[string]any{"type": "string",
 		"description": "id подтверждаемого факта; только при move=confirm_known"}
 	if ids := knownIDs(known); len(ids) > 0 {
@@ -147,7 +150,7 @@ func schemaFor(known []Known, talks []Topic) map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"move", "line"},
 		"properties": map[string]any{
-			"move":  map[string]any{"type": "string", "enum": moves()},
+			"move":  map[string]any{"type": "string", "enum": allowed},
 			"fact":  factField,
 			"topic": topicField(talks),
 			"line":  map[string]any{"type": "string", "description": "одна-две фразы прямой речи"},
@@ -225,10 +228,13 @@ func (a *Actor) WithGuard(g LineGuard) *Actor {
 // Line возвращает текст реплики без оформления. Пустая строка без ошибки
 // означает, что персонажу сейчас нечего сказать.
 func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Request) (string, error) {
+	act := Classify(sit.PlayerText)
+	allowed := movesFor(act, sit)
+
 	req.Role = llm.RoleActor
-	req.Schema = schemaJSON(sit.Known, sit.Talks)
+	req.Schema = schemaJSON(sit.Known, sit.Talks, allowed)
 	req.System = systemPrompt
-	req.Input = renderPrompt(s, sit)
+	req.Input = renderPrompt(s, sit, act)
 	if req.MaxTokens == 0 {
 		req.MaxTokens = 200
 	}
@@ -248,8 +254,8 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 	}
 
 	move, line := Move(out.Move), clean(out.Line)
-	if !validMove(move) {
-		return template(MoveDeflect, sit), nil
+	if !validMove(move) || !allowedMove(move, allowed) {
+		return template(fallbackMove(allowed), sit), nil
 	}
 	// Подтверждать можно только то, что дано, и только по одному.
 	if move == MoveConfirmKnown && !knownHas(sit.Known, out.Fact) {
@@ -286,6 +292,24 @@ func (a *Actor) Line(ctx context.Context, s Speaker, sit Situation, req llm.Requ
 // maxLine — здравый предел. Длинная реплика почти всегда означает, что
 // персонаж начал рассказывать то, чего не знает.
 const maxLine = 220
+
+func allowedMove(m Move, allowed []string) bool {
+	for _, a := range allowed {
+		if string(m) == a {
+			return true
+		}
+	}
+	return false
+}
+
+// fallbackMove — на что откатиться, если ход не подошёл. Берём первый
+// разрешённый: набор упорядочен от самого уместного.
+func fallbackMove(allowed []string) Move {
+	if len(allowed) > 0 {
+		return Move(allowed[0])
+	}
+	return MoveDeflect
+}
 
 func validMove(m Move) bool {
 	for _, v := range moves() {
@@ -359,8 +383,8 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	return out
 }
 
-func schemaJSON(known []Known, talks []Topic) string {
-	b, err := json.Marshal(schemaFor(known, talks))
+func schemaJSON(known []Known, talks []Topic, allowed []string) string {
+	b, err := json.Marshal(schemaFor(known, talks, allowed))
 	if err != nil {
 		panic(err) // схема выводится из данных сцены, ошибка означает битый билд
 	}
@@ -377,11 +401,11 @@ func clean(line string) string {
 	return line
 }
 
-func renderPrompt(s Speaker, sit Situation) string {
+func renderPrompt(s Speaker, sit Situation, act Act) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Персонаж: %s\nГолос: %s\nРасположение к парти: %s\n",
 		s.Name, s.Voice, dispositionWord(s.Disposition))
-	fmt.Fprintf(&b, "Игрок к нему: %s\n", sit.Verb)
+	fmt.Fprintf(&b, "Игрок к нему: %s (%s)\n", sit.Verb, actHint(act))
 	if sit.PlayerText != "" {
 		fmt.Fprintf(&b, "Слова игрока: %s\n", sit.PlayerText)
 	}

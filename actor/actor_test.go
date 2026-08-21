@@ -2,6 +2,7 @@ package actor
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -238,7 +239,7 @@ func TestOverlongLineFallsBackToTemplate(t *testing.T) {
 // Схема несёт материал: подтвердить можно только перечисленное.
 func TestSchemaEnumeratesKnownFacts(t *testing.T) {
 	g := harbour(t)
-	props := schemaFor(KnownTopics(g), nil)["properties"].(map[string]any)
+	props := schemaFor(KnownTopics(g), nil, nil)["properties"].(map[string]any)
 	fact := props["fact"].(map[string]any)
 	enum, ok := fact["enum"].([]string)
 	if !ok || len(enum) == 0 {
@@ -370,7 +371,7 @@ func TestSceneOfCarriesPlaceWeatherAndCompany(t *testing.T) {
 }
 
 func TestObserveIsAValidMove(t *testing.T) {
-	props := schemaFor(nil, nil)["properties"].(map[string]any)
+	props := schemaFor(nil, nil, nil)["properties"].(map[string]any)
 	enum := props["move"].(map[string]any)["enum"].([]string)
 	// Каждый ход из набора обязан быть в схеме: ход, которого модель не видит,
 	// существует только на бумаге.
@@ -480,5 +481,120 @@ func TestPromptDemandsAnsweringThePlayer(t *testing.T) {
 	}
 	if strings.Contains(sys, "Предпочитай") {
 		t.Error("в промпте осталось предпочтение volunteer — оно и делало сводку")
+	}
+}
+
+// --- акт игрока определяет набор ходов ---
+
+func TestClassifyPlayerAct(t *testing.T) {
+	cases := map[string]Act{
+		"Поздороваться с Берном": ActGreeting,
+		"привет": ActGreeting,
+		"Что-нибудь слышно последнее время?": ActProbe,
+		"Даже никаких слухов? Тухленько":     ActProbe,
+		"что нового":            ActProbe,
+		"а ты ничего не видел?": ActProbe,
+		"А при чем тут дождь?":  ActPress,
+		"почему":                ActPress,
+		"спасибо":               ActThanks,
+		"где склад?":            ActAsk,
+		"я просто стою":         ActOther,
+		"":                      ActOther,
+	}
+	for text, want := range cases {
+		if got := Classify(text); got != want {
+			t.Errorf("%q -> %q, ожидалось %q", text, got, want)
+		}
+	}
+}
+
+// Ровно тот провал: на открытый вопрос при непустых заметках отмолчаться
+// нельзя — светской болтовни просто нет в наборе.
+func TestProbeWithNotesForbidsSmalltalk(t *testing.T) {
+	g := harbour(t)
+	sit := Situation{Talks: topicsOf(g, "e_bern"), Scene: SceneOf(g, "e_bern")}
+	allowed := movesFor(ActProbe, sit)
+
+	for _, forbidden := range []Move{MoveSmalltalk, MoveObserve, MoveDeflect} {
+		if allowedMove(forbidden, allowed) {
+			t.Errorf("на открытый вопрос разрешён ход %q", forbidden)
+		}
+	}
+	if !allowedMove(MoveVolunteer, allowed) {
+		t.Error("на открытый вопрос не разрешено поделиться")
+	}
+}
+
+// Без материала volunteer недоступен: иначе персонажа заставляют выдумывать.
+func TestProbeWithoutNotesAllowsDeflection(t *testing.T) {
+	allowed := movesFor(ActProbe, Situation{})
+	if allowedMove(MoveVolunteer, allowed) {
+		t.Error("нечего рассказать, а рассказать разрешено — это принуждение к выдумке")
+	}
+	if !allowedMove(MoveDeflect, allowed) {
+		t.Error("без материала уклониться нельзя")
+	}
+}
+
+// На приветствие сводки быть не должно — это и был первый перекос.
+func TestGreetingForbidsVolunteering(t *testing.T) {
+	g := harbour(t)
+	allowed := movesFor(ActGreeting, Situation{Talks: topicsOf(g, "e_bern")})
+	if allowedMove(MoveVolunteer, allowed) {
+		t.Error("на приветствие разрешено вываливать известное")
+	}
+	if !allowedMove(MoveSmalltalk, allowed) {
+		t.Error("на приветствие нельзя ответить любезностью")
+	}
+}
+
+func TestConfirmKnownAvailableWheneverFactsExist(t *testing.T) {
+	g := harbour(t)
+	sit := Situation{Known: KnownTopics(g)}
+	for _, act := range []Act{ActGreeting, ActProbe, ActPress, ActAsk, ActOther} {
+		if !allowedMove(MoveConfirmKnown, movesFor(act, sit)) {
+			t.Errorf("при акте %q нельзя подтвердить известный факт", act)
+		}
+	}
+}
+
+// Ход вне разрешённого набора не проходит: набор — это грамматика, а не совет.
+func TestMoveOutsideAllowedSetIsRejected(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := actorWith(t, `{"move":"smalltalk","line":"Погодка-то какая."}`)
+	got, err := a.Line(context.Background(), sp, Situation{
+		Verb: "talk_to", PlayerText: "что слышно?",
+		Talks: topicsOf(g, "e_bern"), Scene: SceneOf(g, "e_bern"),
+	}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "Погодка-то какая." {
+		t.Error("болтовня прошла там, где игрок прямо спросил")
+	}
+}
+
+// Схема отдаёт модели только разрешённые ходы: ход, которого нет в грамматике,
+// выбрать невозможно.
+func TestSchemaCarriesOnlyAllowedMoves(t *testing.T) {
+	g := harbour(t)
+	a, f := actorWith(t, `{"move":"volunteer","topic":"t1","line":"Книгу таскают без замка."}`)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a.Line(context.Background(), sp, Situation{Verb: "talk_to",
+		PlayerText: "что слышно?", Talks: topicsOf(g, "e_bern")}, llm.Request{})
+
+	var probe map[string]any
+	if err := json.Unmarshal([]byte(f.Calls()[0].Schema), &probe); err != nil {
+		t.Fatal(err)
+	}
+	enum := probe["properties"].(map[string]any)["move"].(map[string]any)["enum"].([]any)
+	for _, m := range enum {
+		if m == string(MoveSmalltalk) {
+			t.Error("в схеме на открытый вопрос осталась болтовня")
+		}
+	}
+	if !strings.Contains(f.Calls()[0].Input, "открытый вопрос") {
+		t.Error("модели не сказано, на какой акт она отвечает")
 	}
 }
