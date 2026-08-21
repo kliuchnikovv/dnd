@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -99,5 +100,187 @@ func TestTabTogglesDebugPane(t *testing.T) {
 	next, _ = next.(model).Update(tea.KeyMsg{Type: tea.KeyTab})
 	if next.(model).debugOpen {
 		t.Error("Tab не закрыл панель отладки")
+	}
+}
+
+// КРИТИЧНО: развязка обязана быть видна. doneMsg{quit:true} раньше сразу
+// вёл в tea.Quit — программа гасла, View() в состоянии выхода отдаёт пустую
+// строку, и игрок не видел ни «Обвинение верно», ни клауз саммации, ни
+// текста висяка. Постановление контроллера: конец игры не выходит сразу, а
+// ждёт любую клавишу, показав финальный кадр.
+func TestGameEndDoesNotQuitImmediately(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
+	next, _ = m.Update(doneMsg{quit: true})
+	m = next.(model)
+
+	if m.quitting {
+		t.Fatal("конец игры завершил программу немедленно, не показав развязку")
+	}
+	if !m.ended {
+		t.Fatal("состояние конца игры не отмечено")
+	}
+	if m.View() == "" {
+		t.Error("экран пуст сразу после развязки — её нечем прочитать")
+	}
+}
+
+// События, которые ещё летели по каналу в момент doneMsg (клаузы саммации,
+// последствия), обязаны дойти до транскрипта, а не потеряться. Раньше
+// tea.Quit убивал цикл программы немедленно и вместе с ним — недочитанные
+// события; теперь цепочка waitEvent продолжает работать и после doneMsg.
+func TestGameEndStillShowsQueuedEvents(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
+	next, _ = m.Update(doneMsg{quit: true})
+	m = next.(model)
+
+	next, _ = m.Update(eventMsg{cli.Event{
+		Kind: cli.EventSystem, Text: "Обвинение верно. Попыток: 1.\n"}})
+	m = next.(model)
+
+	if !strings.Contains(m.transcript.Render(60), "Обвинение верно") {
+		t.Error("событие, дошедшее после развязки, потеряно")
+	}
+}
+
+// После развязки любая клавиша (не только Ctrl-C) закрывает окно — это и
+// есть «дочитал, нажал что угодно, вышел» из постановления.
+func TestAnyKeyAfterGameEndQuits(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+	next, _ = m.Update(doneMsg{quit: true})
+	m = next.(model)
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.quitting {
+		t.Error("клавиша после развязки не завершила программу")
+	}
+	if cmd == nil {
+		t.Error("после развязки не выдана команда tea.Quit")
+	}
+}
+
+// Ctrl-C выходит немедленно и после развязки — обычный конец игры не должен
+// требовать подтверждения нажатием именно той клавиши, которую и так нажали
+// бы, чтобы прервать зависшую игру.
+func TestCtrlCQuitsEvenAfterGameEnd(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+	next, _ = m.Update(doneMsg{quit: true})
+	m = next.(model)
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = next.(model)
+	if !m.quitting {
+		t.Error("Ctrl-C после развязки не завершил программу")
+	}
+}
+
+// EventPrompt — приглашение слота обвинения либо уточняющий вопрос — не
+// строка транскрипта: спек §2.1 требует показывать его подсказкой у строки
+// ввода, а не построчным блоком под подписью «Мастер».
+func TestPromptEventShownNearInputNotInTranscript(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
+	next, _ = m.Update(eventMsg{cli.Event{
+		Kind: cli.EventPrompt, Text: "who: a | b\n> "}})
+	m = next.(model)
+
+	if strings.Contains(m.transcript.Render(60), "who:") {
+		t.Error("приглашение утекло в транскрипт")
+	}
+	view := m.View()
+	if !strings.Contains(view, "who: a | b") {
+		t.Error("приглашение не показано у строки ввода")
+	}
+	if strings.Contains(view, "b\n> ") {
+		t.Error("хвост построчного курсора \"> \" показан в полноэкранном виде")
+	}
+}
+
+// Пустой ввод — валидный ответ на слот обвинения (и на уточняющий вопрос) в
+// построчном режиме: sc.Scan() отдаёт пустые строки как есть. cli не отдаёт
+// публичного признака «жду ответ», поэтому модель равняется на то, что уже
+// доступно: последнее событие было EventPrompt.
+func TestEmptyEnterAllowedRightAfterPrompt(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+	next, _ = m.Update(eventMsg{cli.Event{
+		Kind: cli.EventPrompt, Text: "who: a | b\n> "}})
+	m = next.(model)
+
+	m.input.SetValue("")
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.busy {
+		t.Error("пустой ответ на приглашение не запустил ход")
+	}
+	if cmd == nil {
+		t.Error("пустой ответ на приглашение не выдал команду")
+	}
+}
+
+// Без предшествующего приглашения пустой Enter остаётся заблокирован — это
+// регрессия, которую легко внести, обобщая правило выше слишком широко.
+func TestEmptyEnterStillBlockedWithoutPrompt(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
+	m.input.SetValue("")
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if m.busy {
+		t.Error("пустой ввод без приглашения запустил ход")
+	}
+}
+
+// Пока открыта панель отладки, событие транскрипта не должно прокручивать
+// её к концу: там читают дамп во время хода, и прыжок в конец на каждом
+// событии делает чтение невозможным.
+func TestGotoBottomDoesNotJumpWhileDebugOpen(t *testing.T) {
+	m := newModel(nil, Options{Debug: NewRing(100)})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(m.opts.Debug, "строка %d\n", i)
+	}
+	m.view.Height = 5
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = next.(model)
+	if !m.debugOpen {
+		t.Fatal("Tab не открыл панель отладки")
+	}
+	m.view.SetYOffset(0)
+
+	next, _ = m.Update(eventMsg{cli.Event{Kind: cli.EventSystem, Text: "что-то произошло\n"}})
+	m = next.(model)
+
+	if m.view.YOffset != 0 {
+		t.Errorf("прокрутка прыгнула во время открытой отладки: YOffset=%d", m.view.YOffset)
+	}
+}
+
+// Без кольца панель отдаёт общий текст «запустите с -debug-llm». Когда
+// причина другая (флаг дан, но -nl нет), Options.NoDebugReason должен
+// перекрыть его — иначе панель отвечает тому, кто флаг и указал, будто он
+// забыл это сделать.
+func TestNoDebugReasonOverridesGenericMessage(t *testing.T) {
+	m := newModel(nil, Options{NoDebugReason: "-debug-llm без -nl ничего не даёт"})
+	m.debugOpen = true
+	if got := m.debugText(); got != "-debug-llm без -nl ничего не даёт" {
+		t.Errorf("панель показала %q, ожидалась причина из Options", got)
 	}
 }

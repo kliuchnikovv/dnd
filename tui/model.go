@@ -19,6 +19,11 @@ type Options struct {
 	Title  string
 	Status func() string
 	Debug  *Ring
+	// NoDebugReason — что показать в панели отладки, если Debug == nil.
+	// Пусто — берётся дефолт «запустите с -debug-llm»; отдельная причина
+	// нужна, когда флаг дан, но кольца всё равно нет (-debug-llm без -nl):
+	// иначе панель отвечает тому, кто флаг как раз указал, будто он забыл.
+	NoDebugReason string
 }
 
 // eventMsg — событие игры, дошедшее до интерфейса.
@@ -53,7 +58,22 @@ type model struct {
 	// busy — ход (или стартовая сцена) исполняется. Ввод в это время
 	// заблокирован: два хода одновременно ядро не переживёт, а очередь фраз
 	// перепутает ответы.
-	busy      bool
+	busy bool
+	// ended — игра закончена (доигранное дело или висяк), но программа ещё
+	// не вышла: развязку надо показать и дать её прочитать, а не гасить
+	// альт-экран в момент, когда s.Feed вернул true. Любая клавиша (кроме
+	// уже перехваченного Ctrl-C) из этого состояния ведёт в quit().
+	ended bool
+	// lastKind — вид последнего дошедшего события. Нужен ровно для одного
+	// решения: пустой Enter — валидный ответ, когда игра только что спросила
+	// (слот обвинения, уточняющий вопрос), и пустой в остальное время —
+	// потому что EventPrompt и есть тот сигнал ожидания ввода, который cli
+	// публично не отдаёт.
+	lastKind cli.EventKind
+	// prompt — текст последнего EventPrompt, показанный подсказкой у строки
+	// ввода. В транскрипт приглашение не льётся: спека §2.1 требует его у
+	// поля ввода, а не построчным блоком вперемешку с речью.
+	prompt    string
 	debugOpen bool
 	quitting  bool
 	width     int
@@ -125,15 +145,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitEvent(m.events)
 
 	case eventMsg:
-		m.transcript.Append(msg.event)
+		m.lastKind = msg.event.Kind
+		if msg.event.Kind == cli.EventPrompt {
+			// Приглашение — не строка транскрипта, а подсказка у ввода:
+			// иначе оно печаталось бы блоком вперемешку с речью, да ещё и
+			// под подписью «Мастер», которому вопрос не принадлежит.
+			m.prompt = promptText(msg.event.Text)
+		} else {
+			m.prompt = ""
+			m.transcript.Append(msg.event)
+		}
 		m.refresh()
-		m.view.GotoBottom()
+		// Пока открыта панель отладки, событие транскрипта не должно
+		// прокручивать её к концу — там читают дамп, а не следят за ходом.
+		if !m.debugOpen {
+			m.view.GotoBottom()
+		}
 		return m, waitEvent(m.events)
 
 	case doneMsg:
 		m.busy = false
 		if msg.quit {
-			return m.quit()
+			// Развязку показывают, а не гасят: постановление контроллера —
+			// не выходить тут же в tea.Quit. Оставшиеся в канале события
+			// (клаузы саммации, последствия, текст висяка) дочитывает та же
+			// цепочка waitEvent, что уже запущена — она не останавливалась.
+			// Программа реально закроется по любой клавише из key().
+			m.ended = true
+			return m, nil
 		}
 		return m, nil
 
@@ -146,13 +185,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlC:
-		// Выходим сразу, даже если ход ещё идёт (busy) — так было в брифе,
-		// и это сохранено. Не сохранено только слепое доверие к тому, что
-		// после tea.Quit больше некому дочитать events: за это отвечает
-		// quit(), закрывая done.
+	// Ctrl-C выходит сразу и из любого состояния, включая уже показанную
+	// развязку — так было в брифе, и это сохранено. Не сохранено только
+	// слепое доверие к тому, что после tea.Quit больше некому дочитать
+	// events: за это отвечает quit(), закрывая done.
+	if msg.Type == tea.KeyCtrlC {
 		return m.quit()
+	}
+	if m.ended {
+		// Развязка уже на экране (клаузы, последствия либо текст висяка) —
+		// любая другая клавиша теперь просто закрывает окно.
+		return m.quit()
+	}
+	switch msg.Type {
 	case tea.KeyTab:
 		m.debugOpen = !m.debugOpen
 		m.refresh()
@@ -179,12 +224,21 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		line := strings.TrimSpace(m.input.Value())
-		if line == "" {
+		// Пустая строка в построчном режиме — валидный токен слота
+		// обвинения (и валидный ответ на уточняющий вопрос): sc.Scan() там
+		// отдаёт пустые строки как есть. Полноэкранный режим обязан вести
+		// себя так же. cli не отдаёт публичного признака «жду ответ на
+		// prompt», поэтому берём то, что уже есть у модели: последнее
+		// событие было EventPrompt — значит игра только что спросила.
+		if line == "" && m.lastKind != cli.EventPrompt {
 			return m, nil
 		}
 		m.history.Add(line)
 		m.input.SetValue("")
 		m.busy = true
+		// Ответ ушёл — приглашение больше не актуально. Если ход задаст
+		// следующий слот, eventMsg выставит новое приглашение сам.
+		m.prompt = ""
 		return m, m.feed(line)
 	}
 	var cmd tea.Cmd
@@ -228,6 +282,9 @@ func (m *model) refresh() {
 
 func (m model) debugText() string {
 	if m.opts.Debug == nil {
+		if m.opts.NoDebugReason != "" {
+			return m.opts.NoDebugReason
+		}
 		return "отладка выключена: запустите с -debug-llm"
 	}
 	text := m.opts.Debug.Text()
@@ -235,6 +292,15 @@ func (m model) debugText() string {
 		text = fmt.Sprintf("(сброшено записей: %d)\n\n%s", n, text)
 	}
 	return text
+}
+
+// promptText готовит EventPrompt для показа у строки ввода: хвост "> " —
+// это построчный курсор cli, полноэкранному режиму он не нужен, а трогать
+// сам текст события в cli нельзя — построчный вывод обязан остаться
+// побайтово прежним.
+func promptText(text string) string {
+	text = strings.TrimSuffix(text, "> ")
+	return strings.TrimRight(text, "\n")
 }
 
 func (m model) View() string {
@@ -246,14 +312,25 @@ func (m model) View() string {
 		head += " · " + m.opts.Status()
 	}
 	foot := "↑↓ история · PgUp/PgDn прокрутка · Tab отладка · ^C выход"
-	if m.busy {
+	switch {
+	case m.ended:
+		// Развязка уже дочитана до этой строки — подвал говорит, что дальше
+		// делать, а не врёт «ход идёт».
+		foot = "игра окончена — любая клавиша закрывает окно"
+	case m.busy:
 		foot = "ход идёт…  " + foot
 	}
 	frame := lipgloss.NewStyle().Faint(true)
+	input := m.input.View()
+	if m.prompt != "" {
+		// Приглашение — подсказка у строки ввода, а не строка транскрипта:
+		// см. §2.1 спека.
+		input = lipgloss.NewStyle().Bold(true).Render(m.prompt) + "\n" + input
+	}
 	return strings.Join([]string{
 		frame.Render(head),
 		m.view.View(),
-		m.input.View(),
+		input,
 		frame.Render(foot),
 	}, "\n")
 }

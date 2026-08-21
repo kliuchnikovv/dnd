@@ -16,7 +16,6 @@ import (
 type Session struct {
 	Game *core.Game
 	In   io.Reader
-	Out  io.Writer
 	// sink — куда уходит вывод. Сессия печатает только через него: иначе
 	// полноэкранный режим пришлось бы делать вторым форматом вывода, а не
 	// вторым приёмником.
@@ -43,7 +42,7 @@ type Session struct {
 }
 
 func NewSession(g *core.Game, in io.Reader, out io.Writer) *Session {
-	return &Session{Game: g, In: in, Out: out, sink: TextSink{W: out}}
+	return &Session{Game: g, In: in, sink: TextSink{W: out}}
 }
 
 // WithSink подменяет приёмник вывода.

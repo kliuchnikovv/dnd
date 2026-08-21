@@ -46,6 +46,3 @@ func (h *History) Next() (string, bool) {
 	h.pos++
 	return h.items[h.pos], true
 }
-
-// Reset возвращает курсор в конец, не трогая записи.
-func (h *History) Reset() { h.pos = len(h.items) }

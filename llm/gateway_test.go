@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -397,5 +398,39 @@ func TestSpendIsCountedPerTier(t *testing.T) {
 	if s.ByTier[TierCheap] >= s.ByTier[TierMain] {
 		t.Errorf("дешёвый тир обошёлся не дешевле: %d против %d",
 			s.ByTier[TierCheap], s.ByTier[TierMain])
+	}
+}
+
+// countingWriter считает, сколько раз вызван Write. tui.Ring устроен так,
+// что одна запись кольца — это один вызов Write: если дамп бьётся на
+// несколько Fprintf, одна запись кольца превращается в фрагмент обмена, а не
+// в обмен целиком, и потолок в записях врёт о числе реальных обменов.
+type countingWriter struct {
+	writes int
+	buf    strings.Builder
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.writes++
+	return c.buf.Write(p)
+}
+
+// Дамп обмена обязан уходить ОДНИМ вызовом Write — иначе одна «запись»
+// кольца отладки — это фрагмент обмена, а не обмен целиком (см. tui.Ring).
+func TestDumpWritesExchangeInOneCall(t *testing.T) {
+	g, _ := gw(t, Caps{})
+	w := &countingWriter{}
+	g.WithDebug(w)
+
+	if _, err := g.Do(context.Background(), Request{
+		Role: RoleNarrator, Input: "текст", Schema: "{}"}); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	if w.writes != 1 {
+		t.Errorf("дамп обмена ушёл %d вызовами Write, ожидался 1", w.writes)
+	}
+	if !strings.Contains(w.buf.String(), "схема: {}") {
+		t.Errorf("схема пропала из дампа: %q", w.buf.String())
 	}
 }

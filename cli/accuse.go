@@ -76,7 +76,10 @@ func (s *Session) resolveAccusation(form accusation.Form) {
 	case res.Correct:
 		s.emit(EventSystem, "Обвинение верно. Попыток: %d.\n\n", res.Attempt)
 		for _, clause := range res.Summation {
-			s.emit(EventSpeech, "  — %s\n", clause)
+			// Клаузы саммации — речь игрока: он произносит обвинение вслух.
+			// У EventSpeech автор обязателен (спек §3), а TextSink печатает
+			// только Text — построчный вывод байт в байт не меняется.
+			s.emitSpeech(PlayerName, "  — %s\n", clause)
 		}
 		if after := g.Aftermath(); after != "" {
 			s.emit(EventSystem, "\n%s\n", after)

@@ -80,14 +80,21 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 func (g *Gateway) Stats() Stats { return g.ledger.Stats() }
 
 // dump печатает обмен целиком, включая схему: расхождение чаще всего в ней.
+//
+// Собирается в одну строку и пишется ОДНИМ вызовом Fprint — не ради красоты,
+// а потому что читатель дампа (tui.Ring) считает записи, а не строки: три
+// отдельных Write на один обмен — это три записи кольца вместо одной, и
+// счётчик вытесненного и потолок буфера начинают лгать. Текст не меняется ни
+// на байт — меняется только число вызовов Write.
 func (g *Gateway) dump(r Request, t Target, resp Response) {
 	if g.debug == nil {
 		return
 	}
-	fmt.Fprintf(g.debug, "\n--- llm %s -> %s/%s ---\n", r.Role, t.Provider.Name(), t.Model)
+	text := fmt.Sprintf("\n--- llm %s -> %s/%s ---\n", r.Role, t.Provider.Name(), t.Model)
 	if r.Schema != "" {
-		fmt.Fprintf(g.debug, "схема: %s\n", r.Schema)
+		text += fmt.Sprintf("схема: %s\n", r.Schema)
 	}
-	fmt.Fprintf(g.debug, "ввод:\n%s\nответ:\n%s\nтокены: %d/%d, стоимость: %d мкд\n",
+	text += fmt.Sprintf("ввод:\n%s\nответ:\n%s\nтокены: %d/%d, стоимость: %d мкд\n",
 		r.Input, resp.Text, resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.CostMicro)
+	fmt.Fprint(g.debug, text)
 }

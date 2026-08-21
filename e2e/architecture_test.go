@@ -107,6 +107,13 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		"github.com/charmbracelet/bubbletea",
 		"github.com/charmbracelet/bubbles",
 		"github.com/charmbracelet/lipgloss",
+		// golang.org/x/term — единственный честный способ спросить у файла,
+		// терминал он или нет. os.ModeCharDevice отвечает "да" и на
+		// /dev/null, потому что это тоже символьное устройство: не-терминал
+		// (пайп, -script) уходил в полноэкранную ветку и падал на open
+		// /dev/tty. Это официальный модуль самого Go, а не сторонняя libc,
+		// и другого источника правды для этого вопроса нет.
+		"golang.org/x/term",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {
@@ -134,5 +141,19 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		if !ok {
 			t.Errorf("незаявленная зависимость: %s", line)
 		}
+	}
+}
+
+// TestCliDoesNotDependOnTUI — направление зависимости лежит НАД cli, а не
+// внутри него: tui необязателен ровно потому, что cli о нём не знает. Если
+// это когда-нибудь развернётся (например, через общий вспомогательный
+// пакет), построчный режим перестанет собираться без bubbletea.
+func TestCliDoesNotDependOnTUI(t *testing.T) {
+	out, err := exec.Command("go", "list", "-deps", "../cli").Output()
+	if err != nil {
+		t.Fatalf("go list: %v", err)
+	}
+	if strings.Contains(string(out), "/tui") {
+		t.Error("cli тянет tui — направление зависимости развернулось")
 	}
 }

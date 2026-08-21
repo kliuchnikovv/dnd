@@ -13,7 +13,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/kliuchnikovv/dnd/actor"
 	"github.com/kliuchnikovv/dnd/cases"
@@ -25,6 +27,7 @@ import (
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/tui"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -79,9 +82,18 @@ func main() {
 	game := core.NewGame(*cfg)
 	session := cli.NewSession(game, in, os.Stdout)
 
+	// fs решается один раз: и создание кольца отладки, и выбор драйвера ниже
+	// обязаны видеть один и тот же ответ, иначе полноэкранный режим и его
+	// собственный дамп рассинхронизируются на границе решения.
+	fs := fullscreen(in, os.Stdout, *plain)
+
 	var parser *intent.Parser
 	var debugRing *tui.Ring
 	var gw *llm.Gateway
+	// noDebugReason — честный текст для панели отладки, когда причина её
+	// отсутствия не «не указан -debug-llm», а «-nl не указан, и шлюзу
+	// моделей неоткуда взяться».
+	var noDebugReason string
 	if *nl {
 		target, err := resolveProvider(*provider, *model)
 		if err != nil {
@@ -103,6 +115,14 @@ func main() {
 				os.Exit(1)
 			}
 		}
+		if fs {
+			// В полноэкранном режиме и алерт леджера, и «Мастер не ответил»
+			// обязаны уйти в то же кольцо, что и дамп -debug-llm, а не на
+			// stderr: прямая печать поверх альт-экрана посреди хода корёжит
+			// картинку. Кольцо заводится всегда, когда экран полноэкранный —
+			// -debug-llm ниже только решает, попадёт ли туда и сам дамп.
+			debugRing = tui.NewRing(200)
+		}
 		router := buildRouter(target, cheap)
 		gw = llm.NewGateway(router,
 			llm.NewLedger(llm.Caps{
@@ -110,13 +130,10 @@ func main() {
 				PerTurnCalls:       *capTurn,
 				ForecastDailyMicro: int64(*capDay * 1_000_000 / 4),
 			}, llm.WithAlert(func(spent, forecast int64) {
-				fmt.Fprintf(os.Stderr, "расход %d мкд превысил прогноз %d вдвое\n", spent, forecast)
+				fmt.Fprintf(debugSink(debugRing), "расход %d мкд превысил прогноз %d вдвое\n", spent, forecast)
 			})))
 		if *debugLLM {
-			if fullscreen(in, os.Stdout, *plain) {
-				// В полноэкранном режиме stderr затирает экран, поэтому дамп
-				// уходит в буфер, а панель по Tab его показывает.
-				debugRing = tui.NewRing(200)
+			if debugRing != nil {
 				gw = gw.WithDebug(debugRing)
 			} else {
 				gw = gw.WithDebug(os.Stderr)
@@ -132,18 +149,23 @@ func main() {
 		session.WithVoicer(&actor.GameVoicer{
 			Actor: act, Game: game, Turn: session.Turn, Master: gm,
 			Notify: func(err error) {
-				fmt.Fprintf(os.Stderr, "(Мастер не ответил: %v)\n", err)
+				fmt.Fprintf(debugSink(debugRing), "(Мастер не ответил: %v)\n", err)
 			}})
 		session.WithNarrator(&narrator{master: gm, game: game})
 		defer func() { reportMetrics(gw, parser) }()
+	} else if *debugLLM {
+		// -debug-llm сам вызовов не делает: без -nl шлюза моделей нет, и
+		// дамп неоткуда взять. Панель по Tab обязана сказать это, а не
+		// повторить общее «запустите с -debug-llm» тому, кто его и указал.
+		noDebugReason = "-debug-llm без -nl ничего не даёт: моделей не вызывает ни один режим"
 	}
 
-	if fullscreen(in, os.Stdout, *plain) {
-		title := *casePath
+	if fs {
 		if err := tui.Run(session, tui.Options{
-			Title:  title,
-			Status: statusOf(gw),
-			Debug:  debugRing,
+			Title:         filepath.Base(filepath.Dir(*casePath)),
+			Status:        statusOf(game, session, gw),
+			Debug:         debugRing,
+			NoDebugReason: noDebugReason,
 		}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -166,23 +188,40 @@ func fullscreen(in, out *os.File, plain bool) bool {
 	return isTerminal(in) && isTerminal(out)
 }
 
+// isTerminal — единственный честный способ ответить на этот вопрос. Проверка
+// через os.ModeCharDevice отвечает "да" и на /dev/null: это тоже символьное
+// устройство, и `dnd < /dev/null > /dev/null` уходил в полноэкранную ветку и
+// падал на open /dev/tty. golang.org/x/term — официальный модуль Go, который
+// умеет именно это: спросить у файлового дескриптора термиос, а не угадывать
+// по типу файла.
 func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(f.Fd()))
 }
 
-// statusOf — строка шапки: ход и расход. Функция, а не строка, потому что
-// шапка перерисовывается, а расход растёт.
-func statusOf(gw *llm.Gateway) func() string {
-	if gw == nil {
-		return func() string { return "" }
-	}
+// statusOf — строка шапки: место, ход, расход. Функция, а не строка, потому
+// что все три меняются по ходу игры — там, где строка не устареет сама, ей
+// самое место, а путь к файлу дела в шапке ни ходом, ни местом не меняется,
+// и потому туда не идёт (см. Title в Run).
+func statusOf(game *core.Game, session *cli.Session, gw *llm.Gateway) func() string {
 	return func() string {
-		return fmt.Sprintf("$%.4f", float64(gw.Stats().SpentMicro)/1e6)
+		place := game.DB.Locations[game.Node].Name
+		status := fmt.Sprintf("%s · ход %d", place, session.Turn())
+		if gw != nil {
+			status += fmt.Sprintf(" · $%.4f", float64(gw.Stats().SpentMicro)/1e6)
+		}
+		return status
 	}
+}
+
+// debugSink — куда уходят внештатные сообщения (алерт леджера, «Мастер не
+// ответил»), которые срабатывают посреди хода, а не по запросу игрока. В
+// построчном режиме им, как и раньше, место в stderr; в полноэкранном —
+// в то же кольцо, что и дамп -debug-llm, иначе они бьют поверх альт-экрана.
+func debugSink(ring *tui.Ring) io.Writer {
+	if ring != nil {
+		return ring
+	}
+	return os.Stderr
 }
 
 // appRoles — роли, которыми игра пользуется, и тир, которым каждая
