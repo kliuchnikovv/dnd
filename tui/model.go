@@ -27,6 +27,13 @@ type eventMsg struct{ event cli.Event }
 // doneMsg — ход закончился; true означает, что игра закончена.
 type doneMsg struct{ quit bool }
 
+// startedMsg — s.Start() отработал. До этого момента ввод заблокирован тем
+// же busy, что и обычный ход: без этого Enter, нажатый раньше, чем стартовая
+// сцена допечаталась, запускает s.Feed параллельно с ещё живым s.Start —
+// cli.Session не рассчитан на параллельные вызовы и не блокируется сам,
+// так что turn/Game/pending/spokenTo разъедутся непредсказуемо.
+type startedMsg struct{}
+
 type model struct {
 	session *cli.Session
 	opts    Options
@@ -37,8 +44,15 @@ type model struct {
 	history    History
 
 	events chan cli.Event
-	// busy — ход исполняется. Ввод в это время заблокирован: два хода
-	// одновременно ядро не переживёт, а очередь фраз перепутает ответы.
+	// done закрывается ровно один раз при выходе (Ctrl-C или конец игры) и
+	// служит вторым исходом для sink.Emit: пока цикл программы жив, запись
+	// в events блокируется как положено, а после выхода — просто отпускает
+	// пишущую горутину, вместо того чтобы держать её вечно на закрытом всеми
+	// читателями канале.
+	done chan struct{}
+	// busy — ход (или стартовая сцена) исполняется. Ввод в это время
+	// заблокирован: два хода одновременно ядро не переживёт, а очередь фраз
+	// перепутает ответы.
 	busy      bool
 	debugOpen bool
 	quitting  bool
@@ -55,6 +69,16 @@ func newModel(s *cli.Session, opts Options) model {
 		input:  in,
 		view:   viewport.New(80, 20),
 		events: make(chan cli.Event, 64),
+		done:   make(chan struct{}),
+		// busy взведён с самого начала: ниже он снимается только после
+		// startedMsg, то есть после того, как стартовая сцена реально
+		// допечатана — см. комментарий у startedMsg.
+		busy: true,
+		// Ширина по умолчанию — до первого tea.WindowSizeMsg окна ещё не
+		// знает своего размера, а рендерить транскрипт по нулевой ширине
+		// незачем: разделитель схлопнется в мусор. 80 — тот же дефолт, что
+		// у viewport.New ниже.
+		width: 80,
 	}
 }
 
@@ -64,13 +88,15 @@ func newModel(s *cli.Session, opts Options) model {
 // поле в фокусе.
 func (m model) Init() tea.Cmd { return tea.Batch(cursor.Blink, m.start()) }
 
-// start печатает стартовую сцену через тот же приёмник, что и ходы.
+// start печатает стартовую сцену через тот же приёмник, что и ходы. Msg —
+// startedMsg, а не сразу событие: слушать канал начинаем в Update после
+// того, как busy снят, иначе первый Enter может обогнать s.Start().
 func (m model) start() tea.Cmd {
 	return func() tea.Msg {
 		if m.session != nil {
 			m.session.Start()
 		}
-		return waitEvent(m.events)()
+		return startedMsg{}
 	}
 }
 
@@ -91,6 +117,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refresh()
 		return m, nil
 
+	case startedMsg:
+		// Стартовая сцена реально допечатана — только теперь снимаем busy
+		// и начинаем слушать канал. До этой строки Enter был заблокирован
+		// тем же busy, что и обычный ход.
+		m.busy = false
+		return m, waitEvent(m.events)
+
 	case eventMsg:
 		m.transcript.Append(msg.event)
 		m.refresh()
@@ -100,8 +133,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case doneMsg:
 		m.busy = false
 		if msg.quit {
-			m.quitting = true
-			return m, tea.Quit
+			return m.quit()
 		}
 		return m, nil
 
@@ -116,8 +148,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		m.quitting = true
-		return m, tea.Quit
+		// Выходим сразу, даже если ход ещё идёт (busy) — так было в брифе,
+		// и это сохранено. Не сохранено только слепое доверие к тому, что
+		// после tea.Quit больше некому дочитать events: за это отвечает
+		// quit(), закрывая done.
+		return m.quit()
 	case tea.KeyTab:
 		m.debugOpen = !m.debugOpen
 		m.refresh()
@@ -168,6 +203,19 @@ func (m model) feed(line string) tea.Cmd {
 		// События хода уходят в канал сами: приёмник сессии подменён в Run.
 		return doneMsg{quit: s.Feed(line)}
 	}
+}
+
+// quit — единая точка выхода. Закрывает done ровно один раз: если ход ещё
+// работает в своей горутине и шлёт события через sink.Emit, закрытый канал
+// done — это то, на чём Emit перестанет ждать место в events, которое уже
+// никто не читает. Без этой развязки Ctrl-C посреди длинного хода (>64
+// событий в буфере) навечно вешает горутину feed.
+func (m model) quit() (tea.Model, tea.Cmd) {
+	if !m.quitting {
+		m.quitting = true
+		close(m.done)
+	}
+	return m, tea.Quit
 }
 
 func (m *model) refresh() {

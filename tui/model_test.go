@@ -12,8 +12,13 @@ import (
 // пуста, а ради неё всё и затевалось.
 func TestEnterSendsInputAndRemembersIt(t *testing.T) {
 	m := newModel(nil, Options{})
+	// Стартовая сцена «допечатана» — иначе Enter заблокирован тем же busy,
+	// что и ход (см. TestEnterIsBlockedUntilStartFinishes ниже).
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
 	m.input.SetValue("осмотреться")
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(model)
 
 	if m.input.Value() != "" {
@@ -21,6 +26,41 @@ func TestEnterSendsInputAndRemembersIt(t *testing.T) {
 	}
 	if got, ok := m.history.Prev(); !ok || got != "осмотреться" {
 		t.Errorf("ввод не попал в историю: %q (%v)", got, ok)
+	}
+}
+
+// Enter, нажатый раньше, чем s.Start() допечатал стартовую сцену, не должен
+// проходить: иначе s.Feed запустится параллельно с ещё живым s.Start, а
+// cli.Session рассчитан только на строго последовательные вызовы.
+func TestEnterIsBlockedUntilStartFinishes(t *testing.T) {
+	m := newModel(nil, Options{})
+	m.input.SetValue("рано")
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+
+	if m.input.Value() != "рано" {
+		t.Error("ввод принят до конца стартовой сцены")
+	}
+}
+
+// startedMsg — единственный способ снять стартовую блокировку; без него
+// стрелка вверх и Enter молчат вечно.
+func TestStartedMsgUnblocksInput(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
+	if m.busy {
+		t.Error("busy не снят после отметки о завершении старта")
+	}
+}
+
+// Ширина по умолчанию ненулевая: до первого tea.WindowSizeMsg транскрипт
+// всё равно должен рендериться в разумную колонку, а не в нулевую.
+func TestDefaultWidthIsNotZero(t *testing.T) {
+	m := newModel(nil, Options{})
+	if m.width <= 0 {
+		t.Errorf("ширина по умолчанию не задана: %d", m.width)
 	}
 }
 
