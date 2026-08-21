@@ -17,6 +17,13 @@ type DB struct {
 	Dossiers   map[DossierKey]*Dossier
 	Props      map[NodeID][]SceneProp
 
+	// Пустые до M2. См. store/future.go: пустая таблица стоит ноль, миграция
+	// потом стоит дорого.
+	Cases       map[CaseID]*Case
+	Regions     map[RegionID]Region
+	WorldEvents []WorldEvent
+	Outbox      []OutboxMessage
+
 	Contradictions []Contradiction
 }
 
@@ -31,6 +38,8 @@ func NewDB() *DB {
 		Characters: map[CharacterID]*Character{},
 		Dossiers:   map[DossierKey]*Dossier{},
 		Props:      map[NodeID][]SceneProp{},
+		Cases:      map[CaseID]*Case{},
+		Regions:    map[RegionID]Region{},
 	}
 }
 

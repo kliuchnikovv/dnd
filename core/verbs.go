@@ -26,39 +26,43 @@ type VerbDef struct {
 	// перекрывается флагом requires_roll в данных дела.
 	Rolls bool
 	Hard  bool
+	// Spends — глагол тратит игровое время сам по себе, удачно или нет.
+	// Просидеть вечер в тени бочек стоит вечера. Это не цена провала, а
+	// свойство действия, поэтому живёт в ядре и от системы правил не зависит.
+	Spends bool
 }
 
 var Verbs = map[Verb]VerbDef{
-	"look":              {"look", ClassNone, false, false},
-	"emote":             {"emote", ClassNone, false, false},
-	"say":               {"say", ClassNone, false, false},
-	"talk_to":           {"talk_to", ClassSocial, false, false},
-	"ask_about":         {"ask_about", ClassSocial, false, false},
-	"thank":             {"thank", ClassSocial, false, false},
-	"threaten_verbally": {"threaten_verbally", ClassSocial, false, false},
-	"theorize":          {"theorize", ClassReason, false, false},
-	"examine":           {"examine", ClassInvestigate, true, true},
-	"search":            {"search", ClassInvestigate, true, true},
-	"question":          {"question", ClassInvestigate, true, true},
-	"stake_out":         {"stake_out", ClassInvestigate, true, true},
-	"tail":              {"tail", ClassInvestigate, true, true},
-	"compare":           {"compare", ClassReason, false, true},
-	"cross_reference":   {"cross_reference", ClassReason, true, true},
-	"strike":            {"strike", ClassAttack, true, true},
-	"grapple":           {"grapple", ClassAttack, true, true},
-	"move_zone":         {"move_zone", ClassMove, true, true},
-	"take_cover":        {"take_cover", ClassMove, true, true},
-	"flee":              {"flee", ClassMove, true, true},
-	"sneak":             {"sneak", ClassSkill, true, true},
-	"pick":              {"pick", ClassSkill, true, true},
-	"recall":            {"recall", ClassSkill, true, true},
-	"persuade":          {"persuade", ClassSocial, true, true},
-	"intimidate":        {"intimidate", ClassSocial, true, true},
-	"command":           {"command", ClassSocial, true, true},
-	"aid":               {"aid", ClassSupport, true, true},
-	"mend":              {"mend", ClassSupport, true, true},
-	"use_ability":       {"use_ability", ClassResource, true, true},
-	"use_item":          {"use_item", ClassResource, true, true},
+	"look":              {"look", ClassNone, false, false, false},
+	"emote":             {"emote", ClassNone, false, false, false},
+	"say":               {"say", ClassNone, false, false, false},
+	"talk_to":           {"talk_to", ClassSocial, false, false, false},
+	"ask_about":         {"ask_about", ClassSocial, false, false, false},
+	"thank":             {"thank", ClassSocial, false, false, false},
+	"threaten_verbally": {"threaten_verbally", ClassSocial, false, false, false},
+	"theorize":          {"theorize", ClassReason, false, false, false},
+	"examine":           {"examine", ClassInvestigate, true, true, false},
+	"search":            {"search", ClassInvestigate, true, true, false},
+	"question":          {"question", ClassInvestigate, true, true, false},
+	"stake_out":         {"stake_out", ClassInvestigate, true, true, true},
+	"tail":              {"tail", ClassInvestigate, true, true, true},
+	"compare":           {"compare", ClassReason, false, true, false},
+	"cross_reference":   {"cross_reference", ClassReason, true, true, false},
+	"strike":            {"strike", ClassAttack, true, true, false},
+	"grapple":           {"grapple", ClassAttack, true, true, false},
+	"move_zone":         {"move_zone", ClassMove, true, true, false},
+	"take_cover":        {"take_cover", ClassMove, true, true, false},
+	"flee":              {"flee", ClassMove, true, true, false},
+	"sneak":             {"sneak", ClassSkill, true, true, false},
+	"pick":              {"pick", ClassSkill, true, true, false},
+	"recall":            {"recall", ClassSkill, true, true, false},
+	"persuade":          {"persuade", ClassSocial, true, true, false},
+	"intimidate":        {"intimidate", ClassSocial, true, true, false},
+	"command":           {"command", ClassSocial, true, true, false},
+	"aid":               {"aid", ClassSupport, true, true, false},
+	"mend":              {"mend", ClassSupport, true, true, false},
+	"use_ability":       {"use_ability", ClassResource, true, true, false},
+	"use_item":          {"use_item", ClassResource, true, true, false},
 }
 
 func LookupVerb(s string) (VerbDef, bool) {

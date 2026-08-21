@@ -75,6 +75,9 @@ func (g *Game) Apply(in Intent) TurnResult {
 				g.applyUnlocksFor(holder.FactID)
 			}
 		}
+		spent := g.spendTime(def)
+		g.applyConsequences(spent)
+		res.Fired = append(res.Fired, spent...)
 		g.noteTurn(def, len(res.Learned))
 		return res
 	}
@@ -106,6 +109,12 @@ func (g *Game) Apply(in Intent) TurnResult {
 			g.applyUnlocksFor(holder.FactID)
 		}
 	}
+	// Применяется только то, что сработало ИМЕННО СЕЙЧАС: HostileTo не
+	// идемпотентен, и повторный проход по уже применённому списку удвоил бы
+	// сдвиг расположения молча.
+	spent := g.spendTime(def)
+	g.applyConsequences(spent)
+	out.Fired = append(out.Fired, spent...)
 	g.noteTurn(def, len(out.Learned))
 	return out
 }
@@ -258,6 +267,17 @@ func (g *Game) SceneView(in Intent) SceneView {
 func (g *Game) isProp(target store.EntityID) bool {
 	_, ok := g.DB.PropAt(g.Node, store.PropID(target))
 	return ok
+}
+
+// spendTime списывает игровое время у глаголов, которые его тратят по своей
+// природе. Отказ сюда не доходит: ход не состоялся, значит и время не ушло.
+// Свободные пробы не помечены и остаются бесплатными всегда — игра,
+// наказывающая за то, что игрок смотрит по сторонам, измеряет не то.
+func (g *Game) spendTime(def VerbDef) []store.Consequence {
+	if !def.Spends {
+		return nil
+	}
+	return g.C.TickAll(1)
 }
 
 func hasTag(p store.SceneProp, tag string) bool {

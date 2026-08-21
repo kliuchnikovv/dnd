@@ -38,11 +38,15 @@ type Gate struct {
 }
 
 type FactHolder struct {
-	FactID    FactID   `json:"fact_id"`
-	HolderID  EntityID `json:"holder_id"`
-	Gate      Gate     `json:"gate"`
-	Mandatory bool     `json:"mandatory"`
-	Latent    bool     `json:"latent"`
+	FactID   FactID   `json:"fact_id"`
+	HolderID EntityID `json:"holder_id"`
+	// HolderKind — чем держатель является. Держателем бывает документ,
+	// предмет и место, не только NPC. В M1a не читается: заложено потому, что
+	// добавлять это поле потом дорого.
+	HolderKind string `json:"holder_kind"`
+	Gate       Gate   `json:"gate"`
+	Mandatory  bool   `json:"mandatory"`
+	Latent     bool   `json:"latent"`
 }
 
 type FactUnlock struct {
@@ -70,6 +74,10 @@ type Relation struct {
 	From EntityID `json:"from_entity"`
 	To   EntityID `json:"to_entity"`
 	Kind string   `json:"kind"`
+	// Strength — сила связи. Независимость источников в M1a считается по
+	// самому факту ребра; порог по силе появится, когда у графа связей будет
+	// больше одного применения.
+	Strength int `json:"strength"`
 }
 
 type Knowledge struct {

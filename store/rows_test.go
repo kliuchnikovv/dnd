@@ -18,7 +18,7 @@ func TestFactHolderJSONTags(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	got := string(b)
-	want := `{"fact_id":"f_ligature","holder_id":"e_body",` +
+	want := `{"fact_id":"f_ligature","holder_id":"e_body","holder_kind":"",` +
 		`"gate":{"verbs":["examine"],"threshold":"normal","requires":null},` +
 		`"mandatory":true,"latent":false}`
 	if got != want {
