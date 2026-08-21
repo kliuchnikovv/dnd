@@ -513,12 +513,12 @@ func TestFlavourActsGoCheapAndShort(t *testing.T) {
 
 // Проверка на выдумку — это «да/нет». Она не сочиняет и дорогой модели не
 // требует никогда.
-func TestGuardAlwaysGoesCheap(t *testing.T) {
-	_, f := actorWith(t, `{"move":"smalltalk","line":"Служба идёт."}`)
-	_ = f
-	g := NewGuard(nil)
-	if g.tier() != llm.TierCheap {
-		t.Error("страж пошёл дорогим тиром")
+// Проверка идёт основным тиром, и это не расточительность, а измерение:
+// дешёвый судья пропускает одну утечку из десяти (guard_corpus_test.go), а
+// утечка бьёт в решаемость дела.
+func TestGuardGoesMainTier(t *testing.T) {
+	if got := NewGuard(nil).tier(); got != llm.TierMain {
+		t.Errorf("страж пошёл тиром %q — дешёвый пропускает утечки", got)
 	}
 }
 

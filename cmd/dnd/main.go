@@ -33,7 +33,8 @@ func main() {
 	nl := flag.Bool("nl", false, "переводить свободный текст в действия через модель")
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
-	modelCheap := flag.String("model-cheap", "", "модель для ходов, не меняющих мир: приветствие, прощание, проверка на выдумку")
+	modelCheap := flag.String("model-cheap", "",
+		"модель для ходов, не меняющих мир: приветствие, прощание, ремонт реплики, запрос к Мастеру")
 	priceInCheap := flag.Float64("price-in-cheap", 0, "цена ввода дешёвой модели, $ за миллион токенов")
 	priceOutCheap := flag.Float64("price-out-cheap", 0, "цена вывода дешёвой модели, $ за миллион токенов")
 	capDay := flag.Float64("cap-day", 1.0, "потолок расхода в долларах за сутки")

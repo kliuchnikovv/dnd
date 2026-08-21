@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -116,6 +117,15 @@ func TestGuardRatesAreCountedFromLabels(t *testing.T) {
 	}
 }
 
+// envPrice читает цену в долларах за миллион токенов.
+func envPrice(name string, def float64) float64 {
+	v, err := strconv.ParseFloat(os.Getenv(name), 64)
+	if err != nil || v <= 0 {
+		return def
+	}
+	return v
+}
+
 type rates struct {
 	missed        float64 // доля пропущенных утечек
 	falsePositive float64 // доля зарубленной краски
@@ -159,8 +169,15 @@ func TestGuardFrequencyOnLiveModel(t *testing.T) {
 	}
 	if !llm.HasPrice(model) {
 		// Без цены шлюз не пропустит вызов, и это правильно: расход должен
-		// быть виден.
-		llm.SetPrice(model, llm.Price{InputMicroPerMTok: 1_000_000, OutputMicroPerMTok: 5_000_000})
+		// быть виден. Цену задаёт тот, кто запускает: слаги у OpenRouter свои,
+		// и подставлять их цены по памяти значит печатать неверный расход.
+		in, out := envPrice("DND_GUARD_PRICE_IN", 1), envPrice("DND_GUARD_PRICE_OUT", 5)
+		t.Logf("цена %s принята за %.2f/%.2f $ за миллион токенов "+
+			"(задайте DND_GUARD_PRICE_IN/OUT, если не так)", model, in, out)
+		llm.SetPrice(model, llm.Price{
+			InputMicroPerMTok:  int64(in * 1_000_000),
+			OutputMicroPerMTok: int64(out * 1_000_000),
+		})
 	}
 	gw := llm.NewGateway(
 		llm.NewRouter().Route(llm.RoleCanonGuard,
