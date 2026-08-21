@@ -99,6 +99,14 @@ func TestPureLayersNameNoVendor(t *testing.T) {
 func TestDependenciesAreAllowlisted(t *testing.T) {
 	allowed := []string{
 		"github.com/anthropics/anthropic-sdk-go",
+		// bubbletea/bubbles/lipgloss — полноэкранный режим tui: он
+		// необязателен и лежит НАД игрой, но прокрутка с переносами строк,
+		// ширина символов и resize терминала — та мелкая логика, где своя
+		// реализация обходится дороже готовой и проверенной. Список
+		// расширен сознательно, а не по недосмотру.
+		"github.com/charmbracelet/bubbletea",
+		"github.com/charmbracelet/bubbles",
+		"github.com/charmbracelet/lipgloss",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {
