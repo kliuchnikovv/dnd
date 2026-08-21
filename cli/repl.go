@@ -70,29 +70,38 @@ func (s *Session) emitSpeech(speaker, format string, args ...any) {
 	s.sink.Emit(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
 }
 
-func (s *Session) Run() error {
+// Start печатает стартовую сцену. Отдельно от Run, потому что драйверов два:
+// построчный читает stdin сам, полноэкранный владеет своим циклом.
+func (s *Session) Start() {
 	s.emitText(EventScene, s.r.Scene(s.Game))
+}
+
+// Feed исполняет ОДИН ввод и сообщает, пора ли заканчивать. Здесь живёт всё,
+// что раньше было телом цикла Run: разбор, перевод свободного текста,
+// исполнение и проверка развязки.
+func (s *Session) Feed(line string) bool {
+	s.turn++
+	if s.awaitingAccusation() {
+		s.feedAccusation(line)
+		return s.ended()
+	}
+	cmd, err := Parse(line)
+	if err != nil {
+		s.interpret(line, err)
+	} else if done := s.dispatch(cmd); done {
+		return true
+	}
+	return s.ended()
+}
+
+func (s *Session) Run() error {
+	s.Start()
 	s.sc = bufio.NewScanner(s.In)
 	if s.ended() {
 		return nil
 	}
 	for s.sc.Scan() {
-		line := s.sc.Text()
-		s.turn++
-		if s.awaitingAccusation() {
-			s.feedAccusation(line)
-			if s.ended() {
-				return nil
-			}
-			continue
-		}
-		cmd, err := Parse(line)
-		if err != nil {
-			s.interpret(line, err)
-		} else if done := s.dispatch(cmd); done {
-			return nil
-		}
-		if s.ended() {
+		if s.Feed(s.sc.Text()) {
 			return nil
 		}
 	}
