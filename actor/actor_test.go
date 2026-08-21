@@ -2,6 +2,7 @@ package actor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -1182,5 +1183,54 @@ func TestOutputCapLeavesRoomForReasoning(t *testing.T) {
 	}
 	if got := maxTokensFor(ActGreeting); got < 200 {
 		t.Errorf("потолок дешёвого тира %d — рассуждению не хватит", got)
+	}
+}
+
+// --- реплика это только слова вслух ---
+
+// Оформление ставит код: реплика NPC и реплика игрока обязаны выглядеть
+// одинаково. Модель, начавшая со своего тире, даёт «— — Здравствуйте».
+func TestCleanStripsLeadingDash(t *testing.T) {
+	for _, in := range []string{"— Здравствуйте.", "- Здравствуйте.", "—Здравствуйте.",
+		"«— Здравствуйте.»"} {
+		if got := clean(in); got != "Здравствуйте." {
+			t.Errorf("clean(%q) = %q", in, got)
+		}
+	}
+}
+
+// Ремарка в реплике — чужая работа: описывает мир Мастер, персонаж только
+// говорит. «— Здравствуйте. — Отряхиваю воду с плаща.» это две разные роли в
+// одной строке.
+func TestPromptsForbidStageDirections(t *testing.T) {
+	a, f := actorWith(t, `{"line":"Здравствуйте."}`)
+	if _, err := a.Line(context.Background(), Speaker{Name: "Берн", Voice: "сухой"},
+		Situation{Verb: "talk_to"}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if sys := f.Calls()[0].System; !strings.Contains(sys, "ремарок") {
+		t.Errorf("промпт не запрещает ремарки:\n%s", sys)
+	}
+	var probe map[string]any
+	if err := json.Unmarshal([]byte(f.Calls()[0].Schema), &probe); err != nil {
+		t.Fatal(err)
+	}
+	line := probe["properties"].(map[string]any)["line"].(map[string]any)
+	if desc, _ := line["description"].(string); !strings.Contains(desc, "вслух") {
+		t.Errorf("в схеме не сказано, что line — только произносимое: %q", desc)
+	}
+}
+
+// Ремонт тоже пишет реплику, и правила у неё те же.
+func TestRepairPromptForbidsStageDirections(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, f := repliesInOrder(t, `{"line":"Спросите Олсена."}`, `{"line":"Кто ж его знает."}`)
+	a = a.WithGuard(&stubGuard{verdicts: []bool{false, true}, what: "Олсен"})
+	if _, err := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if sys := f.Calls()[1].System; !strings.Contains(sys, "ремарок") {
+		t.Errorf("ремонту разрешены ремарки:\n%s", sys)
 	}
 }

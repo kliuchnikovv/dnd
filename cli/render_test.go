@@ -32,7 +32,7 @@ func TestRefusalReadsDifferentlyFromFailure(t *testing.T) {
 	// Игрок обязан мгновенно видеть разницу: отказ не потратил ход.
 	g := renderGame(t)
 	r := Render{}
-	refusal := r.Turn(g, refusedResult("парти об этом ничего не знает"))
+	refusal := r.Turn(g, core.Intent{}, refusedResult("парти об этом ничего не знает"))
 	if !strings.Contains(refusal, "нельзя") {
 		t.Errorf("отказ не помечен как отказ: %q", refusal)
 	}
@@ -126,7 +126,7 @@ func TestSurveyOrderIsStable(t *testing.T) {
 // показывать игроку бросок, которого не было.
 func TestNoRollNoRollLine(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Turn(g, core.TurnResult{Res: &core.Resolution{Class: core.OutcomeSuccess}})
+	out := Render{}.Turn(g, core.Intent{}, core.TurnResult{Res: &core.Resolution{Class: core.OutcomeSuccess}})
 	if strings.Contains(out, "d20") {
 		t.Errorf("напечатан несуществующий бросок: %q", out)
 	}
@@ -136,7 +136,7 @@ func TestNoRollNoRollLine(t *testing.T) {
 // часы заполнятся, — это не цена, а сюрприз через двадцать минут.
 func TestCostIsShownTheSameTurn(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Turn(g, core.TurnResult{
+	out := Render{}.Turn(g, core.Intent{}, core.TurnResult{
 		Res:   &core.Resolution{Class: core.OutcomeFail, Log: core.RollLog{Die: 4}},
 		Costs: []core.CostKind{core.CostTickClock, core.CostDispositionDown},
 	})
@@ -149,7 +149,7 @@ func TestCostIsShownTheSameTurn(t *testing.T) {
 
 func TestSuccessShowsNoCostLine(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Turn(g, core.TurnResult{
+	out := Render{}.Turn(g, core.Intent{}, core.TurnResult{
 		Res: &core.Resolution{Class: core.OutcomeSuccess, Log: core.RollLog{Die: 18}},
 	})
 	if strings.Contains(out, "цена") {
@@ -160,20 +160,21 @@ func TestSuccessShowsNoCostLine(t *testing.T) {
 // --- проза Мастера ---
 
 type fakeNarrator struct {
-	prose   string
-	err     error
-	calls   int
-	frames  []string
-	outcome []string
-	kinds   []ProseKind
+	prose    string
+	err      error
+	calls    int
+	frames   []string
+	outcome  []string
+	kinds    []ProseKind
+	speaking []string
 }
 
-func (n *fakeNarrator) Narrate(_ context.Context, kind ProseKind, frame string,
-	scene, outcome []string) (string, error) {
+func (n *fakeNarrator) Narrate(_ context.Context, p Prose) (string, error) {
 	n.calls++
-	n.kinds = append(n.kinds, kind)
-	n.frames = append(n.frames, frame)
-	n.outcome = append(n.outcome, outcome...)
+	n.kinds = append(n.kinds, p.Kind)
+	n.frames = append(n.frames, p.Frame)
+	n.outcome = append(n.outcome, p.Outcome...)
+	n.speaking = append(n.speaking, p.Speaking)
 	return n.prose, n.err
 }
 
@@ -204,7 +205,7 @@ func TestMechanicalLinesStayWithTheCode(t *testing.T) {
 	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
 
 	res := g.Apply(core.Intent{Verb: "examine", Args: core.Args{Target: "e_body"}})
-	got := s.r.Turn(g, res)
+	got := s.r.Turn(g, core.Intent{}, res)
 	if !strings.Contains(got, "Вы всматриваетесь") {
 		t.Errorf("проза Мастера не попала в исход: %q", got)
 	}
@@ -266,7 +267,8 @@ func TestProseKindTellsPlaceFromOutcome(t *testing.T) {
 	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
 
 	s.r.Scene(g)
-	s.r.Turn(g, g.Apply(core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}))
+	talk := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}
+	s.r.Turn(g, talk, g.Apply(talk))
 
 	if len(n.kinds) != 2 {
 		t.Fatalf("вызовов прозы %d", len(n.kinds))
@@ -276,5 +278,29 @@ func TestProseKindTellsPlaceFromOutcome(t *testing.T) {
 	}
 	if n.kinds[1] != ProseOutcome {
 		t.Errorf("социальный ход описан как %q — механики у него нет, но это исход", n.kinds[1])
+	}
+}
+
+// Проза исхода печатается ПЕРЕД репликой персонажа, поэтому Мастер обязан
+// знать, кто сейчас ответит: иначе он договаривает за него и противоречит.
+func TestSpeakerReachesTheNarrator(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{prose: "проза"}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+
+	talk := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}
+	s.r.Turn(g, talk, g.Apply(talk))
+	if len(n.speaking) != 1 || n.speaking[0] == "" {
+		t.Fatalf("говорящий не доехал до Мастера: %v", n.speaking)
+	}
+	if !strings.Contains(n.speaking[0], "Токе") {
+		t.Errorf("говорящим назван %q", n.speaking[0])
+	}
+
+	// Осмотр предмета никому слова не даёт: запрет там был бы шумом.
+	look := core.Intent{Verb: "examine", Args: core.Args{Target: "e_body"}}
+	s.r.Turn(g, look, g.Apply(look))
+	if got := n.speaking[1]; got != "" {
+		t.Errorf("говорящим назван %q там, где отвечать некому", got)
 	}
 }

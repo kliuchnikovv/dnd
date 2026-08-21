@@ -181,7 +181,7 @@ func (m *Master) Grant(ctx context.Context, needs []string, canon []CanonFact,
 // Narrate описывает сцену и исход прозой. Пустая рамка означает, что автор
 // текста не написал: тогда описывать нечего и придумывать нечего.
 func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
-	outcome []string, req llm.Request) (string, error) {
+	outcome []string, speaking string, req llm.Request) (string, error) {
 	if strings.TrimSpace(frame) == "" {
 		return "", nil
 	}
@@ -201,6 +201,12 @@ func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
 	} else {
 		b.WriteString("Это ИСХОД только что сделанного: покажи, чем оно кончилось. " +
 			"Обстановку не пересказывай — игрок её уже видел.\n\n")
+	}
+	if strings.TrimSpace(speaking) != "" {
+		b.WriteString("СЕЙЧАС ОТВЕТИТ " + speaking + " — своей репликой, следующей строкой.\n" +
+			"Не говори за него и не описывай, как он себя повёл: ни его слов, ни его тона, " +
+			"ни того, смягчился он или насторожился. Опиши только то, что видно вокруг и что " +
+			"сделал сам игрок.\n\n")
 	}
 	b.WriteString("Рамка автора — главная, не противоречь ей:\n" + frame + "\n")
 	w.render(&b)

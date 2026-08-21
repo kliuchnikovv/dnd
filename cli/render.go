@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // ProseKind — что описывает проза: обстановку или исход хода.
@@ -16,21 +17,35 @@ const (
 	ProseOutcome ProseKind = "outcome"
 )
 
+// Prose — заказ на прозу Мастера.
+type Prose struct {
+	Kind  ProseKind
+	Frame string
+	Scene []string
+	// Outcome — что произошло, словами без механики.
+	Outcome []string
+	// Speaking — тот, кто сейчас ответит своей репликой. Мастеру нельзя ни
+	// говорить за него, ни описывать, как он себя повёл: реплика идёт
+	// следующей строкой, и проза успевала ей противоречить — сперва «он
+	// отвечает охотнее, чем ждали», а потом сухое «Что вам надобно?».
+	Speaking string
+}
+
 type Render struct {
-	// Prose переписывает авторский текст прозой Мастера. Пустой — печатается
+	// Narrate переписывает авторский текст прозой Мастера. Пустой — печатается
 	// авторский текст: игра без моделей обязана работать как раньше.
 	//
 	// Структура остаётся кодовой: заголовок, цели, выходы, бросок и «узнали»
 	// печатает презентация, а не модель.
-	Prose func(kind ProseKind, frame string, scene, outcome []string) string
+	Narrate func(Prose) string
 }
 
 // prose — авторский текст либо его оживлённая версия.
-func (r Render) prose(kind ProseKind, frame string, scene, outcome []string) string {
-	if r.Prose == nil || strings.TrimSpace(frame) == "" {
-		return frame
+func (r Render) prose(p Prose) string {
+	if r.Narrate == nil || strings.TrimSpace(p.Frame) == "" {
+		return p.Frame
 	}
-	return r.Prose(kind, frame, scene, outcome)
+	return r.Narrate(p)
 }
 
 // sceneOf — что видно вокруг. Мастеру это нужно, чтобы не противоречить
@@ -47,7 +62,8 @@ func sceneOf(g *core.Game) []string {
 func (r Render) Scene(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
-	fmt.Fprintf(&b, "%s\n", r.prose(ProsePlace, g.Flavour("look."+string(g.Node)), sceneOf(g), nil))
+	fmt.Fprintf(&b, "%s\n", r.prose(Prose{Kind: ProsePlace,
+		Frame: g.Flavour("look." + string(g.Node)), Scene: sceneOf(g)}))
 	b.WriteString(targetList(g))
 	if reach := g.ReachableNodes(); len(reach) > 0 {
 		parts := make([]string, len(reach))
@@ -61,13 +77,15 @@ func (r Render) Scene(g *core.Game) string {
 
 // Turn печатает исход хода. Отказ и провал оформлены по-разному намеренно:
 // отказ не потратил ход, и игрок должен видеть это без раздумий.
-func (r Render) Turn(g *core.Game, t core.TurnResult) string {
+func (r Render) Turn(g *core.Game, in core.Intent, t core.TurnResult) string {
 	if t.Refused {
 		return "нельзя: " + t.Refusal + "\n"
 	}
 	var b strings.Builder
 	if t.FlavourKey != "" {
-		fmt.Fprintf(&b, "%s\n", r.prose(ProseOutcome, g.Flavour(t.FlavourKey), sceneOf(g), outcomeOf(g, t)))
+		fmt.Fprintf(&b, "%s\n", r.prose(Prose{Kind: ProseOutcome,
+			Frame: g.Flavour(t.FlavourKey), Scene: sceneOf(g),
+			Outcome: outcomeOf(g, t), Speaking: speakerName(g, in)}))
 	}
 	// Бросок печатается, только если он был: у безопасного действия кость не
 	// трогается, и Log.Die остаётся нулём.
@@ -90,6 +108,16 @@ func (r Render) Turn(g *core.Game, t core.TurnResult) string {
 		fmt.Fprintf(&b, "  ⏱ %s\n", g.Flavour(c.FlavourKey))
 	}
 	return b.String()
+}
+
+// speakerName — имя того, к кому обращён ход: он же сейчас и ответит. Пусто,
+// если ход обращён не к человеку.
+func speakerName(g *core.Game, in core.Intent) string {
+	e, ok := g.DB.Entities[in.Args.Target]
+	if !ok || e.Kind != store.EntityNPC {
+		return ""
+	}
+	return e.Name
 }
 
 // outcomeOf — что только что произошло, словами без механики. Мастер

@@ -70,14 +70,13 @@ type Narrator interface {
 	// kind различает описание места и исход хода. Догадываться по пустому
 	// исходу нельзя: у социального хода механики нет вовсе, и «поздороваться»
 	// выглядело как «игрок озирается».
-	Narrate(ctx context.Context, kind ProseKind, frame string,
-		scene, outcome []string) (string, error)
+	Narrate(ctx context.Context, p Prose) (string, error)
 }
 
 // WithNarrator включает прозу Мастера.
 func (s *Session) WithNarrator(n Narrator) *Session {
 	s.narrator = n
-	s.r.Prose = func(kind ProseKind, frame string, scene, outcome []string) string {
+	s.r.Narrate = func(p Prose) string {
 		// Сбой надстройки не рушит ход: печатается авторский текст, как без
 		// -nl. Проза необязательна, а ход уже сыгран.
 		//
@@ -85,13 +84,13 @@ func (s *Session) WithNarrator(n Narrator) *Session {
 		// при выключенном Мастере: код написан, вызов не доходит до модели,
 		// игрок видит бледный текст и не знает, что это поломка. Именно так
 		// незароученная роль прожила целую фазу.
-		out, err := n.Narrate(s.turnContext(), kind, frame, scene, outcome)
+		out, err := n.Narrate(s.turnContext(), p)
 		if err != nil {
 			s.noteOnce("Мастер промолчал: " + err.Error())
-			return frame
+			return p.Frame
 		}
 		if strings.TrimSpace(out) == "" {
-			return frame
+			return p.Frame
 		}
 		return out
 	}

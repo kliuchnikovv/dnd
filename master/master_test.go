@@ -103,7 +103,7 @@ func TestNarrateCarriesFrameSceneAndOutcome(t *testing.T) {
 	m, f := masterWith(t, "Дождь не унимается, и доски под ногами скользят.")
 	got, err := m.Narrate(context.Background(), KindOutcome,
 		"Дождь сечёт доски пристани.", World{Scene: []string{"Место: Пристань"}},
-		[]string{"успех, маржа +3", "узнали: тело найдено на складе"}, llm.Request{})
+		[]string{"успех, маржа +3", "узнали: тело найдено на складе"}, "", llm.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestNarrateCarriesFrameSceneAndOutcome(t *testing.T) {
 func TestPromptsForbidCaseContent(t *testing.T) {
 	m, f := masterWith(t, `{"grants":[]}`)
 	m.Grant(context.Background(), []string{"аптека"}, nil, World{}, llm.Request{})
-	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, llm.Request{})
+	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, "", llm.Request{})
 
 	for i, call := range f.Calls() {
 		sys := strings.ToLower(call.System)
@@ -159,14 +159,41 @@ func TestGrantSchemaCarriesCanonFlag(t *testing.T) {
 // ближе» там, где игрок озирается по сторонам.
 func TestNarrateTellsSceneFromOutcome(t *testing.T) {
 	m, f := masterWith(t, "проза")
-	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, llm.Request{})
+	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, "", llm.Request{})
 	m.Narrate(context.Background(), KindOutcome, "рамка", World{},
-		[]string{"исход: успех"}, llm.Request{})
+		[]string{"исход: успех"}, "", llm.Request{})
 
 	if got := f.Calls()[0].Input; !strings.Contains(got, "ОПИСАНИЕ МЕСТА") {
 		t.Errorf("сцена не помечена как описание места:\n%s", got)
 	}
 	if got := f.Calls()[1].Input; !strings.Contains(got, "ИСХОД") {
 		t.Errorf("исход не помечен как исход:\n%s", got)
+	}
+}
+
+// Проза исхода идёт ПЕРЕД репликой персонажа и успевает ему противоречить:
+// «отвечает охотнее, чем можно было ждать» — а следом сухое «Что вам
+// надобно?». За того, кто сейчас заговорит, Мастер не говорит.
+func TestNarrateDoesNotSpeakForTheOneAboutToAnswer(t *testing.T) {
+	m, f := masterWith(t, "проза")
+	m.Narrate(context.Background(), KindOutcome, "рамка", World{},
+		[]string{"исход: успех"}, "Берн, стражник", llm.Request{})
+
+	in := f.Calls()[0].Input
+	if !strings.Contains(in, "СЕЙЧАС ОТВЕТИТ Берн, стражник") {
+		t.Errorf("Мастеру не сказано, кто сейчас заговорит:\n%s", in)
+	}
+	if !strings.Contains(in, "Не говори за него") {
+		t.Errorf("Мастеру не запрещено говорить за него:\n%s", in)
+	}
+}
+
+// Там, где отвечать некому, запрета нет: лишняя строка в промпте это шум,
+// за который платят каждый ход.
+func TestNarrateWithoutSpeakerStaysClean(t *testing.T) {
+	m, f := masterWith(t, "проза")
+	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, "", llm.Request{})
+	if in := f.Calls()[0].Input; strings.Contains(in, "СЕЙЧАС ОТВЕТИТ") {
+		t.Errorf("запрет появился там, где никто не отвечает:\n%s", in)
 	}
 }

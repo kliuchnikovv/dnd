@@ -94,7 +94,7 @@ func (s *Session) dispatch(cmd Command) bool {
 	case CmdClocks:
 		fmt.Fprint(s.Out, r.Clocks(g))
 	case CmdCompare:
-		fmt.Fprint(s.Out, r.Turn(g, g.Compare(cmd.Facts[0], cmd.Facts[1])))
+		fmt.Fprint(s.Out, r.Turn(g, core.Intent{Verb: "compare"}, g.Compare(cmd.Facts[0], cmd.Facts[1])))
 	case CmdAccuse:
 		s.accuse()
 	case CmdRest:
@@ -105,7 +105,7 @@ func (s *Session) dispatch(cmd Command) bool {
 		if clocks := g.RestPreview(kind); len(clocks) > 0 {
 			fmt.Fprintf(s.Out, "длинный отдых продвинет часы: %v\n", clocks)
 		}
-		fmt.Fprint(s.Out, r.Turn(g, g.Rest(kind)))
+		fmt.Fprint(s.Out, r.Turn(g, core.Intent{Verb: "rest"}, g.Rest(kind)))
 	case CmdAction:
 		s.applyIntentWithHint(cmd.Intent, cmd.Text)
 	}
@@ -283,7 +283,7 @@ func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
 		// «сказал это вслух», на каждой фразе читается как шум.
 		fmt.Fprintln(s.Out, Spoken(said))
 	} else {
-		fmt.Fprint(s.Out, s.r.Turn(s.Game, res))
+		fmt.Fprint(s.Out, s.r.Turn(s.Game, in, res))
 	}
 	s.afterAction(in, res)
 }

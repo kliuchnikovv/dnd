@@ -174,14 +174,13 @@ type narrator struct {
 	game   *core.Game
 }
 
-func (n *narrator) Narrate(ctx context.Context, kind cli.ProseKind, frame string,
-	scene, outcome []string) (string, error) {
+func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 	what := master.KindOutcome
-	if kind == cli.ProsePlace {
+	if p.Kind == cli.ProsePlace {
 		what = master.KindPlace
 	}
-	return n.master.Narrate(ctx, what, frame,
-		master.World{Setting: n.game.Setting, Scene: scene}, outcome, llm.Request{})
+	return n.master.Narrate(ctx, what, p.Frame,
+		master.World{Setting: n.game.Setting, Scene: p.Scene}, p.Outcome, p.Speaking, llm.Request{})
 }
 
 // reportMetrics печатает то, без чего слой моделей нельзя вести: расход,
