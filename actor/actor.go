@@ -215,11 +215,18 @@ func knownIDs(k []Known) []string {
 	return out
 }
 
-// LineGuard проверяет, не утверждает ли реплика того, чего нет в материале.
-// Отдельный интерфейс, потому что проверка стоит вызова и должна быть
-// отключаемой.
+// Verdict — решение проверки. Кроме «можно ли», она обязана вернуть «что
+// именно придумано»: без этого единственный выход — заглушка, а заглушка
+// стоит игроку голоса персонажа.
+type Verdict struct {
+	OK   bool
+	What string
+}
+
+// LineGuard проверяет, не утекает ли в реплике содержание дела. Отдельный
+// интерфейс, потому что проверка стоит вызова и должна быть отключаемой.
 type LineGuard interface {
-	Check(ctx context.Context, line string, material []string, req llm.Request) (bool, error)
+	Check(ctx context.Context, line string, material []string, req llm.Request) (Verdict, error)
 }
 
 // WorldMaster — власть над миром: единственный, кто вправе решить деталь,
@@ -318,15 +325,85 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 	if out.Line == "" || len([]rune(out.Line)) > maxLine {
 		return a.floor(sit), nil
 	}
-	if a.guard != nil {
-		ok, err := a.guard.Check(ctx, out.Line, allowedMaterial(s, sit, ""), req)
-		if err != nil || !ok {
-			// Реплика не прошла проверку — лучше бледно и правдиво, чем
-			// живо и с выдуманным фермером.
-			return a.floor(sit), nil
+	if a.guard == nil {
+		return out.Line, nil
+	}
+	material := allowedMaterial(s, sit, "")
+	v, err := a.guard.Check(ctx, out.Line, material, req)
+	if err != nil {
+		// Сбой проверки трактуется как отказ: лучше бледно и правдиво, чем
+		// живо и с выдуманным фермером.
+		return a.floor(sit), nil
+	}
+	if v.OK {
+		return out.Line, nil
+	}
+	// Сработавшая проверка не обязана стоить голоса: сначала переспрос «то
+	// же, без придуманного». Заглушка — дно после провала ремонта, а не
+	// первая реакция.
+	fixed, err := a.repair(ctx, s, sit, out.Line, v.What, req)
+	if err != nil || fixed == "" {
+		return a.floor(sit), nil
+	}
+	// Отремонтированное проверяется снова: ремонт вправе подставить вторую
+	// выдумку вместо первой, и один круг здесь тоже один.
+	if v, err := a.guard.Check(ctx, fixed, material, req); err != nil || !v.OK {
+		return a.floor(sit), nil
+	}
+	return fixed, nil
+}
+
+const repairPrompt = `Ты сказал фразу, в которой оказалось придумано то, чего ты знать не можешь.
+
+Скажи ТО ЖЕ САМОЕ, тем же голосом и тем же тоном, но без придуманного.
+Ничего нового не добавляй: ни имён, ни мест, ни чисел, ни событий. Если без
+придуманного сказать нечего — уклонись по-человечески: поворчи, отшутись,
+спроси в ответ. Одна-две фразы.
+
+Отвечай на том же языке, на котором сказана фраза.`
+
+// repair переспрашивает модель ту же реплику без придуманного. Дешёвым тиром:
+// это правка одной фразы, а платится за неё на каждой утечке.
+func (a *Actor) repair(ctx context.Context, s Speaker, sit Situation,
+	line, what string, req llm.Request) (string, error) {
+	req.Role = llm.RoleActor
+	req.Tier = llm.TierCheap
+	req.Schema = schemaJSON(nil)
+	req.System = repairPrompt
+	req.MaxTokens = 120
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ты — %s.\nТвой голос: %s\n", s.Name, s.Voice)
+	fmt.Fprintf(&b, "\nТы сказал: %s\n", line)
+	if what != "" {
+		fmt.Fprintf(&b, "Придумано вот это, и этого быть не может: %s\n", what)
+	}
+	if sit.PlayerText != "" {
+		fmt.Fprintf(&b, "\nТебе говорили: %s\n", sit.PlayerText)
+	}
+	if len(sit.Scene) > 0 {
+		b.WriteString("\nОбстановка — о ней можно свободно:\n")
+		for _, sc := range sit.Scene {
+			b.WriteString("  " + sc + "\n")
 		}
 	}
-	return out.Line, nil
+	req.Input = b.String()
+
+	resp, err := a.gw.Do(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Line string `json:"line"`
+	}
+	if err := json.Unmarshal([]byte(resp.Text), &out); err != nil {
+		return "", fmt.Errorf("actor: ремонт реплики не разобрался: %w", err)
+	}
+	fixed := clean(out.Line)
+	if len([]rune(fixed)) > maxLine {
+		return "", nil
+	}
+	return fixed, nil
 }
 
 // floor — дно: фраза без модели, когда реплики не получилось. Набор ходов
@@ -393,7 +470,7 @@ func template(m Move, sit Situation) string {
 	case MoveVolunteer:
 		// Дно для volunteer намеренно не пересказывает заметку: дословная
 		// заметка звучит сводкой, а не речью.
-		return "Есть тут одна вещь, но это долгий разговор."
+		return "Есть тут одна вещь, да разговор долгий."
 	case MoveRaiseWant:
 		if len(sit.Wants) > 0 {
 			return sit.Wants[0]
@@ -405,14 +482,21 @@ func template(m Move, sit Situation) string {
 		}
 		return "Ладно, потом."
 	case MoveHint:
-		return "Кое-что знаю. Но не здесь и не сейчас."
+		return "Знаю кое-что. Только не здесь и не сейчас."
 	case MoveSmalltalk, MoveObserve:
 		if len(sit.Scene) > 1 {
 			return "Погода — сами видите какая."
 		}
 		return "Да так, служба идёт."
+	case MoveDeflect:
+		// Уклонение — самый частый ход, и именно эту фразу игрок слышит чаще
+		// всего. Служебное «тут я вам не помогу» читалось как сбой движка.
+		if len(sit.Scene) > 1 {
+			return "Кто ж его знает. Сыро только, вот и всё, что скажу."
+		}
+		return "Кто ж его знает. Не моё это дело."
 	default:
-		return "Тут я вам не помогу."
+		return "Не спрашивайте, право."
 	}
 }
 

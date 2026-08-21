@@ -195,11 +195,22 @@ type stubGuard struct {
 	ok       bool
 	err      error
 	material []string
+	what     string
+	// verdicts — вердикты по вызовам: ремонт проверяется второй раз.
+	verdicts []bool
+	lines    []string
+	calls    int
 }
 
-func (g *stubGuard) Check(_ context.Context, _ string, material []string, _ llm.Request) (bool, error) {
+func (g *stubGuard) Check(_ context.Context, line string, material []string, _ llm.Request) (Verdict, error) {
 	g.material = material
-	return g.ok, g.err
+	g.lines = append(g.lines, line)
+	ok := g.ok
+	if len(g.verdicts) > 0 {
+		ok = g.verdicts[min(g.calls, len(g.verdicts)-1)]
+	}
+	g.calls++
+	return Verdict{OK: ok, What: g.what}, g.err
 }
 
 func TestGuardRejectionFallsBackToTemplate(t *testing.T) {
@@ -1013,5 +1024,118 @@ func TestCanonReachesThePrompt(t *testing.T) {
 	}
 	if in := f.Calls()[0].Input; !strings.Contains(in, "у смотрителя весов") {
 		t.Errorf("канон не доехал в промпт:\n%s", in)
+	}
+}
+
+// --- ремонт вместо заглушки ---
+
+// Сработавшая проверка не обязана стоить игроку голоса персонажа: сначала
+// переспрос «то же, без выдуманного», и только потом дно.
+func TestGuardRejectionAsksForRepairFirst(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, f := repliesInOrder(t,
+		`{"line":"Дежурства удвоили с прошлой недели, спросите Олсена."}`,
+		`{"line":"Дежурства как дежурства. Сыро только."}`)
+	sg := &stubGuard{verdicts: []bool{false, true}, what: "фермер Олсен"}
+	a = a.WithGuard(sg)
+
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", Scene: SceneOf(g, "e_bern")}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Дежурства как дежурства. Сыро только." {
+		t.Errorf("реплика %q — ремонт не подставился", got)
+	}
+	if len(f.Calls()) != 2 {
+		t.Fatalf("вызовов модели %d, ждали два: реплика и ремонт", len(f.Calls()))
+	}
+	repair := f.Calls()[1]
+	if !strings.Contains(repair.Input, "фермер Олсен") {
+		t.Errorf("ремонту не сказано, что именно убрать:\n%s", repair.Input)
+	}
+	if !strings.Contains(repair.Input, "Дежурства удвоили") {
+		t.Errorf("ремонту не дана та же реплика:\n%s", repair.Input)
+	}
+	if repair.Tier != llm.TierCheap {
+		t.Errorf("ремонт пошёл тиром %q — за него платится на каждой утечке", repair.Tier)
+	}
+	// Отремонтированное проверяется снова: ремонт вправе подставить вторую
+	// выдумку вместо первой.
+	if sg.calls != 2 {
+		t.Errorf("проверок %d — отремонтированная реплика не проверена", sg.calls)
+	}
+}
+
+// Провал ремонта — вот единственное место для заглушки.
+func TestFloorOnlyAfterRepairFails(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := repliesInOrder(t,
+		`{"line":"Спросите Олсена."}`, `{"line":"Спросите всё равно Олсена."}`)
+	a = a.WithGuard(&stubGuard{ok: false, what: "Олсен"})
+
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", Scene: SceneOf(g, "e_bern")}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "Олсен") {
+		t.Errorf("выдумка дошла до игрока: %q", got)
+	}
+	if got == "" {
+		t.Error("дно не подставилось")
+	}
+}
+
+// Сбой канала на ремонте не рушит ход: игрок получает дно, а не ошибку.
+func TestRepairChannelFailureFallsToFloor(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	f := llm.NewFake("fake", true).ReplyWith(func(r llm.Request) string {
+		if strings.Contains(r.System, "то же самое") {
+			return "не json"
+		}
+		return `{"line":"Спросите Олсена."}`
+	})
+	gw := llm.NewGateway(
+		llm.NewRouter().Route(llm.RoleActor, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewLedger(llm.Caps{}))
+	a := New(gw).WithGuard(&stubGuard{ok: false, what: "Олсен"})
+
+	got, err := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" || strings.Contains(got, "Олсен") {
+		t.Errorf("реплика %q", got)
+	}
+}
+
+// --- дно: бледно, но по-человечески ---
+
+// Дно — последняя фраза, которую слышит игрок вместо персонажа. Канцелярская
+// формулировка здесь читается как сбой движка, а не как характер.
+func TestFloorPhrasesAreHuman(t *testing.T) {
+	sit := Situation{Scene: []string{"Место: Пристань", "Обстановка: дождь"}}
+	seen := map[string]bool{}
+	for _, m := range moves() {
+		got := template(Move(m), sit)
+		if strings.TrimSpace(got) == "" {
+			t.Errorf("ход %q не имеет дна", m)
+		}
+		if got == "Тут я вам не помогу." {
+			t.Errorf("ход %q провалился в канцелярскую заглушку", m)
+		}
+		seen[got] = true
+	}
+	// Уклонение — самый частый ход, и у него обязана быть своя фраза, а не
+	// общий дефолт: именно её игрок слышит чаще всего.
+	if template(MoveDeflect, sit) == template(Move("нет такого хода"), sit) {
+		t.Error("у уклонения нет своей фразы — оно падает в общий дефолт")
+	}
+	if len(seen) < 5 {
+		t.Errorf("дно однообразно: %d разных фраз на %d ходов", len(seen), len(moves()))
 	}
 }
