@@ -44,6 +44,12 @@ func (g *Game) Apply(in Intent) TurnResult {
 		return TurnResult{FlavourKey: "theorize.recorded"}
 	}
 
+	// Выведенный из строя не действует. Свободные пробы остаются: иначе это
+	// не состояние, а тупик.
+	if def.Hard && g.Incapacitated() {
+		return refuse("персонаж выведен из строя — сначала отдых")
+	}
+
 	// Шаг 1: валидация.
 	if r, bad := g.validate(in, def); bad {
 		return r

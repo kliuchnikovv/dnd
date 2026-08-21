@@ -93,8 +93,11 @@ func (Render) Facts(g *core.Game) string {
 func (Render) State(g *core.Game) string {
 	ch := g.DB.Characters[g.Actor]
 	var b strings.Builder
-	fmt.Fprintf(&b, "узел: %s\nранения: %d/3\ngrit: %d\nпопыток обвинения: %d\n",
-		g.Node, ch.Harm, ch.Grit, g.Attempts)
+	fmt.Fprintf(&b, "узел: %s\nранения: %d/%d\ngrit: %d\nпопыток обвинения: %d\n",
+		g.Node, ch.Harm, core.HarmMax, ch.Grit, g.Attempts)
+	if g.Incapacitated() {
+		b.WriteString("выведен из строя: доступны только осмотр и отдых\n")
+	}
 	if len(g.Theories) > 0 {
 		fmt.Fprintf(&b, "гипотезы:\n")
 		for i, th := range g.Theories {
@@ -116,6 +119,7 @@ func (Render) Clocks(g *core.Game) string {
 
 func (Render) Help() string {
 	return `survey                          что здесь можно трогать
+push <действие>                 потратить очко grit: +2 к этому броску
 question <источник> <тема>      расспросить
 examine <предмет>               осмотреть
 search <локация>                обыскать

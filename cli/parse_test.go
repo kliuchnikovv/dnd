@@ -199,3 +199,24 @@ func TestPropIdentifierKeepsItsPrefix(t *testing.T) {
 		t.Errorf("цель %q, ожидалось p_crates", cmd.Intent.Args.Target)
 	}
 }
+
+// push — приставка к любому жёсткому действию. Отдельной командой он быть не
+// может: решение принимается про конкретный бросок, а не вообще.
+func TestPushIsAPrefixToAnyHardAction(t *testing.T) {
+	cmd, err := Parse("push examine e_body")
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if !cmd.Intent.Push {
+		t.Error("заявка push потеряна")
+	}
+	if cmd.Intent.Verb != "examine" || cmd.Intent.Args.Target != "e_body" {
+		t.Errorf("действие под приставкой разобрано неверно: %+v", cmd.Intent)
+	}
+}
+
+func TestPushWithoutActionIsAnError(t *testing.T) {
+	if _, err := Parse("push"); err == nil {
+		t.Error("push без действия принят")
+	}
+}

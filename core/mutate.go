@@ -21,7 +21,7 @@ func (g *Game) applyMutations(ms []Mutation) {
 			}
 		case MutHarm:
 			if c, ok := g.DB.Characters[store.CharacterID(m.Target)]; ok {
-				c.Harm += m.Delta
+				c.Harm = clampHarm(c.Harm + m.Delta)
 			}
 		case MutClock:
 			g.C.Tick(store.ClockID(m.Target), m.Delta)
@@ -50,7 +50,7 @@ func (g *Game) executeCosts(cs []CostKind, in Intent) []store.Consequence {
 			g.Detected = true
 		case CostHarmSelf:
 			if ch != nil {
-				ch.Harm++
+				ch.Harm = clampHarm(ch.Harm + 1)
 			}
 		case CostFalseLead, CostHalfEffect, CostResourceSpent:
 			// Меняют не мир, а исход хода: отражаются в TurnResult.
@@ -71,4 +71,15 @@ func (g *Game) applyConsequences(cs []store.Consequence) {
 			g.D.Adjust(e, -2)
 		}
 	}
+}
+
+// clampHarm держит ранения в пределах листа: четвёртой ячейки не существует.
+func clampHarm(h int) int {
+	if h > HarmMax {
+		return HarmMax
+	}
+	if h < 0 {
+		return 0
+	}
+	return h
 }

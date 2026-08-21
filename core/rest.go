@@ -14,6 +14,17 @@ const (
 // здесь и переопределяется данными дела в M1b.
 const GritMax = 3
 
+// HarmMax — число ячеек ранений. Значение принадлежит системе правил, но
+// заполнение последней ячейки — структурный переход ядра: персонаж выведен из
+// строя, и дальше ему доступны только свободные пробы и отдых.
+const HarmMax = 3
+
+// Incapacitated — все ячейки ранений заполнены.
+func (g *Game) Incapacitated() bool {
+	ch := g.DB.Characters[g.Actor]
+	return ch != nil && ch.Harm >= HarmMax
+}
+
 // RestPreview называет часы, которые продвинет длинный отдых. Цена
 // предъявляется до решения: платить вслепую игрок не должен.
 func (g *Game) RestPreview(kind RestKind) []store.ClockID {

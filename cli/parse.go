@@ -94,6 +94,15 @@ func Parse(line string) (Command, error) {
 		}}, nil
 	}
 	fields := strings.Fields(line)
+	// push — приставка, а не команда: решение о риске принимается про
+	// конкретный бросок. Само по себе слово ничего не значит.
+	push := false
+	if fields[0] == "push" {
+		if len(fields) == 1 {
+			return Command{}, errors.New("push требует действия: push examine e_body")
+		}
+		push, fields = true, fields[1:]
+	}
 	head, rest := fields[0], fields[1:]
 
 	switch head {
@@ -130,7 +139,7 @@ func Parse(line string) (Command, error) {
 		return Command{}, ErrUnknownVerb
 	}
 
-	cmd := Command{Kind: CmdAction, Intent: core.Intent{Verb: def.Verb}}
+	cmd := Command{Kind: CmdAction, Intent: core.Intent{Verb: def.Verb, Push: push}}
 	switch head {
 	case "theorize", "say", "emote":
 		cmd.Intent.Args.Text = strings.Join(rest, " ")

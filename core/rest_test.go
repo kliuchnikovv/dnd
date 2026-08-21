@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/core/accusation"
@@ -68,5 +69,51 @@ func TestLongRestWithoutHarmStillCosts(t *testing.T) {
 	g.Rest(RestLong)
 	if g.DB.Clocks["c_tide"].Filled != 1 {
 		t.Error("длинный отдых без ранений обошёлся бесплатно")
+	}
+}
+
+// Третья ячейка ранений выводит из строя: дальше только отдых. Без потолка
+// harm рос без предела, а «выведен из строя» не наступало никогда.
+func TestThirdHarmCellTakesTheCharacterOut(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Characters["pc"].Harm = HarmMax
+
+	res := g.Apply(Intent{Verb: "question", Args: Args{
+		Target: "e_toke", Topic: "f_open",
+	}})
+	if !res.Refused {
+		t.Fatal("выведенный из строя продолжает работать")
+	}
+	if !strings.Contains(res.Refusal, "из строя") {
+		t.Errorf("отказ не объясняет причину: %q", res.Refusal)
+	}
+}
+
+// Свободная проба и отдых остаются: иначе выход из строя — тупик, а не
+// состояние.
+func TestIncapacitatedCanStillLookAndRest(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Characters["pc"].Harm = HarmMax
+
+	if res := g.Apply(Intent{Verb: "look"}); res.Refused {
+		t.Errorf("осмотреться нельзя: %s", res.Refusal)
+	}
+	if res := g.Rest(RestLong); res.Refused {
+		t.Errorf("отдохнуть нельзя: %s", res.Refusal)
+	}
+	if h := g.DB.Characters["pc"].Harm; h != HarmMax-1 {
+		t.Errorf("длинный отдых не снял ячейку: harm %d", h)
+	}
+}
+
+// Ранения не растут выше потолка: четвёртой ячейки не существует.
+func TestHarmNeverExceedsItsCap(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	ch := g.DB.Characters["pc"]
+	for i := 0; i < 6; i++ {
+		g.applyMutations([]Mutation{{Kind: MutHarm, Target: "pc", Delta: 1}})
+	}
+	if ch.Harm != HarmMax {
+		t.Errorf("harm %d при потолке %d", ch.Harm, HarmMax)
 	}
 }
