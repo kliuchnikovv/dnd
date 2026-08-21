@@ -131,18 +131,31 @@ func TestGameEndDoesNotQuitImmediately(t *testing.T) {
 // последствия), обязаны дойти до транскрипта, а не потеряться. Раньше
 // tea.Quit убивал цикл программы немедленно и вместе с ним — недочитанные
 // события; теперь цепочка waitEvent продолжает работать и после doneMsg.
-func TestGameEndStillShowsQueuedEvents(t *testing.T) {
+// Несущий механизм правки — не специальный код в doneMsg, а то, что цепочка
+// waitEvent, запущенная предыдущим eventMsg, ПРОДОЛЖАЕТ работать и после
+// конца игры: doneMsg{quit:true} теперь не возвращает tea.Quit, а
+// Update(eventMsg{...}) в состоянии ended переиздаёт подписку на канал, как
+// и в обычном ходе. Проверяем обе половины напрямую, а не только конечный
+// эффект (текст в транскрипте) — старый код печатал текст в транскрипт при
+// любом Update(eventMsg{...}) независимо от quitting, так что одной проверки
+// текста для отличия от tea.Quit-варианта недостаточно.
+func TestGameEndKeepsEventChainAliveAndDoesNotQuitImmediately(t *testing.T) {
 	m := newModel(nil, Options{})
 	next, _ := m.Update(startedMsg{})
 	m = next.(model)
 
-	next, _ = m.Update(doneMsg{quit: true})
+	next, doneCmd := m.Update(doneMsg{quit: true})
 	m = next.(model)
+	if doneCmd != nil {
+		t.Fatal("doneMsg{quit:true} выдал команду — раньше это был tea.Quit, гасивший программу немедленно")
+	}
 
-	next, _ = m.Update(eventMsg{cli.Event{
+	next, eventCmd := m.Update(eventMsg{cli.Event{
 		Kind: cli.EventSystem, Text: "Обвинение верно. Попыток: 1.\n"}})
 	m = next.(model)
-
+	if eventCmd == nil {
+		t.Fatal("после конца игры Update(eventMsg) не переиздал подписку на канал — цепочка waitEvent прервана")
+	}
 	if !strings.Contains(m.transcript.Render(60), "Обвинение верно") {
 		t.Error("событие, дошедшее после развязки, потеряно")
 	}
@@ -282,5 +295,33 @@ func TestNoDebugReasonOverridesGenericMessage(t *testing.T) {
 	m.debugOpen = true
 	if got := m.debugText(); got != "-debug-llm без -nl ничего не даёт" {
 		t.Errorf("панель показала %q, ожидалась причина из Options", got)
+	}
+}
+
+// Кольцо заведено (в fullscreen+-nl оно всегда есть — приёмник алерта
+// леджера и «Мастер не ответил»), но пусто, потому что -debug-llm не
+// указан: панель обязана объяснить пустоту через NoDebugReason, а не
+// показать голый пустой экран, который читается как поломка.
+func TestNoDebugReasonShownWhenRingExistsButEmpty(t *testing.T) {
+	m := newModel(nil, Options{
+		Debug:         NewRing(10),
+		NoDebugReason: "дамп обмена выключен: здесь только внештатные сообщения, для полного дампа запустите с -debug-llm",
+	})
+	m.debugOpen = true
+	if got := m.debugText(); got != m.opts.NoDebugReason {
+		t.Errorf("пустое кольцо показало %q, ожидалась причина из Options", got)
+	}
+}
+
+// Как только в кольце появился хоть один обмен или внештатное сообщение,
+// причина перестаёт быть релевантной: показывать надо содержимое, а не
+// прятать его за NoDebugReason.
+func TestNoDebugReasonHiddenWhenRingHasContent(t *testing.T) {
+	r := NewRing(10)
+	fmt.Fprint(r, "расход 100 мкд превысил прогноз 50 вдвое\n")
+	m := newModel(nil, Options{Debug: r, NoDebugReason: "причина, которая не должна перекрыть содержимое"})
+	m.debugOpen = true
+	if got := m.debugText(); !strings.Contains(got, "расход 100 мкд") {
+		t.Errorf("причина перекрыла непустое кольцо: %q", got)
 	}
 }

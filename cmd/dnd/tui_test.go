@@ -58,3 +58,30 @@ func TestDebugSinkPicksRingOverStderr(t *testing.T) {
 		t.Error("с кольцом debugSink не отдал его")
 	}
 }
+
+// noDebugReasonFor выбирает честный текст для панели отладки в трёх разных
+// раскладах -nl/-debug-llm/кольца. Раньше -debug-llm без -nl отвечал общим
+// «запустите с -debug-llm» тому, кто флаг и указал; а -nl без -debug-llm
+// оставлял непустое кольцо (заведённое как приёмник алерта леджера и
+// «Мастер не ответил») без единого слова о том, что дампа там не будет.
+func TestNoDebugReasonFor(t *testing.T) {
+	ring := tui.NewRing(4)
+	cases := []struct {
+		name         string
+		nl, debugLLM bool
+		ring         *tui.Ring
+		wantNonEmpty bool
+	}{
+		{"debug-llm без -nl: шлюза моделей нет вовсе", false, true, nil, true},
+		{"-nl без -debug-llm, кольцо есть: дампа не будет", true, false, ring, true},
+		{"-nl с -debug-llm: дамп подключён, причина не нужна", true, true, ring, false},
+		{"ни -nl, ни -debug-llm: полноэкранный режим ни при чём", false, false, nil, false},
+		{"-nl без -debug-llm, но кольца нет (не fullscreen)", true, false, nil, false},
+	}
+	for _, c := range cases {
+		got := noDebugReasonFor(c.nl, c.debugLLM, c.ring)
+		if (got != "") != c.wantNonEmpty {
+			t.Errorf("%s: noDebugReasonFor(%v, %v, ring=%v) = %q", c.name, c.nl, c.debugLLM, c.ring != nil, got)
+		}
+	}
+}

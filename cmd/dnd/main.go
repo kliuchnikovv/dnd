@@ -90,9 +90,8 @@ func main() {
 	var parser *intent.Parser
 	var debugRing *tui.Ring
 	var gw *llm.Gateway
-	// noDebugReason — честный текст для панели отладки, когда причина её
-	// отсутствия не «не указан -debug-llm», а «-nl не указан, и шлюзу
-	// моделей неоткуда взяться».
+	// noDebugReason — честный текст для панели отладки, когда полного дампа
+	// нет: причина не всегда «не указан -debug-llm» (см. noDebugReasonFor).
 	var noDebugReason string
 	if *nl {
 		target, err := resolveProvider(*provider, *model)
@@ -153,12 +152,8 @@ func main() {
 			}})
 		session.WithNarrator(&narrator{master: gm, game: game})
 		defer func() { reportMetrics(gw, parser) }()
-	} else if *debugLLM {
-		// -debug-llm сам вызовов не делает: без -nl шлюза моделей нет, и
-		// дамп неоткуда взять. Панель по Tab обязана сказать это, а не
-		// повторить общее «запустите с -debug-llm» тому, кто его и указал.
-		noDebugReason = "-debug-llm без -nl ничего не даёт: моделей не вызывает ни один режим"
 	}
+	noDebugReason = noDebugReasonFor(*nl, *debugLLM, debugRing)
 
 	if fs {
 		if err := tui.Run(session, tui.Options{
@@ -222,6 +217,27 @@ func debugSink(ring *tui.Ring) io.Writer {
 		return ring
 	}
 	return os.Stderr
+}
+
+// noDebugReasonFor решает, что честно сказать панели отладки, когда полного
+// дампа обмена в ней нет. Две разные причины, и путать их нельзя:
+//
+//   - -debug-llm дан без -nl: шлюза моделей вообще нет, кольцу неоткуда
+//     взяться, и дамп невозможен в принципе.
+//   - -nl дан без -debug-llm: кольцо есть (см. main выше — оно нужно как
+//     приёмник алерта леджера и «Мастер не ответил» независимо от дампа),
+//     но дампа в нём никогда не будет — без причины пустая панель читается
+//     как поломка, а не как «дампа не просили».
+func noDebugReasonFor(nl, debugLLM bool, ring *tui.Ring) string {
+	switch {
+	case !nl && debugLLM:
+		return "-debug-llm без -nl ничего не даёт: моделей не вызывает ни один режим"
+	case nl && !debugLLM && ring != nil:
+		return "дамп обмена выключен: здесь только внештатные сообщения, " +
+			"для полного дампа запустите с -debug-llm"
+	default:
+		return ""
+	}
 }
 
 // appRoles — роли, которыми игра пользуется, и тир, которым каждая
