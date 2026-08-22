@@ -240,7 +240,7 @@ func (Render) Clocks(g *core.Game) string {
 func (Render) Help() string {
 	return `survey                          что здесь можно трогать
 push <действие>                 потратить очко grit: +2 к этому броску
-question <источник> <тема>      расспросить
+question <источник> [тема]      расспросить: без темы — что человек готов сказать
 examine <цель>                  осмотреть
 search <цель>                   обыскать
 compare <факт> <факт>           сопоставить

@@ -24,9 +24,11 @@ type requirement struct {
 // истины на два входа: расхождение здесь означало бы, что свободный текст и
 // команда ведут себя по-разному.
 var arity = map[core.Verb]requirement{
-	"look":            {},
-	"question":        {Target: true, Topic: true},
-	"ask_about":       {Target: true, Topic: true},
+	"look": {},
+	// Тема необязательна: открытый вопрос человеку — законный ход, и без него
+	// игрок не может спросить о том, чего ещё не знает.
+	"question":        {Target: true},
+	"ask_about":       {Target: true},
 	"cross_reference": {Target: true, Topic: true},
 	"move_zone":       {Node: true},
 	"use_item":        {Item: true},

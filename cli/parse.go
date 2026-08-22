@@ -153,9 +153,22 @@ func Parse(line string) (Command, error) {
 		}
 		cmd.Intent.Args.Node = nodeID(rest[0])
 		return cmd, nil
-	case "question", "ask_about", "cross_reference":
+	case "question", "ask_about":
+		// Тема необязательна: идентификатор неизвестного факта игроку негде
+		// взять, и без открытого вопроса люди для него немы. Названная тема —
+		// это уточнение («спроси именно об этом»), а не условие разговора.
+		if len(rest) == 0 || len(rest) > 2 {
+			return Command{}, errors.New(head + " требует источник и, если надо, тему")
+		}
+		cmd.Intent.Args.Target = entityID(rest[0])
+		if len(rest) == 2 {
+			cmd.Intent.Args.Topic = factID(rest[1])
+		}
+		return cmd, nil
+	case "cross_reference":
+		// Сверка без факта бессмысленна: сверяют запись С ЧЕМ-ТО известным.
 		if len(rest) != 2 {
-			return Command{}, errors.New(head + " требует источник и тему")
+			return Command{}, errors.New("cross_reference требует запись и известный факт")
 		}
 		cmd.Intent.Args.Target = entityID(rest[0])
 		cmd.Intent.Args.Topic = factID(rest[1])

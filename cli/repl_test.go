@@ -595,3 +595,20 @@ func TestReachingIntoAPocketIsNotAnInventoryQuery(t *testing.T) {
 		t.Errorf("фраза не дошла до переводчика: %v", fi.seen)
 	}
 }
+
+// Открытый вопрос тому, кому нечего сказать, отказом не кончается: ход
+// исполняется, игрок видит прозу, а не «нельзя». Сухой отказ на попытку
+// заговорить — то самое «свидетели молчат», из-за которого плейтесты решали,
+// что механика им недоступна.
+func TestUnanswerableOpenQuestionDoesNotRefuse(t *testing.T) {
+	g := renderGame(t)
+	var out bytes.Buffer
+	// e_toke в minimal.json фактов по гейту question не держит.
+	s := NewSession(g, strings.NewReader("question toke\nquit\n"), &out)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "нельзя") {
+		t.Errorf("открытый вопрос кончился отказом:\n%s", out.String())
+	}
+}

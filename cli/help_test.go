@@ -26,6 +26,7 @@ var placeholders = map[string]struct {
 	"<предмет>":     {"e_body", func(c Command) string { return string(c.Intent.Args.Target) }},
 	"<запись>":      {"e_ledger", func(c Command) string { return string(c.Intent.Args.Target) }},
 	"<тема>":        {"f_x", func(c Command) string { return string(c.Intent.Args.Topic) }},
+	"[тема]":        {"f_x", func(c Command) string { return string(c.Intent.Args.Topic) }},
 	"<факт>":        {"f_x", func(c Command) string { return string(c.Intent.Args.Topic) }},
 	"<узел>":        {"n_quay", func(c Command) string { return string(c.Intent.Args.Node) }},
 	"<текст>":       {"догадка", func(c Command) string { return c.Intent.Args.Text }},

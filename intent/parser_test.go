@@ -323,12 +323,13 @@ func TestVerbWithoutRequiredTargetBecomesClarify(t *testing.T) {
 
 func TestArityIsCheckedForEveryShape(t *testing.T) {
 	hint := harbourHint(t)
-	target := hint.Entities[0].ID
 	cases := []struct {
 		name  string
 		reply string
 	}{
-		{"question без темы", `{"outcome":"intent","verb":"question","target":"` + target + `"}`},
+		// question без темы в этот список не входит: открытый вопрос человеку —
+		// законный ход, и именно его отсутствие делало людей немыми
+		// (TestOpenQuestionNeedsNoTopic).
 		{"question без цели", `{"outcome":"intent","verb":"question","topic":"x"}`},
 		{"move_zone без узла", `{"outcome":"intent","verb":"move_zone"}`},
 		// theorize/say/emote в этот список не входят: их обязательный
@@ -799,24 +800,28 @@ func TestInterlocutorOutsideSceneIsNotSubstituted(t *testing.T) {
 	}
 }
 
-// Вопрос о том, чего парти не знает, — не отказ словаря, а разговор. Ровно
-// для этого и заведён диалоговый актёр: он уклонится, намекнёт или спросит
-// Мастера, а гейт фактов при этом не трогается.
-func TestPromptTurnsUnknownTopicQuestionsIntoTalk(t *testing.T) {
-	p, f := parserWith(t, `{"outcome":"intent","verb":"say","text":"кто тут ночами ходит?"}`)
+// Открытый вопрос — это question без темы, а не отказ и не разговор.
+// Идентификатор неизвестного факта игроку негде взять, и пока открытый вопрос
+// был невозможен, люди в игре были немы: три плейтеста подряд упёрлись в это.
+func TestPromptTeachesTheOpenQuestion(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
 	if _, err := p.Parse(context.Background(), "а кто тут ночами ходит?",
 		harbourHint(t), llm.Request{}); err != nil {
 		t.Fatal(err)
 	}
-	if sys := f.Calls()[0].System; !strings.Contains(sys, "это say") {
-		t.Errorf("промпт не превращает вопрос вне банка тем в разговор:\n%s", sys)
+	sys := f.Calls()[0].System
+	if !strings.Contains(sys, "Тема НЕОБЯЗАТЕЛЬНА") {
+		t.Errorf("промпт не говорит, что тема необязательна:\n%s", sys)
+	}
+	if !strings.Contains(sys, `"verb":"question","target":"e_ivar"`) {
+		t.Errorf("нет примера открытого вопроса:\n%s", sys)
 	}
 }
 
-// Открытый вопрос собеседнику — разговор, а не допрос словаря. «Есть ли
-// слухи?» темы в банке не имеет и иметь не может: это приглашение говорить,
-// и отвечать на него должен персонаж.
-func TestOpenQuestionToInterlocutorBecomesTalk(t *testing.T) {
+// Открытый вопрос человеку — законный ход: человек расскажет то, что готов.
+// Пока это было невозможно, идентификатор неизвестного факта игроку было
+// негде взять, и люди в игре молчали — три плейтеста подряд на этом встали.
+func TestOpenQuestionNeedsNoTopic(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
 	hint := harbourHint(t)
 	hint.Talk = Talk{With: "e_bern"}
@@ -827,45 +832,13 @@ func TestOpenQuestionToInterlocutorBecomesTalk(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !res.Accepted() {
-		t.Fatalf("ход не принят: %q", res.Clarify)
+		t.Fatalf("открытый вопрос не принят: %q", res.Clarify)
 	}
-	if res.Intent.Verb != "say" {
-		t.Errorf("глагол %q — открытый вопрос должен стать разговором", res.Intent.Verb)
+	if res.Intent.Verb != "question" || res.Intent.Args.Target != "e_bern" {
+		t.Errorf("ход разобрался как %+v", res.Intent)
 	}
-	if res.Intent.Args.Target != "e_bern" || res.Intent.Args.Text == "" {
-		t.Errorf("разговор без адресата или без слов: %+v", res.Intent.Args)
-	}
-}
-
-// Названную тему подменять разговором нельзя: это настоящий ход
-// расследования, и терять его ради живой реплики — прямая потеря игры.
-func TestNamedTopicSurvivesAsAQuestion(t *testing.T) {
-	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
-	hint := harbourHint(t)
-	hint.Talk = Talk{With: "e_bern"}
-
-	res, err := p.Parse(context.Background(),
-		"спрошу про тело Халдена на складе", hint, llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Intent == nil || res.Intent.Verb != "question" {
-		t.Fatalf("ход расследования потерян: %+v", res)
-	}
-	if res.Intent.Args.Topic != "f_body_found" {
-		t.Errorf("тема %q — названная тема не найдена в фразе", res.Intent.Args.Topic)
-	}
-}
-
-// Без собеседника подменять нечем: вопрос в воздух остаётся вопросом игроку.
-func TestOpenQuestionWithoutInterlocutorStillAsks(t *testing.T) {
-	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_bern"}`)
-	res, err := p.Parse(context.Background(), "есть ли слухи?", harbourHint(t), llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Accepted() {
-		t.Errorf("ход принят без темы и без собеседника: %+v", res.Intent)
+	if res.Intent.Args.Topic != "" {
+		t.Errorf("тема взялась из ниоткуда: %q", res.Intent.Args.Topic)
 	}
 }
 
@@ -881,8 +854,11 @@ func TestExamplesAgreeWithTheRules(t *testing.T) {
 	if strings.Contains(sys, `"clarify":"Об этом парти пока ничего не знает."`) {
 		t.Error("в примерах остался clarify на вопрос вне банка тем")
 	}
-	if !strings.Contains(sys, `"verb":"say","target":"e_ivar"`) {
-		t.Error("нет примера, где вопрос вне банка тем становится разговором")
+	if strings.Contains(sys, `"verb":"say","target":"e_ivar"`) {
+		t.Error("в примерах остался перевод открытого вопроса в разговор")
+	}
+	if !strings.Contains(sys, `"verb":"question","target":"e_ivar"`) {
+		t.Error("нет примера открытого вопроса человеку")
 	}
 }
 

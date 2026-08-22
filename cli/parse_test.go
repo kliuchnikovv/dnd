@@ -108,8 +108,13 @@ func TestParseIgnoresBlankAndComments(t *testing.T) {
 }
 
 func TestParseRejectsWrongArity(t *testing.T) {
-	if _, err := Parse("question ivar"); err == nil {
-		t.Error("question без темы принят")
+	// question без темы — законный открытый вопрос (см. TestParseOpenQuestion);
+	// арность ловит другое: вопрос совсем без адресата и лишние аргументы.
+	if _, err := Parse("question"); err == nil {
+		t.Error("question без адресата принят")
+	}
+	if _, err := Parse("question ivar f_x f_y"); err == nil {
+		t.Error("question с лишним аргументом принят")
 	}
 	if _, err := Parse("compare alibi"); err == nil {
 		t.Error("compare с одним фактом принят")
@@ -280,5 +285,30 @@ func TestParseUseItemAddsPrefix(t *testing.T) {
 	}
 	if carried.Intent.Args.Item != "i_lantern" {
 		t.Errorf("носимый предмет переименован в %q", carried.Intent.Args.Item)
+	}
+}
+
+// Спросить человека, не называя темы: игрок не знает идентификаторов фактов и
+// узнать их ему негде. Три плейтеста подряд упёрлись ровно в это — люди
+// оказались немы, потому что спрашивать их было нечем.
+func TestParseOpenQuestion(t *testing.T) {
+	open, err := Parse("question sigrid")
+	if err != nil {
+		t.Fatalf("открытый вопрос не разобрался: %v", err)
+	}
+	if open.Intent.Args.Target != "e_sigrid" || open.Intent.Args.Topic != "" {
+		t.Errorf("разобралось как %+v", open.Intent.Args)
+	}
+
+	named, err := Parse("question sigrid f_ivar_debt")
+	if err != nil || named.Intent.Args.Topic != "f_ivar_debt" {
+		t.Errorf("вопрос с темой сломался: %+v (%v)", named.Intent.Args, err)
+	}
+}
+
+// Совсем без цели вопрос бессмыслен: спрашивать надо кого-то.
+func TestParseQuestionStillNeedsSomeone(t *testing.T) {
+	if _, err := Parse("question"); err == nil {
+		t.Error("вопрос в пустоту разобрался")
 	}
 }
