@@ -51,9 +51,14 @@ func parse(t *testing.T, replyJSON string, hint SceneHint) Result {
 }
 
 // Схема отдаёт модели все глаголы, исполнимые в этой сцене. «Все» значит все
-// из реестра, когда сцена может дать каждому обязательный аргумент.
+// из реестра, когда сцена может дать каждому обязательный аргумент — а
+// предметные глаголы берут свой из разных мест: инструмент из узла, предъявление
+// из носимого.
 func TestSchemaEnumeratesEveryVerb(t *testing.T) {
-	s := SchemaFor(SceneHint{Tools: []Named{{"p_hammers", "Молоты"}}})
+	s := SchemaFor(SceneHint{
+		Tools:   []Named{{"p_hammers", "Молоты"}},
+		Carried: []Named{{"i_writ", "Предписание магистрата"}},
+	})
 	props := s["properties"].(map[string]any)
 	verb := props["verb"].(map[string]any)
 	enum := verb["enum"].([]string)
@@ -878,5 +883,113 @@ func TestExamplesAgreeWithTheRules(t *testing.T) {
 	}
 	if !strings.Contains(sys, `"verb":"say","target":"e_ivar"`) {
 		t.Error("нет примера, где вопрос вне банка тем становится разговором")
+	}
+}
+
+// --- предъявление предмета ---
+
+// Исходный баг: «показать предписание» понять было нечем. Предмет в кармане
+// обязан попасть в контекст сцены, иначе глагол предъявления не появится в
+// грамматике вовсе.
+func TestCarriedItemsReachTheHint(t *testing.T) {
+	g := harbourGame(t)
+	g.DB.Items["i_writ"] = store.Item{ID: "i_writ", Kind: "credential",
+		Name: "Предписание магистрата"}
+	g.Acquire("i_writ")
+
+	hint := BuildHint(g)
+	if len(hint.Carried) != 1 || hint.Carried[0].ID != "i_writ" {
+		t.Fatalf("инвентарь не доехал до подсказки: %+v", hint.Carried)
+	}
+	if !strings.Contains(hint.Render(), "i_writ") {
+		t.Errorf("предмет не назван в промпте:\n%s", hint.Render())
+	}
+}
+
+// Глагол предъявления появляется ровно тогда, когда есть что предъявить, — и
+// предмет обязан быть в перечислении, чтобы модель не могла назвать чужой.
+func TestPresentEntersGrammarWithCarriedItems(t *testing.T) {
+	bare := SchemaFor(SceneHint{})["properties"].(map[string]any)
+	for _, v := range bare["verb"].(map[string]any)["enum"].([]string) {
+		if v == "present" {
+			t.Error("предъявление предложено там, где предъявлять нечего")
+		}
+	}
+
+	hint := SceneHint{Carried: []Named{{"i_writ", "Предписание магистрата"}}}
+	props := SchemaFor(hint)["properties"].(map[string]any)
+	var found bool
+	for _, v := range props["verb"].(map[string]any)["enum"].([]string) {
+		if v == "present" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("есть что предъявить, а глагола предъявления нет")
+	}
+	enum, ok := props["item"].(map[string]any)["enum"].([]string)
+	if !ok || len(enum) != 1 || enum[0] != "i_writ" {
+		t.Errorf("носимый предмет не попал в перечисление: %v", props["item"])
+	}
+}
+
+// Носимая бумага НЕ должна возвращать в грамматику use_item: он резолвится
+// только по пропам узла с меткой tool, и глагол с ненаходимым предметом
+// уезжает в бросок по пропу, которого нет.
+func TestCarriedItemsDoNotReviveUseItem(t *testing.T) {
+	hint := SceneHint{Carried: []Named{{"i_writ", "Предписание магистрата"}}}
+	for _, v := range SchemaFor(hint)["properties"].(map[string]any)["verb"].(map[string]any)["enum"].([]string) {
+		if v == "use_item" {
+			t.Error("применение инструмента вернулось в грамматику из-за носимой бумаги")
+		}
+	}
+}
+
+// Предмет игрок называет словами, а не идентификатором. «Показать предписание»
+// обязано разобраться без уточнения — это и был исходный баг.
+func TestItemNameResolvesFromThePlayersWords(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"present","target":"e_bern"}`)
+	hint := harbourHint(t)
+	hint.Carried = []Named{{"i_writ", "Предписание магистрата"}}
+
+	res, err := p.Parse(context.Background(), "показать предписание Берну", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("ход не принят: %q", res.Clarify)
+	}
+	if res.Intent.Args.Item != "i_writ" {
+		t.Errorf("предмет %q — имя не разрешилось", res.Intent.Args.Item)
+	}
+	if res.Intent.Verb != "present" || res.Intent.Args.Target != "e_bern" {
+		t.Errorf("ход разобрался как %+v", res.Intent.Args)
+	}
+}
+
+// Предъявление без предмета — не действие: предъявлять надо что-то.
+func TestPresentWithoutItemIsNotAccepted(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"present","target":"e_bern"}`)
+	hint := harbourHint(t)
+	hint.Carried = []Named{{"i_writ", "Предписание магистрата"}}
+
+	res, err := p.Parse(context.Background(), "предъявить кое-что", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Accepted() {
+		t.Errorf("предъявление принято без предмета: %+v", res.Intent.Args)
+	}
+}
+
+// В промпте есть пример предъявления: правило без примера модель переучивает
+// обратно — это уже проверено на вопросах вне банка тем.
+func TestPromptShowsHowToPresent(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
+	if _, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if sys := f.Calls()[0].System; !strings.Contains(sys, `"verb":"present"`) {
+		t.Errorf("в примерах нет предъявления:\n%s", sys)
 	}
 }

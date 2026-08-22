@@ -33,13 +33,34 @@ func verbNames() []string { return verbNamesFor(SceneHint{}) }
 func verbNamesFor(hint SceneHint) []string {
 	out := make([]string, 0, len(core.Verbs))
 	for _, d := range core.AllVerbs() {
-		if requires(d.Verb).Item && len(hint.Tools) == 0 {
+		// Предметные глаголы берут предметы из РАЗНЫХ мест: use_item — из
+		// пропов узла с меткой tool, present — из носимого. Общий список
+		// вернул бы use_item в грамматику из-за бумаги в кармане, и модель
+		// уехала бы в бросок по пропу, которого в узле нет.
+		if src := itemSource(d.Verb, hint); requires(d.Verb).Item && len(src) == 0 {
 			continue
 		}
 		out = append(out, string(d.Verb))
 	}
 	sort.Strings(out)
 	return out
+}
+
+// itemSource — откуда этот глагол берёт предмет.
+func itemSource(v core.Verb, hint SceneHint) []Named {
+	if v == "present" {
+		return hint.Carried
+	}
+	return hint.Tools
+}
+
+// itemChoices — всё, что вообще можно назвать в поле item: поле одно на два
+// глагола, и перечисление обязано покрывать оба, иначе предъявить носимое
+// нельзя.
+func itemChoices(hint SceneHint) []Named {
+	out := make([]Named, 0, len(hint.Tools)+len(hint.Carried))
+	out = append(out, hint.Tools...)
+	return append(out, hint.Carried...)
 }
 
 // Schema — схема без привязки к сцене. Нужна для тестов и документации;
@@ -83,7 +104,7 @@ func SchemaFor(hint SceneHint) map[string]any {
 			"facts": map[string]any{"type": "array",
 				"items":       enumOr(hint.Topics, "id известного факта"),
 				"description": "ровно два id известных фактов для compare"},
-			"item":    enumOr(hint.Tools, "id предмета из списка «можно применить»"),
+			"item":    enumOr(itemChoices(hint), "id предмета: из «можно применить» либо из «при себе»"),
 			"ability": str,
 			"text":    map[string]any{"type": "string", "description": "свободный текст для theorize, say, emote"},
 			"clarify": map[string]any{"type": "string", "description": "вопрос игроку в характере при outcome=clarify"},

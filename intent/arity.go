@@ -30,11 +30,15 @@ var arity = map[core.Verb]requirement{
 	"cross_reference": {Target: true, Topic: true},
 	"move_zone":       {Node: true},
 	"use_item":        {Item: true},
-	"use_ability":     {Ability: true},
-	"theorize":        {Text: true},
-	"say":             {Text: true},
-	"emote":           {Text: true},
-	"compare":         {Facts: 2},
+	// present — предъявить предмет. Предмет обязателен, цель нет: форма
+	// «предъявить узлу» дизайном оставлена на будущее, и грамматика её не
+	// запрещает.
+	"present":     {Item: true},
+	"use_ability": {Ability: true},
+	"theorize":    {Text: true},
+	"say":         {Text: true},
+	"emote":       {Text: true},
+	"compare":     {Facts: 2},
 }
 
 // requires возвращает требования глагола. По умолчанию глагол берёт одну

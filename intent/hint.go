@@ -27,6 +27,11 @@ type SceneHint struct {
 	// use_item — тупик: обязательный аргумент есть, а взять его негде, и игра
 	// спрашивает «чем именно?», не имея ответа.
 	Tools []Named `json:"tools"`
+	// Carried — что парти несёт. Отдельно от Tools, и это не педантизм:
+	// use_item резолвится только по пропам узла с меткой tool, поэтому
+	// носимая бумага, влитая в Tools, вернула бы этот глагол в грамматику — и
+	// модель уехала бы в бросок по пропу, которого в узле нет.
+	Carried []Named `json:"carried"`
 	// Talk — идущий разговор. Часть сцены: фраза игрока чаще всего продолжает
 	// разговор, а не начинает ход с нуля.
 	Talk Talk `json:"talk"`
@@ -107,6 +112,12 @@ func BuildHint(g *core.Game) SceneHint {
 		}
 	}
 	sort.Slice(h.Tools, func(i, j int) bool { return h.Tools[i].ID < h.Tools[j].ID })
+	// Инвентарь читается из ядра в стабильном порядке — подсказка обязана
+	// собираться одинаково, иначе кэш префикса у провайдера обнуляется каждый
+	// ход.
+	for _, item := range g.Carried() {
+		h.Carried = append(h.Carried, Named{string(item.ID), item.Name})
+	}
 	sort.Slice(h.Entities, func(i, j int) bool { return h.Entities[i].ID < h.Entities[j].ID })
 	return h
 }
@@ -149,6 +160,12 @@ func (h SceneHint) Render() string {
 		b.WriteString("Можно применить:\n")
 		for _, tool := range h.Tools {
 			b.WriteString("  " + tool.ID + " — " + tool.Name + "\n")
+		}
+	}
+	if len(h.Carried) > 0 {
+		b.WriteString("При себе (это можно предъявить):\n")
+		for _, item := range h.Carried {
+			b.WriteString("  " + item.ID + " — " + item.Name + "\n")
 		}
 	}
 	b.WriteString(h.Talk.render())

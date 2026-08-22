@@ -82,7 +82,11 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 
 Разговор идёт с e_bern
 Игрок: «достаю из кармана»
-Ответ: {"outcome":"clarify","clarify":"Что вы достаёте?"}`
+Ответ: {"outcome":"clarify","clarify":"Что вы достаёте?"}
+
+При себе: i_writ — Предписание магистрата; сцена: e_bern — Берн, стражник
+Игрок: «показать предписание Берну»
+Ответ: {"outcome":"intent","verb":"present","item":"i_writ","target":"e_bern"}`
 
 // Parse переводит текст в интент. Возвращает ошибку только на отказе шлюза
 // или сломанном ответе; непонятый ввод — это Result, а не ошибка.
@@ -177,6 +181,14 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 	if need.Target && raw.Target == "" && hint.Talk.With != "" &&
 		hint.hasEntity(string(hint.Talk.With)) {
 		raw.Target = string(hint.Talk.With)
+	}
+	// Предмет игрок называет словами: «показать предписание». Поиск имени в
+	// сцене — подстрока, а не суждение, и без него ход превращался в допрос
+	// игрока о том, что он только что написал.
+	if need.Item && raw.Item == "" {
+		if id, ok := resolveByName(text, itemChoices(hint)); ok {
+			raw.Item = id
+		}
 	}
 	// Тему игрок часто называет словами, а не идентификатором: «спрошу про
 	// тело на складе». Найти её в фразе — подстрока, а не суждение.
