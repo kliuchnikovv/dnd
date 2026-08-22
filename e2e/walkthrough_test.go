@@ -110,3 +110,33 @@ func TestPresentingTheWritOpensBernsFact(t *testing.T) {
 		t.Errorf("расположение %d, было %d", after, before)
 	}
 }
+
+// Дело обязано быть проходимым ВСЛЕПУЮ: игрок не знает идентификаторов фактов
+// и добывает всё сам — осмотром и открытыми вопросами. Четыре плейтеста подряд
+// провалились именно здесь, и авторское прохождение этого не ловило: его писал
+// тот, кто знает все идентификаторы наизусть.
+func TestCaseIsSolvableWithoutKnowingFactIDs(t *testing.T) {
+	script, err := os.ReadFile("../cases/harbour/blind_path.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Путь вслепую не имеет права называть идентификатор факта где-либо, кроме
+	// compare: там оба берутся из вывода команды facts.
+	for _, line := range strings.Split(string(script), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "compare") {
+			continue
+		}
+		if strings.Contains(line, "f_") {
+			t.Errorf("путь вслепую называет идентификатор факта: %q", line)
+		}
+	}
+
+	var out bytes.Buffer
+	if err := cli.NewSession(newGame(t, 7), bytes.NewReader(script), &out).Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	if !strings.Contains(out.String(), "Обвинение верно") {
+		t.Fatalf("вслепую дело не проходится:\n%s", out.String())
+	}
+}

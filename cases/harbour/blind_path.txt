@@ -1,0 +1,32 @@
+# Прохождение «Гавани» ВСЛЕПУЮ: игрок не знает идентификаторов фактов и
+# добывает всё сам — осмотром того, что печатает сцена, и ОТКРЫТЫМИ вопросами
+# людям. Единственные идентификаторы фактов здесь — в compare, и оба взяты из
+# вывода команды facts, то есть игроку доступны.
+#
+# Этот путь проверяет то, на чём подряд провалились четыре плейтеста: пока
+# открытый вопрос был невозможен, спросить человека о том, чего ещё не знаешь,
+# было нечем, и дело оказывалось нерешаемым для того, кто не читал его данные.
+move_zone guildhall
+examine ledger
+examine tidebook
+move_zone quay
+move_zone warehouse
+examine body
+examine body
+move_zone quay
+move_zone forge
+question sigrid
+question sigrid
+question sigrid
+move_zone quay
+question nils
+move_zone guildhall
+question toke
+move_zone quay
+compare f_toke_at_quay f_toke_keeps_ledger
+accuse
+toke
+seal_cord
+night_before_tide
+audit_shortfall
+quit
