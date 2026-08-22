@@ -31,7 +31,9 @@ func (t *Transcript) Render(width int) string {
 			}
 			b.WriteString(who + "\n")
 		}
-		for _, line := range strings.Split(strings.TrimRight(e.Text, "\n"), "\n") {
+		// Отступ блока съедает два знака ширины, поэтому перенос считается по
+		// остатку: иначе строка ровно по ширине окна уедет на край и обрежется.
+		for _, line := range wrap(strings.TrimRight(e.Text, "\n"), width-2) {
 			b.WriteString("  " + line + "\n")
 		}
 		prev = who

@@ -277,7 +277,9 @@ func (m model) quit() (tea.Model, tea.Cmd) {
 
 func (m *model) refresh() {
 	if m.debugOpen {
-		m.view.SetContent(m.debugText())
+		// Дамп обмена — самые длинные строки в игре: промпт уезжает за край
+		// без переноса так же, как проза.
+		m.view.SetContent(strings.Join(wrap(m.debugText(), m.width), "\n"))
 		return
 	}
 	m.view.SetContent(m.transcript.Render(m.width))
