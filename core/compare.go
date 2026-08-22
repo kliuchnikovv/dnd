@@ -17,7 +17,7 @@ func (g *Game) Compare(a, b store.FactID) TurnResult {
 			out := TurnResult{FlavourKey: c.FlavourKey}
 			// Вывод — не свидетельство: источником становится сама пара фактов,
 			// поэтому запись идёт от служебной сущности рассуждения.
-			if g.K.Learn(c.Reveals, ReasoningSource) {
+			if g.learn(c.Reveals, ReasoningSource) {
 				out.Learned = append(out.Learned, Learned{c.Reveals, ReasoningSource})
 			}
 			g.applyUnlocksFor(c.Reveals)

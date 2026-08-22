@@ -79,7 +79,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 	if !def.Rolls || (found && holder.Mandatory) {
 		res := TurnResult{FlavourKey: g.flavourKeyFor(in, holder, found)}
 		if found {
-			if g.K.Learn(holder.FactID, holder.HolderID) {
+			if g.learn(holder.FactID, holder.HolderID) {
 				res.Learned = append(res.Learned, Learned{holder.FactID, holder.HolderID})
 				g.applyUnlocksFor(holder.FactID)
 			}
@@ -113,7 +113,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 	}
 
 	if found && resolution.Class >= OutcomeSuccess {
-		if g.K.Learn(holder.FactID, holder.HolderID) {
+		if g.learn(holder.FactID, holder.HolderID) {
 			out.Learned = append(out.Learned, Learned{holder.FactID, holder.HolderID})
 			g.applyUnlocksFor(holder.FactID)
 		}

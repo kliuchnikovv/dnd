@@ -270,6 +270,40 @@ func validateFile(f File) error {
 		add("у дела нет стартовых фактов — первый ход некуда сделать")
 	}
 
+	// Предмет, на который ссылается гейт, обязан быть ДОБЫВАЕМЫМ: лежать в
+	// стартовом инвентаре или выдаваться каким-нибудь фактом. Иначе дело
+	// выглядит проходимым, а факт закрыт навсегда — и увидит это игрок на
+	// сороковой минуте прогона, а не автор на загрузке.
+	items := map[store.ItemID]bool{}
+	for _, item := range f.Items {
+		items[item.ID] = true
+	}
+	obtainable := map[store.ItemID]bool{}
+	for _, id := range f.StartInventory {
+		obtainable[id] = true
+	}
+	for _, fact := range f.Facts {
+		if fact.GrantsItem == "" {
+			continue
+		}
+		if !items[fact.GrantsItem] {
+			add("факт %s выдаёт предмет %s, которого нет в items", fact.ID, fact.GrantsItem)
+			continue
+		}
+		obtainable[fact.GrantsItem] = true
+	}
+	for _, h := range f.FactHolders {
+		for _, id := range h.Gate.RequiresItems {
+			switch {
+			case !items[id]:
+				add("гейт факта %s требует предмет %s, которого нет в items", h.FactID, id)
+			case !obtainable[id]:
+				add("предмет %s недобываем: гейт факта %s требует его, "+
+					"но его нет ни в start_inventory, ни в выдаче фактом", id, h.FactID)
+			}
+		}
+	}
+
 	if len(bad) > 0 {
 		return errors.New("дело не прошло валидацию:\n  - " + strings.Join(bad, "\n  - "))
 	}

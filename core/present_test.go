@@ -150,3 +150,57 @@ func TestItemGateStillHonoursVerbList(t *testing.T) {
 		t.Errorf("факт выдан глаголом, которого нет в гейте: %+v", got.Learned)
 	}
 }
+
+// Предмет приходит вместе с фактом: нашёл нож — получил улику и знание разом.
+// Иначе автор дела обязан выдавать предметы отдельной механикой, которой нет.
+func TestLearningFactGrantsItsItem(t *testing.T) {
+	g := presentGame()
+	g.DB.Items["i_knife"] = store.Item{ID: "i_knife", Kind: "evidence", Name: "Нож"}
+	g.DB.Facts["f_open"] = store.Fact{ID: "f_open", Key: "open", GrantsItem: "i_knife"}
+
+	if g.Carries("i_knife") {
+		t.Fatal("предмет в инвентаре до того, как факт узнан")
+	}
+	got := g.Apply(Intent{Verb: "question", Actor: g.Actor,
+		Args: Args{Target: "e_toke", Topic: "f_open"}})
+	if len(got.Learned) != 1 {
+		t.Fatalf("факт не узнан: %+v", got)
+	}
+	if !g.Carries("i_knife") {
+		t.Error("факт узнан, а предмет не выдан")
+	}
+}
+
+// Выдача идёт и на пути вывода: факт, открытый сопоставлением, приносит свой
+// предмет так же, как факт, узнанный от человека.
+func TestFactRevealedByCompareGrantsItsItem(t *testing.T) {
+	g := presentGame()
+	g.DB.Items["i_knife"] = store.Item{ID: "i_knife", Kind: "evidence", Name: "Нож"}
+	g.DB.Facts["f_third"] = store.Fact{ID: "f_third", Key: "третий", GrantsItem: "i_knife"}
+	g.DB.Contradictions = append(g.DB.Contradictions, store.Contradiction{
+		A: "f_open", B: "f_gated", Reveals: "f_third"})
+	g.K.Learn("f_open", "e_toke")
+	g.K.Learn("f_gated", "e_toke")
+
+	if got := g.Compare("f_open", "f_gated"); len(got.Learned) != 1 {
+		t.Fatalf("сопоставление не открыло факт: %+v", got)
+	}
+	if !g.Carries("i_knife") {
+		t.Error("факт открыт выводом, а предмет не выдан")
+	}
+}
+
+// Факт, выдающий предмет, которого нет в деле, ничего не портит: инвентарь не
+// место, где вещи появляются из воздуха.
+func TestFactGrantingUnknownItemGrantsNothing(t *testing.T) {
+	g := presentGame()
+	g.DB.Facts["f_open"] = store.Fact{ID: "f_open", Key: "open", GrantsItem: "i_нет_такого"}
+	got := g.Apply(Intent{Verb: "question", Actor: g.Actor,
+		Args: Args{Target: "e_toke", Topic: "f_open"}})
+	if len(got.Learned) != 1 {
+		t.Fatalf("факт не узнан: %+v", got)
+	}
+	if g.Carries("i_нет_такого") {
+		t.Error("в инвентарь попал предмет, которого нет в деле")
+	}
+}

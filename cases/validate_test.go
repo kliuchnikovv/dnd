@@ -215,3 +215,62 @@ func TestTruthFactMarkedAsTransitionIsRejected(t *testing.T) {
 		t.Fatalf("факт правильного ответа с разметкой transition принят: %v", err)
 	}
 }
+
+// Предмет, на который ссылается гейт, обязан быть добываемым. Иначе дело
+// выглядит проходимым, а факт закрыт навсегда — и видно это будет на сороковой
+// минуте прогона, а не на загрузке.
+func TestGateOnUnobtainableItemIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Items = append(f.Items, store.Item{ID: "i_writ", Kind: "credential", Name: "Предписание"})
+		f.FactHolders[0].Gate.RequiresItems = []store.ItemID{"i_writ"}
+	})
+	if err == nil {
+		t.Fatal("гейт на недобываемый предмет прошёл валидацию")
+	}
+	if !strings.Contains(err.Error(), "i_writ") {
+		t.Errorf("сообщение не называет предмет: %v", err)
+	}
+}
+
+// Предмет в стартовом инвентаре добываем по определению.
+func TestGateOnStartingItemIsAccepted(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Items = append(f.Items, store.Item{ID: "i_writ", Kind: "credential", Name: "Предписание"})
+		f.StartInventory = append(f.StartInventory, "i_writ")
+		f.FactHolders[0].Gate.RequiresItems = []store.ItemID{"i_writ"}
+	})
+	if err != nil {
+		t.Errorf("гейт на стартовый предмет отвергнут: %v", err)
+	}
+}
+
+// Выдаваемый фактом — тоже добываем: путь до предмета есть, он просто длиннее.
+func TestGateOnItemGrantedByFactIsAccepted(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Items = append(f.Items, store.Item{ID: "i_knife", Kind: "evidence", Name: "Нож"})
+		f.Facts[0].GrantsItem = "i_knife"
+		f.FactHolders[0].Gate.RequiresItems = []store.ItemID{"i_knife"}
+	})
+	if err != nil {
+		t.Errorf("гейт на предмет, выдаваемый фактом, отвергнут: %v", err)
+	}
+}
+
+// Гейт на предмет, которого в деле нет вовсе, — опечатка автора.
+func TestGateOnUnknownItemIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.FactHolders[0].Gate.RequiresItems = []store.ItemID{"i_нет_такого"}
+	})
+	if err == nil || !strings.Contains(err.Error(), "i_нет_такого") {
+		t.Errorf("гейт на несуществующий предмет прошёл: %v", err)
+	}
+}
+
+// Факт, выдающий предмет, которого нет в items, — та же опечатка с другой
+// стороны: узнав факт, парти получила бы пустоту.
+func TestFactGrantingUnknownItemIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) { f.Facts[0].GrantsItem = "i_нет_такого" })
+	if err == nil || !strings.Contains(err.Error(), "i_нет_такого") {
+		t.Errorf("выдача несуществующего предмета прошла: %v", err)
+	}
+}
