@@ -325,3 +325,22 @@ func TestNoDebugReasonHiddenWhenRingHasContent(t *testing.T) {
 		t.Errorf("причина перекрыла непустое кольцо: %q", got)
 	}
 }
+
+// Приглашение висит над строкой ввода, пока игра ждёт ответа. Ответил — оно
+// обязано исчезнуть: иначе игрок читает уже отвеченный вопрос как заданный
+// снова и отвечает второй раз.
+func TestAnsweredPromptDisappears(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(eventMsg{cli.Event{Kind: cli.EventPrompt, Text: "чем именно?\n"}})
+	m = next.(model)
+	if m.prompt == "" {
+		t.Fatal("приглашение не показано")
+	}
+
+	m.busy = false
+	m.input.SetValue("рукой")
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := next.(model).prompt; got != "" {
+		t.Errorf("после ответа приглашение всё ещё висит: %q", got)
+	}
+}

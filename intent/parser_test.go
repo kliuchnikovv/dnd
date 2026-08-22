@@ -1031,3 +1031,68 @@ func TestSocialVerbFallsBackToInterlocutor(t *testing.T) {
 		t.Errorf("собеседник не подставился: %+v", res)
 	}
 }
+
+// Игрок пишет одно слово — имя того, к кому повернулся. Это самый дешёвый ход
+// в разговоре, и тратить на него вызов модели незачем: имя в сцене — подстрока,
+// а не суждение. Живой прогон отвечал на «Берн» отказом.
+func TestBareNameTurnsToThatPerson(t *testing.T) {
+	g := harbourGame(t)
+	p, f := parserWith(t, `{"outcome":"clarify"}`)
+	gi := &GameInterpreter{Parser: p, Game: g}
+
+	in, clarify, err := gi.Interpret(context.Background(), "Берн", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in == nil {
+		t.Fatalf("одно имя не стало обращением: %q", clarify)
+	}
+	if in.Verb != "talk_to" || in.Args.Target != "e_bern" {
+		t.Errorf("разобралось как %s → %q", in.Verb, in.Args.Target)
+	}
+	if len(f.Calls()) != 0 {
+		t.Error("на одно имя потрачен вызов модели")
+	}
+}
+
+// Имя с продолжением — уже фраза, и разбирать её должна модель: «Берн, что
+// слышно?» это вопрос, а не поворот головы.
+func TestNameWithWordsGoesToTheModel(t *testing.T) {
+	g := harbourGame(t)
+	p, f := parserWith(t, `{"outcome":"intent","verb":"say","text":"что слышно?"}`)
+	gi := &GameInterpreter{Parser: p, Game: g}
+
+	if _, _, err := gi.Interpret(context.Background(), "Берн, что слышно?", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Calls()) != 1 {
+		t.Errorf("вызовов модели %d — фраза разобрана мимо неё", len(f.Calls()))
+	}
+}
+
+// Одно слово, которое никого не называет, остаётся работой модели.
+func TestBareWordThatNamesNobodyGoesToTheModel(t *testing.T) {
+	g := harbourGame(t)
+	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
+	gi := &GameInterpreter{Parser: p, Game: g}
+
+	if _, _, err := gi.Interpret(context.Background(), "осмотреться", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Calls()) != 1 {
+		t.Error("одно слово не дошло до модели")
+	}
+}
+
+// clarify и reason читает игрок между репликами. Три придаточных и спор с ним
+// («вы и сами прекрасно знаете, что несёте») читаются как препирательство
+// движка, а не как голос мира.
+func TestPromptDemandsShortRefusals(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
+	if _, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if sys := f.Calls()[0].System; !strings.Contains(sys, "одна короткая фраза") {
+		t.Errorf("промпт не требует краткости в отказе:\n%s", sys)
+	}
+}
