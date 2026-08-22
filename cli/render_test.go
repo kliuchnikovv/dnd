@@ -11,6 +11,7 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 func renderGame(t *testing.T) *core.Game {
@@ -302,5 +303,33 @@ func TestSpeakerReachesTheNarrator(t *testing.T) {
 	s.r.Turn(g, look, g.Apply(look))
 	if got := n.speaking[1]; got != "" {
 		t.Errorf("говорящим назван %q там, где отвечать некому", got)
+	}
+}
+
+// Игрок обязан видеть, что несёт: предъявлять придётся по имени, и угадывать
+// содержимое карманов — не игра.
+func TestItemsListsWhatYouCarry(t *testing.T) {
+	g := renderGame(t)
+	g.DB.Items["i_writ"] = store.Item{ID: "i_writ", Kind: "credential",
+		Name: "Предписание магистрата", Text: "Лист с печатью магистрата."}
+	g.Acquire("i_writ")
+
+	got := Render{}.Items(g)
+	if !strings.Contains(got, "i_writ") || !strings.Contains(got, "Предписание магистрата") {
+		t.Errorf("список не назвал предмет:\n%s", got)
+	}
+}
+
+// Пустые карманы — не ошибка и не пустой экран.
+func TestEmptyItemsSaysSo(t *testing.T) {
+	if got := (Render{}).Items(renderGame(t)); strings.TrimSpace(got) == "" {
+		t.Error("на пустой инвентарь напечатано ничего")
+	}
+}
+
+// Команда есть в справке: иначе о ней узнают из исходников.
+func TestHelpMentionsItems(t *testing.T) {
+	if !strings.Contains(Render{}.Help(), "items") {
+		t.Error("в справке нет команды items")
 	}
 }

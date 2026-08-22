@@ -154,6 +154,23 @@ func (Render) roll(res core.Resolution) string {
 		res.Log.Die, strings.Join(terms, " "), res.Log.Threshold, res.Class, res.Margin)
 }
 
+// Items — что парти несёт. Игрок обязан это видеть: предъявлять придётся по
+// имени, а угадывать содержимое своих карманов — не игра.
+func (Render) Items(g *core.Game) string {
+	carried := g.Carried()
+	if len(carried) == 0 {
+		return "при себе ничего нет\n"
+	}
+	var b strings.Builder
+	for _, item := range carried {
+		fmt.Fprintf(&b, "  %-10s %s\n", item.ID, item.Name)
+		if item.Text != "" {
+			fmt.Fprintf(&b, "             %s\n", item.Text)
+		}
+	}
+	return b.String()
+}
+
 // Facts — единственный интерфейс к корроборации. По нему видно, зачем нужен
 // третий независимый источник.
 func (Render) Facts(g *core.Game) string {
@@ -220,6 +237,8 @@ theorize <текст>                зафиксировать гипотезу
 «реплика» или — реплика        сказать вслух: прямая речь персонажа
 move_zone <узел>                перейти
 rest short|long                 короткий или длинный отдых
+present <предмет> [кому]        предъявить: бумагу, улику
+items                           что несёшь
 accuse                          открыть форму обвинения
 facts                           известные факты с источниками и confidence
 state                           узел, часы, ранения, grit, попытки

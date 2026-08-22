@@ -137,6 +137,8 @@ func (s *Session) dispatch(cmd Command) bool {
 		s.emitText(EventSystem, r.Facts(g))
 	case CmdState:
 		s.emitText(EventSystem, r.State(g))
+	case CmdItems:
+		s.emitText(EventSystem, r.Items(g))
 	case CmdClocks:
 		s.emitText(EventSystem, r.Clocks(g))
 	case CmdCompare:

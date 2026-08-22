@@ -20,6 +20,7 @@ const (
 	CmdFacts
 	CmdState
 	CmdClocks
+	CmdItems
 	CmdHelp
 	CmdQuit
 	CmdRest
@@ -114,6 +115,8 @@ func Parse(line string) (Command, error) {
 		return Command{Kind: CmdState}, nil
 	case "clocks":
 		return Command{Kind: CmdClocks}, nil
+	case "items":
+		return Command{Kind: CmdItems}, nil
 	case "help":
 		return Command{Kind: CmdHelp}, nil
 	case "accuse":
@@ -157,6 +160,17 @@ func Parse(line string) (Command, error) {
 		cmd.Intent.Args.Target = entityID(rest[0])
 		cmd.Intent.Args.Topic = factID(rest[1])
 		return cmd, nil
+	case "present":
+		// Адресат необязателен: форма «предъявить узлу» дизайном оставлена на
+		// будущее, и грамматика её не запрещает.
+		if len(rest) == 0 || len(rest) > 2 {
+			return Command{}, errors.New("present требует предмет и, если надо, адресата")
+		}
+		cmd.Intent.Args.Item = string(itemID(rest[0]))
+		if len(rest) == 2 {
+			cmd.Intent.Args.Target = entityID(rest[1])
+		}
+		return cmd, nil
 	case "use_item":
 		if len(rest) != 1 {
 			return Command{}, errors.New("use_item требует предмет")
@@ -190,11 +204,12 @@ func Parse(line string) (Command, error) {
 func entityID(s string) store.EntityID { return store.EntityID(withPrefix(s, "e_")) }
 func factID(s string) store.FactID     { return store.FactID(withPrefix(s, "f_")) }
 func nodeID(s string) store.NodeID     { return store.NodeID(withPrefix(s, "n_")) }
+func itemID(s string) store.ItemID     { return store.ItemID(withPrefix(s, "i_")) }
 
 // knownPrefixes — идентификаторы, которые уже размечены. Дописывать «e_»
 // пропу нельзя: игрок ушёл бы в несуществующую сущность, и отказ сообщил бы
 // ему, что цель была инертной.
-var knownPrefixes = []string{"e_", "p_", "f_", "n_"}
+var knownPrefixes = []string{"e_", "p_", "f_", "n_", "i_"}
 
 func withPrefix(s, prefix string) string {
 	for _, p := range knownPrefixes {

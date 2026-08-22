@@ -220,3 +220,44 @@ func TestPushWithoutActionIsAnError(t *testing.T) {
 		t.Error("push без действия принят")
 	}
 }
+
+// Предъявление структурной командой: предмет обязателен, адресат нет.
+// Префиксы можно не писать, как у сущностей и фактов.
+func TestParsePresent(t *testing.T) {
+	cmd, err := Parse("present writ bern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Intent.Verb != "present" {
+		t.Fatalf("глагол %q", cmd.Intent.Verb)
+	}
+	if cmd.Intent.Args.Item != "i_writ" {
+		t.Errorf("предмет %q — префикс не дописался", cmd.Intent.Args.Item)
+	}
+	if cmd.Intent.Args.Target != "e_bern" {
+		t.Errorf("адресат %q", cmd.Intent.Args.Target)
+	}
+
+	// Полные идентификаторы вставляются из вывода как есть.
+	full, err := Parse("present i_writ e_bern")
+	if err != nil || full.Intent.Args.Item != "i_writ" || full.Intent.Args.Target != "e_bern" {
+		t.Errorf("полные идентификаторы разобрались как %+v (%v)", full.Intent.Args, err)
+	}
+}
+
+// Предъявление без предмета — не команда: предъявлять надо что-то.
+func TestParsePresentNeedsItem(t *testing.T) {
+	if _, err := Parse("present"); err == nil {
+		t.Error("предъявление без предмета разобралось")
+	}
+}
+
+func TestParseItemsCommand(t *testing.T) {
+	cmd, err := Parse("items")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Kind != CmdItems {
+		t.Errorf("команда разобралась как %v", cmd.Kind)
+	}
+}
