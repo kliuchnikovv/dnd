@@ -558,3 +558,40 @@ func TestInterlocutorReachesTheParse(t *testing.T) {
 		t.Errorf("собеседник не доехал: %q", fi.with[1])
 	}
 }
+
+// Спросить об инвентаре словами так же законно, как командой: игрок не обязан
+// знать, что одно спрашивается фразой, а другое — командой. И вызов модели на
+// это тратить незачем — ответ у игры уже есть.
+func TestAskingAboutInventoryInWordsShowsIt(t *testing.T) {
+	fi := &fakeInterp{clarify: "не должно понадобиться"}
+	g := renderGame(t)
+	g.DB.Items["i_writ"] = store.Item{ID: "i_writ", Kind: "credential", Name: "Предписание магистрата"}
+	g.Acquire("i_writ")
+
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("что у меня в карманах?\nquit\n"), &out).WithInterpreter(fi)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Предписание магистрата") {
+		t.Errorf("инвентарь не показан:\n%s", out.String())
+	}
+	if len(fi.seen) != 0 {
+		t.Errorf("на вопрос об инвентаре потрачен переводчик: %v", fi.seen)
+	}
+}
+
+// «Достаю из кармана» — это действие, а не вопрос о карманах: такую фразу
+// разбирает переводчик, иначе игра отвечает списком вместо действия.
+func TestReachingIntoAPocketIsNotAnInventoryQuery(t *testing.T) {
+	fi := &fakeInterp{clarify: "что вы достаёте?"}
+	var out bytes.Buffer
+	s := NewSession(renderGame(t), strings.NewReader("достаю из кармана\nquit\n"), &out).
+		WithInterpreter(fi)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if len(fi.seen) != 1 {
+		t.Errorf("фраза не дошла до переводчика: %v", fi.seen)
+	}
+}

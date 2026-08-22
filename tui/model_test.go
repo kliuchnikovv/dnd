@@ -344,3 +344,20 @@ func TestAnsweredPromptDisappears(t *testing.T) {
 		t.Errorf("после ответа приглашение всё ещё висит: %q", got)
 	}
 }
+
+// У панели отладки обязан быть заголовок: без него дамп обмена неотличим от
+// испорченного транскрипта — и был принят именно за него.
+func TestDebugPaneIsLabelled(t *testing.T) {
+	ring := NewRing(4)
+	ring.Write([]byte("--- llm actor -> провайдер ---\nввод: ...\n"))
+	m := newModel(nil, Options{Debug: ring})
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = next.(model)
+
+	if !m.debugOpen {
+		t.Fatal("панель не открылась")
+	}
+	if got := m.view.View(); !strings.Contains(got, "обмен с моделью") {
+		t.Errorf("панель без заголовка:\n%s", got)
+	}
+}

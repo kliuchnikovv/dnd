@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"unicode"
 
 	"github.com/kliuchnikovv/dnd/core"
@@ -46,7 +47,33 @@ func meaningless(text string) bool {
 	return letters < 2
 }
 
+// inventoryQuestions — как игрок спрашивает о том, что несёт. Список узкий
+// сознательно: «достаю из кармана» это действие, а не вопрос о карманах, и
+// широкий словарь отвечал бы на него списком вместо дела.
+//
+// Спрос об инвентаре перехватывается до переводчика: ответ у игры уже есть, и
+// платить за него вызовом модели незачем. Игрок при этом не обязан знать, что
+// одно спрашивается фразой, а другое — командой.
+var inventoryQuestions = []string{
+	"инвентар", "что у меня", "что при себе", "что несу", "что я несу",
+	"мои вещи", "в карманах", "в сумке",
+}
+
+func asksAboutInventory(text string) bool {
+	lower := strings.ToLower(text)
+	for _, q := range inventoryQuestions {
+		if strings.Contains(lower, q) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Session) interpret(text string, parseErr error) bool {
+	if asksAboutInventory(text) {
+		s.emitText(EventSystem, s.r.Items(s.Game))
+		return true
+	}
 	if meaningless(text) {
 		s.emit(EventRefusal, "не понял — напиши, что ты делаешь, или скажи что-нибудь в кавычках\n")
 		return true

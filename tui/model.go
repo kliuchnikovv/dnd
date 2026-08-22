@@ -12,6 +12,9 @@ import (
 	"github.com/kliuchnikovv/dnd/cli"
 )
 
+// debugTitle — шапка панели отладки.
+const debugTitle = "— обмен с моделью · Tab возвращает к разговору —"
+
 // Options — что полноэкранному режиму нужно знать о запуске. Status отдаёт
 // строку шапки (расход, ход): собирать её здесь значило бы тянуть в интерфейс
 // слой моделей, который к экрану отношения не имеет.
@@ -279,7 +282,10 @@ func (m *model) refresh() {
 	if m.debugOpen {
 		// Дамп обмена — самые длинные строки в игре: промпт уезжает за край
 		// без переноса так же, как проза.
-		m.view.SetContent(strings.Join(wrap(m.debugText(), m.width), "\n"))
+		// Заголовок обязателен: без него дамп обмена неотличим от испорченного
+		// транскрипта — и был принят именно за него.
+		m.view.SetContent(debugTitle + "\n\n" +
+			strings.Join(wrap(m.debugText(), m.width), "\n"))
 		return
 	}
 	m.view.SetContent(m.transcript.Render(m.width))
