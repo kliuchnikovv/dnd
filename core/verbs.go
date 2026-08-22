@@ -33,10 +33,15 @@ type VerbDef struct {
 }
 
 var Verbs = map[Verb]VerbDef{
-	"look":              {"look", ClassNone, false, false, false},
-	"emote":             {"emote", ClassNone, false, false, false},
-	"say":               {"say", ClassNone, false, false, false},
-	"talk_to":           {"talk_to", ClassSocial, false, false, false},
+	"look":    {"look", ClassNone, false, false, false},
+	"emote":   {"emote", ClassNone, false, false, false},
+	"say":     {"say", ClassNone, false, false, false},
+	"talk_to": {"talk_to", ClassSocial, false, false, false},
+	// present — предъявить предмет. Социальный, потому что цель — человек: к
+	// нему применимы и сдвиг расположения, и социальные гейты. Без броска:
+	// годная бумага — это власть, а не проба навыка, и блеф негодной бумагой
+	// это другой глагол, которого пока нет.
+	"present":           {"present", ClassSocial, false, false, false},
 	"ask_about":         {"ask_about", ClassSocial, false, false, false},
 	"thank":             {"thank", ClassSocial, false, false, false},
 	"threaten_verbally": {"threaten_verbally", ClassSocial, false, false, false},

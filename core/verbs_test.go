@@ -6,6 +6,7 @@ func TestVerbRegistryCoversEveryListedVerb(t *testing.T) {
 	want := []Verb{
 		"look", "emote", "say",
 		"talk_to", "ask_about", "thank", "threaten_verbally", "theorize",
+		"present",
 		"examine", "search", "question", "stake_out", "tail",
 		"compare", "cross_reference",
 		"strike", "grapple",
@@ -15,8 +16,8 @@ func TestVerbRegistryCoversEveryListedVerb(t *testing.T) {
 		"aid", "mend",
 		"use_ability", "use_item",
 	}
-	if len(want) != 30 {
-		t.Fatalf("список в тесте испорчен: %d глаголов вместо 30", len(want))
+	if len(want) != 31 {
+		t.Fatalf("список в тесте испорчен: %d глаголов вместо 31", len(want))
 	}
 	for _, v := range want {
 		if _, ok := Verbs[v]; !ok {

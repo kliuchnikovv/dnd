@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -23,6 +24,28 @@ func TestFactHolderJSONTags(t *testing.T) {
 		`"mandatory":true,"latent":false}`
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+// Гейт на предметы появляется в дампе только когда он есть: без omitempty
+// каждое существующее дело получило бы "requires_items":null, а JSON-теги
+// здесь — контракт с файлом дела, а не деталь реализации.
+func TestGateItemsAppearOnlyWhenSet(t *testing.T) {
+	bare, err := json.Marshal(Gate{Verbs: []string{"examine"}, Threshold: "normal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(bare); strings.Contains(got, "requires_items") {
+		t.Errorf("пустой гейт вырос полем: %s", got)
+	}
+
+	gated, err := json.Marshal(Gate{Verbs: []string{"present"}, Threshold: "normal",
+		RequiresItems: []ItemID{"i_writ"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(gated); !strings.Contains(got, `"requires_items":["i_writ"]`) {
+		t.Errorf("гейт на предмет не сериализовался: %s", got)
 	}
 }
 

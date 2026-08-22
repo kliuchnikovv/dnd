@@ -64,6 +64,15 @@ func (g *Game) Apply(in Intent) TurnResult {
 		}
 	}
 
+	// Предъявление — видимое действие, и его след обязан лечь ДО поиска
+	// держателя: иначе гейт на предмет не увидит того, что ему только что
+	// показали, и факт откроется лишь со второго раза.
+	if in.Verb == "present" {
+		if r, bad := g.present(in); bad {
+			return r
+		}
+	}
+
 	holder, found := g.holderFor(in)
 
 	// Шаг 2: ветка без броска.
@@ -183,6 +192,9 @@ func (g *Game) holderFor(in Intent) (store.FactHolder, bool) {
 			if !g.requirementsMet(h.Gate) {
 				continue
 			}
+			if !g.itemsPresented(h) {
+				continue
+			}
 			if h.Latent && !g.Unlocked("topic", string(h.FactID)) {
 				continue
 			}
@@ -212,6 +224,9 @@ func (g *Game) holderFor(in Intent) (store.FactHolder, bool) {
 			if !g.requirementsMet(h.Gate) {
 				continue
 			}
+			if !g.itemsPresented(h) {
+				continue
+			}
 			if h.Latent && !g.Unlocked("topic", string(h.FactID)) {
 				continue
 			}
@@ -235,6 +250,18 @@ func gateAllows(gate store.Gate, v Verb) bool {
 
 func (g *Game) requirementsMet(gate store.Gate) bool {
 	return gate.Requires.Satisfied(func(f store.FactID) bool { return g.K.Knows(f) })
+}
+
+// itemsPresented — предъявлены ли этому держателю все предметы, которых требует
+// гейт. Проверяется предъявление, а не владение: показать бумагу — видимое
+// действие с реакцией, а бумага в кармане открывала бы двери молча.
+func (g *Game) itemsPresented(h store.FactHolder) bool {
+	for _, id := range h.Gate.RequiresItems {
+		if !g.D.Presented(h.HolderID, id) {
+			return false
+		}
+	}
+	return true
 }
 
 // SceneView собирает срез сцены для правил. Здесь нет и не может быть графа

@@ -35,6 +35,10 @@ type Gate struct {
 	Verbs     []string     `json:"verbs"`
 	Threshold string       `json:"threshold"`
 	Requires  *Requirement `json:"requires"`
+	// RequiresItems — предметы, которые парти обязана ПРЕДЪЯВИТЬ этому
+	// держателю. Не «нести»: показать — видимое действие с реакцией, а
+	// лежащая в кармане бумага была бы пассивным пропуском.
+	RequiresItems []ItemID `json:"requires_items,omitempty"`
 }
 
 type FactHolder struct {
@@ -199,8 +203,12 @@ type Item struct {
 	// Text — что видно, когда предмет разглядывают или предъявляют.
 	Text string `json:"text"`
 	// AssertsFact — факт, который несёт улика. Пусто у всего, кроме evidence.
-	AssertsFact FactID   `json:"asserts_fact"`
-	Tags        []string `json:"tags"`
+	AssertsFact FactID `json:"asserts_fact"`
+	// DispositionDelta — насколько теплеет расположение того, кому предмет
+	// предъявили. Величина авторская: власть бумаги задаёт автор дела, а не
+	// код. Ноль — тоже авторский выбор: бумага, которая никого не трогает.
+	DispositionDelta int      `json:"disposition_delta"`
+	Tags             []string `json:"tags"`
 }
 
 // InventoryKey — строка таблицы «парти несёт предмет». Плоское множество, как

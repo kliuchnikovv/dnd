@@ -30,3 +30,31 @@ func (g *Game) Item(id store.ItemID) (store.Item, bool) {
 	item, ok := g.DB.Items[id]
 	return item, ok
 }
+
+// present — след предъявления. Отдельно от выдачи факта: факт отдаёт общая
+// ветка без броска, а здесь только то, что делает само предъявление, —
+// отметка «показано этому человеку» и авторский сдвиг расположения.
+//
+// Возвращает (отказ, true), если предъявлять нечего или некому. Отказ, а не
+// провал: ход не потрачен, потому что игрок не действовал в мире, а ошибся в
+// команде.
+func (g *Game) present(in Intent) (TurnResult, bool) {
+	item, ok := g.Item(store.ItemID(in.Args.Item))
+	if !ok {
+		return refuse("такого предмета в деле нет"), true
+	}
+	if !g.Carries(item.ID) {
+		return refuse("этого у тебя при себе нет"), true
+	}
+	if in.Args.Target == "" {
+		// Форма «предъявить узлу» дизайном оставлена на будущее. Молча съесть
+		// ход было бы хуже: игрок решил бы, что предъявление не работает вовсе.
+		return refuse("предъявлять некому: назови, кому показываешь"), true
+	}
+	// Сдвиг применяется один раз на предмет: иначе бумагу показывают десять
+	// раз и получают дружбу из ничего.
+	if g.D.MarkPresented(in.Args.Target, item.ID) && item.DispositionDelta != 0 {
+		g.D.Adjust(in.Args.Target, item.DispositionDelta)
+	}
+	return TurnResult{}, false
+}

@@ -118,6 +118,31 @@ func (d *Dossiers) MarkTold(e store.EntityID, note string) {
 	row.Version++
 }
 
+// MarkPresented помечает предмет предъявленным этой сущности. Возвращает
+// false, если он уже был предъявлен: авторский сдвиг расположения применяется
+// один раз на предмет, как рассказанная тема.
+func (d *Dossiers) MarkPresented(e store.EntityID, item store.ItemID) bool {
+	row := d.db.DossierFor(e, d.party)
+	for _, p := range row.Presented {
+		if p == item {
+			return false
+		}
+	}
+	row.Presented = append(row.Presented, item)
+	row.Version++
+	return true
+}
+
+// Presented — предъявляла ли парти этот предмет этой сущности.
+func (d *Dossiers) Presented(e store.EntityID, item store.ItemID) bool {
+	for _, p := range d.db.DossierFor(e, d.party).Presented {
+		if p == item {
+			return true
+		}
+	}
+	return false
+}
+
 // Voice — голос из дневника либо из самой сущности. Дневник переопределяет:
 // голос может меняться по ходу мира, сущность его лишь задаёт изначально.
 func (d *Dossiers) Voice(e store.EntityID) string {
