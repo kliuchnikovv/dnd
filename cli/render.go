@@ -85,7 +85,7 @@ func (r Render) Turn(g *core.Game, in core.Intent, t core.TurnResult) string {
 	if t.FlavourKey != "" {
 		fmt.Fprintf(&b, "%s\n", r.prose(Prose{Kind: ProseOutcome,
 			Frame: g.Flavour(t.FlavourKey), Scene: sceneOf(g),
-			Outcome: outcomeOf(g, t), Speaking: speakerName(g, in)}))
+			Outcome: outcomeOf(g, t), Speaking: speakerName(g, in, t)}))
 	}
 	// Бросок печатается, только если он был: у безопасного действия кость не
 	// трогается, и Log.Die остаётся нулём.
@@ -111,8 +111,16 @@ func (r Render) Turn(g *core.Game, in core.Intent, t core.TurnResult) string {
 }
 
 // speakerName — имя того, к кому обращён ход: он же сейчас и ответит. Пусто,
-// если ход обращён не к человеку.
-func speakerName(g *core.Game, in core.Intent) string {
+// если ход обращён не к человеку — или если отвечать никто не будет.
+//
+// Второе важнее первого. Ход, выдавший факт, озвучку глушит намеренно: там уже
+// есть авторская реплика. Запретить Мастеру говорить за молчащего значит
+// потерять реакцию вовсе — живой прогон так и потерял ответ стражника на
+// предъявленное предписание, оставив прозу про дождь.
+func speakerName(g *core.Game, in core.Intent, t core.TurnResult) string {
+	if len(t.Learned) > 0 {
+		return ""
+	}
 	e, ok := g.DB.Entities[in.Args.Target]
 	if !ok || e.Kind != store.EntityNPC {
 		return ""

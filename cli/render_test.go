@@ -333,3 +333,29 @@ func TestHelpMentionsItems(t *testing.T) {
 		t.Error("в справке нет команды items")
 	}
 }
+
+// Мастеру запрещено говорить за того, кто сейчас ответит. Но когда ход выдал
+// факт, персонаж молчит намеренно — авторская реплика уже в рамке, и Мастер
+// остаётся единственным голосом. Запретить ему пересказать реакцию значит
+// потерять её вовсе: живой прогон так и потерял ответ стражника на
+// предъявленное предписание.
+func TestSpeakerIsNotHeldBackWhenNobodyWillAnswer(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{prose: "проза"}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+
+	// Ход, который выдаёт факт: озвучка молчит, значит запрета быть не должно.
+	// Исход подаётся напрямую — тест о ветвлении подписи, а не о выдаче.
+	talkTo := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}
+	s.r.Turn(g, talkTo, core.TurnResult{FlavourKey: "talk_to",
+		Learned: []core.Learned{{Fact: "f_ligature", From: "e_toke"}}})
+	if got := n.speaking[0]; got != "" {
+		t.Errorf("Мастеру запрещено говорить за %q, хотя отвечать никто не будет", got)
+	}
+
+	// Ход без выдачи: персонаж ответит следующей строкой, запрет нужен.
+	s.r.Turn(g, talkTo, core.TurnResult{FlavourKey: "talk_to"})
+	if got := n.speaking[1]; got == "" {
+		t.Error("Мастеру разрешено говорить за того, кто сейчас ответит")
+	}
+}

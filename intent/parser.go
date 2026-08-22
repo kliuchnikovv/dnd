@@ -182,6 +182,17 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 		hint.hasEntity(string(hint.Talk.With)) {
 		raw.Target = string(hint.Talk.With)
 	}
+	// Социальный ход обращён к человеку. Адресата арность может и не
+	// требовать — предъявление формально бывает и без цели, — но названный
+	// словами адресат обязан разрешаться, иначе «показать предписание Берну»
+	// уходит в отказ «предъявлять некому» при названном Берне.
+	if raw.Target == "" && def.Class == core.ClassSocial {
+		if id, ok := resolveByName(text, hint.Entities); ok {
+			raw.Target = id
+		} else if with := string(hint.Talk.With); with != "" && hint.hasEntity(with) {
+			raw.Target = with
+		}
+	}
 	// Предмет игрок называет словами: «показать предписание». Поиск имени в
 	// сцене — подстрока, а не суждение, и без него ход превращался в допрос
 	// игрока о том, что он только что написал.

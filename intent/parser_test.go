@@ -993,3 +993,41 @@ func TestPromptShowsHowToPresent(t *testing.T) {
 		t.Errorf("в примерах нет предъявления:\n%s", sys)
 	}
 }
+
+// Живой прогон: «показать предписание Берну» уходило в отказ «предъявлять
+// некому». Адресата у предъявления арность не требует — форма «предъявить
+// узлу» оставлена на будущее, — и потому имя из фразы никто не разрешал.
+// Социальный ход обращён к человеку: назвали словами — значит адресат назван.
+func TestSocialVerbResolvesNamedAddressee(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"present","item":"i_writ"}`)
+	hint := harbourHint(t)
+	hint.Carried = []Named{{"i_writ", "Предписание магистрата"}}
+
+	res, err := p.Parse(context.Background(), "показать предписание Берну", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("ход не принят: %q", res.Clarify)
+	}
+	if res.Intent.Args.Target != "e_bern" {
+		t.Errorf("адресат %q — имя из фразы не разрешилось", res.Intent.Args.Target)
+	}
+}
+
+// Адресата можно и не называть: разговор идёт с конкретным человеком, и
+// «покажу ему предписание» — это ему.
+func TestSocialVerbFallsBackToInterlocutor(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"present","item":"i_writ"}`)
+	hint := harbourHint(t)
+	hint.Carried = []Named{{"i_writ", "Предписание магистрата"}}
+	hint.Talk = Talk{With: "e_bern"}
+
+	res, err := p.Parse(context.Background(), "покажу-ка ему бумагу", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil || res.Intent.Args.Target != "e_bern" {
+		t.Errorf("собеседник не подставился: %+v", res)
+	}
+}

@@ -197,3 +197,13 @@ func TestNarrateWithoutSpeakerStaysClean(t *testing.T) {
 		t.Errorf("запрет появился там, где никто не отвечает:\n%s", in)
 	}
 }
+
+// Вся авторская проза дела обращается к игроку на «вы»; «ты» посреди неё
+// читается как другой голос. Живой прогон дал и то и другое в одном экране.
+func TestNarratePinsTheFormOfAddress(t *testing.T) {
+	m, f := masterWith(t, "проза")
+	m.Narrate(context.Background(), KindPlace, "рамка", World{}, nil, "", llm.Request{})
+	if sys := f.Calls()[0].System; !strings.Contains(sys, "«вы»") {
+		t.Errorf("форма обращения не закреплена:\n%s", sys)
+	}
+}
