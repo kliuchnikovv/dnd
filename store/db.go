@@ -16,6 +16,10 @@ type DB struct {
 	Knowledge  []Knowledge
 	Dossiers   map[DossierKey]*Dossier
 	Props      map[NodeID][]SceneProp
+	Items      map[ItemID]Item
+	// Inventory — что несёт парти. Множество, а не счётчик: предмет либо есть,
+	// либо нет, и вес с ёмкостью в M1a намеренно не заводятся.
+	Inventory map[InventoryKey]bool
 	// Canon — ambient-детали мира, решённые Мастером по ходу игры. Отдельно
 	// от фактов дела: факт дела импровизацией не канонизируется никогда.
 	Canon map[CanonKey]CanonFact
@@ -41,6 +45,8 @@ func NewDB() *DB {
 		Characters: map[CharacterID]*Character{},
 		Dossiers:   map[DossierKey]*Dossier{},
 		Props:      map[NodeID][]SceneProp{},
+		Items:      map[ItemID]Item{},
+		Inventory:  map[InventoryKey]bool{},
 		Canon:      map[CanonKey]CanonFact{},
 		Cases:      map[CaseID]*Case{},
 		Regions:    map[RegionID]Region{},
@@ -48,6 +54,33 @@ func NewDB() *DB {
 }
 
 func (db *DB) HoldersOf(f FactID) []FactHolder { return db.Holders[f] }
+
+// HasItem — несёт ли эта парти этот предмет.
+func (db *DB) HasItem(party string, id ItemID) bool {
+	return db.Inventory[InventoryKey{PartyID: party, ItemID: id}]
+}
+
+// AddItem кладёт предмет в инвентарь парти. Идемпотентно: у предмета нет
+// количества, он либо есть, либо нет.
+func (db *DB) AddItem(party string, id ItemID) {
+	db.Inventory[InventoryKey{PartyID: party, ItemID: id}] = true
+}
+
+// ItemsOf — что несёт парти, в стабильном порядке по идентификатору. Итерация
+// по map в Go случайна, а список «что несёшь» обязан быть воспроизводимым.
+func (db *DB) ItemsOf(party string) []Item {
+	var out []Item
+	for key := range db.Inventory {
+		if key.PartyID != party {
+			continue
+		}
+		if item, ok := db.Items[key.ItemID]; ok {
+			out = append(out, item)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
 
 // Related сообщает, есть ли ребро между двумя сущностями. Ребро
 // ненаправленное: двое, кто общается, за два независимых источника не считаются

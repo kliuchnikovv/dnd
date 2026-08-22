@@ -62,6 +62,10 @@ type Game struct {
 	Attempts int
 	Detected bool
 
+	// party — чья это игра. Нужна инвентарю и дневникам: и то и другое
+	// принадлежит парти, а не персонажу.
+	party string
+
 	// D — дневники сущностей. Расположение живёт здесь и только здесь:
 	// держать его ещё и в Game значило бы иметь два места правды.
 	D     *Dossiers
@@ -107,6 +111,7 @@ func NewGame(cfg Config) *Game {
 		DB: cfg.DB, Rules: cfg.Rules, Dice: cfg.Dice,
 		K: NewKnowledge(cfg.DB), C: NewClocks(cfg.DB),
 		Node: cfg.Start, Actor: cfg.Actor,
+		party: party(cfg.Party),
 		D:     NewDossiers(cfg.DB, party(cfg.Party)),
 		Debts: map[store.EntityID]int{},
 		truth: cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,

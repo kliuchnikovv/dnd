@@ -51,6 +51,19 @@ func Parse(raw []byte) (*core.Config, error) {
 		db.Unlocks[u.FactID] = append(db.Unlocks[u.FactID], u)
 	}
 	db.Contradictions = append(db.Contradictions, f.Contradictions...)
+	for _, item := range f.Items {
+		item.CaseID = f.ID
+		db.Items[item.ID] = item
+	}
+	for _, id := range f.StartInventory {
+		// Предмет, которого в деле нет, — опечатка автора, и видеть её надо на
+		// загрузке. Молча положить его в инвентарь значит открыть гейт на
+		// предмет, которого не существует.
+		if _, ok := db.Items[id]; !ok {
+			return nil, fmt.Errorf("cases: start_inventory ссылается на предмет %q, которого нет в items", id)
+		}
+		db.AddItem(defaultParty, id)
+	}
 	for _, p := range f.Props {
 		db.Props[p.Node] = append(db.Props[p.Node], p)
 		f.Flavour["prop."+string(p.ID)] = p.Text

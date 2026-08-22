@@ -11,6 +11,7 @@ type (
 	CharacterID string
 	PropID      string
 	CaseID      string
+	ItemID      string
 
 	// Token — значение слота обвинения (who / how / when / why).
 	// Токен не равен факту: факт лишь открывает токен к использованию.

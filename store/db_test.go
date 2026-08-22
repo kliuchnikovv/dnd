@@ -47,3 +47,32 @@ func TestAdjacentRejectsUnlinkedNodes(t *testing.T) {
 		t.Error("несмежные узлы объявлены смежными")
 	}
 }
+
+// Инвентарь носит ПАРТИ, а не персонаж: в одиночной игре это одно и то же, но
+// ключевать его парти с первого дня дешевле, чем мигрировать под кооп.
+func TestInventoryIsPerParty(t *testing.T) {
+	db := NewDB()
+	db.Items["i_writ"] = Item{ID: "i_writ", Kind: "credential", Name: "Предписание"}
+
+	db.AddItem("party-a", "i_writ")
+
+	if !db.HasItem("party-a", "i_writ") {
+		t.Error("парти не несёт то, что ей дали")
+	}
+	if db.HasItem("party-b", "i_writ") {
+		t.Error("предмет одной парти виден другой")
+	}
+	if db.HasItem("party-a", "i_нет_такого") {
+		t.Error("парти несёт предмет, которого ей не давали")
+	}
+}
+
+// Добавление идемпотентно: предмет либо есть, либо нет, счётчика у него нет.
+func TestAddItemIsIdempotent(t *testing.T) {
+	db := NewDB()
+	db.AddItem("party", "i_writ")
+	db.AddItem("party", "i_writ")
+	if got := len(db.Inventory); got != 1 {
+		t.Errorf("строк инвентаря %d после двух добавлений", got)
+	}
+}

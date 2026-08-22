@@ -136,3 +136,49 @@ func TestSettingAndLifeAreOptional(t *testing.T) {
 		t.Errorf("сеттинг взялся из ниоткуда: %q", cfg.Setting)
 	}
 }
+
+// Предметы дела и стартовый инвентарь: без них у детектива нет рычага,
+// который в жанре базовый — «у меня бумага, ты обязан говорить».
+func TestItemsAndStartInventoryLoad(t *testing.T) {
+	cfg, err := Load("testdata/items.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writ, ok := cfg.DB.Items["i_writ"]
+	if !ok {
+		t.Fatal("предмет не загрузился")
+	}
+	if writ.Kind != "credential" || writ.Name == "" {
+		t.Errorf("предмет загрузился неполно: %+v", writ)
+	}
+	// CaseID проставляет загрузчик, как и факту: предмет принадлежит делу, а
+	// не глобальному пространству.
+	if writ.CaseID != cfg.CaseID {
+		t.Errorf("дело предмета %q, а дело %q", writ.CaseID, cfg.CaseID)
+	}
+	if !cfg.DB.HasItem(defaultParty, "i_writ") {
+		t.Error("стартовый инвентарь не доехал до парти")
+	}
+	if cfg.DB.HasItem(defaultParty, "i_lamp") {
+		t.Error("в инвентаре предмет, которого не было в start_inventory")
+	}
+}
+
+// Дело без предметов грузится как раньше: оба поля необязательны.
+func TestItemsAreOptional(t *testing.T) {
+	cfg, err := Load("testdata/minimal.json")
+	if err != nil {
+		t.Fatalf("дело без предметов не загрузилось: %v", err)
+	}
+	if len(cfg.DB.Items) != 0 || len(cfg.DB.Inventory) != 0 {
+		t.Errorf("предметы взялись из ниоткуда: %+v", cfg.DB.Items)
+	}
+}
+
+// Стартовый инвентарь не может назвать предмет, которого в деле нет: это
+// опечатка автора, и её надо видеть на загрузке, а не в середине партии.
+func TestStartInventoryRejectsUnknownItem(t *testing.T) {
+	if _, err := Load("testdata/items_broken.json"); err == nil {
+		t.Fatal("дело с несуществующим предметом в старт-инвентаре загрузилось")
+	}
+}
