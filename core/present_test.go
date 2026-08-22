@@ -204,3 +204,33 @@ func TestFactGrantingUnknownItemGrantsNothing(t *testing.T) {
 		t.Error("в инвентарь попал предмет, которого нет в деле")
 	}
 }
+
+// Инструментальность живёт в одном поле на две таблицы: носимый инструмент
+// берётся в руки так же, как проп узла. Пока их было две — тег у пропа и вид у
+// предмета, — они успели разойтись в данных.
+func TestCarriedToolIsReadiedLikeAProp(t *testing.T) {
+	g := presentGame()
+	g.DB.Items["i_lantern"] = store.Item{ID: "i_lantern", Kind: store.ToolKind, Name: "Фонарь"}
+	g.Acquire("i_lantern")
+
+	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 0 {
+		t.Fatalf("носимый инструмент активен без хода: %v", tools)
+	}
+	if res := g.Apply(Intent{Verb: "use_item", Args: Args{Item: "i_lantern"}}); res.Refused {
+		t.Fatalf("взять фонарь не вышло: %s", res.Refusal)
+	}
+	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 1 {
+		t.Errorf("носимый инструмент не попал в сцену: %v", tools)
+	}
+}
+
+// Предмет не вида tool инструментом не становится, сколько его ни применяй:
+// иначе предъявляемая бумага отменяла бы штраф среды.
+func TestNonToolItemIsNotAToolCurrent(t *testing.T) {
+	g := presentGame()
+	g.Acquire("i_writ")
+	g.Apply(Intent{Verb: "use_item", Args: Args{Item: "i_writ"}})
+	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 0 {
+		t.Errorf("бумага сработала как инструмент: %v", tools)
+	}
+}

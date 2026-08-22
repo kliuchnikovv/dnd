@@ -31,6 +31,27 @@ func (g *Game) Item(id store.ItemID) (store.Item, bool) {
 	return item, ok
 }
 
+// readyTool берёт инструмент в руки: проп текущего узла или носимый предмет,
+// если он вида tool. Возвращает ключ флейвора и признак, что инструмент взят.
+//
+// Две таблицы, одно слово: инструментальность и у пропа, и у предмета живёт в
+// Kind. Пока их было две — тег у пропа и вид у предмета, — они успели
+// разойтись в данных.
+func (g *Game) readyTool(id string) (string, bool) {
+	if p, ok := g.DB.PropAt(g.Node, store.PropID(id)); ok && p.Kind == store.ToolKind {
+		g.tool, g.toolNode = p.ID, g.Node
+		return "prop." + string(p.ID), true
+	}
+	// Носимый инструмент берётся в руки там, где стоишь: готовность привязана
+	// к узлу, потому что платой за неё был ход, сделанный ЗДЕСЬ. Фонарь из
+	// кармана не светит в двух местах сразу.
+	if item, ok := g.Item(store.ItemID(id)); ok && item.Kind == store.ToolKind && g.Carries(item.ID) {
+		g.tool, g.toolNode = store.PropID(item.ID), g.Node
+		return "item." + string(item.ID), true
+	}
+	return "", false
+}
+
 // learn — узнать факт и получить то, что он приносит. Обёртка нужна ровно
 // затем, чтобы выдача не зависела от пути: факт, услышанный от человека, и
 // факт, открытый сопоставлением, приносят предмет одинаково. Три места вызова

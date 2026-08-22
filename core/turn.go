@@ -55,12 +55,12 @@ func (g *Game) Apply(in Intent) TurnResult {
 		return r
 	}
 
-	// Взять инструмент — отдельный ход без броска. Проп с тегом tool ничего не
-	// даёт, пока лежит: плата за отмену штрафа среды — потраченное действие.
+	// Взять инструмент — отдельный ход без броска. Инструмент ничего не даёт,
+	// пока лежит или лежит в кармане: плата за отмену штрафа среды —
+	// потраченное действие.
 	if in.Verb == "use_item" {
-		if p, ok := g.DB.PropAt(g.Node, store.PropID(in.Args.Item)); ok && hasTag(p, "tool") {
-			g.tool, g.toolNode = p.ID, g.Node
-			return TurnResult{FlavourKey: "prop." + string(p.ID)}
+		if key, ok := g.readyTool(in.Args.Item); ok {
+			return TurnResult{FlavourKey: key}
 		}
 	}
 
@@ -305,15 +305,6 @@ func (g *Game) spendTime(def VerbDef) []store.Consequence {
 		return nil
 	}
 	return g.C.TickAll(1)
-}
-
-func hasTag(p store.SceneProp, tag string) bool {
-	for _, t := range p.Tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
 }
 
 func (g *Game) nodeTags(n store.NodeID) []string {

@@ -176,7 +176,7 @@ func TestHardVerbOnPropRollsAndFindsNothing(t *testing.T) {
 func TestUsingAToolPropMakesItActiveInTheScene(t *testing.T) {
 	g := turnGame(OutcomeSuccess)
 	g.DB.Props["n_quay"] = []store.SceneProp{{
-		ID: "p_lantern", Node: "n_quay", Name: "Фонарь", Tags: []string{"tool"},
+		ID: "p_lantern", Node: "n_quay", Name: "Фонарь", Kind: store.ToolKind,
 	}}
 
 	if tools := g.SceneView(Intent{Verb: "examine"}).Tools; len(tools) != 0 {
@@ -195,7 +195,7 @@ func TestUsingAToolPropMakesItActiveInTheScene(t *testing.T) {
 func TestToolDoesNotTravelBetweenNodes(t *testing.T) {
 	g := turnGame(OutcomeSuccess)
 	g.DB.Props["n_quay"] = []store.SceneProp{{
-		ID: "p_lantern", Node: "n_quay", Name: "Фонарь", Tags: []string{"tool"},
+		ID: "p_lantern", Node: "n_quay", Name: "Фонарь", Kind: store.ToolKind,
 	}}
 	g.Apply(Intent{Verb: "use_item", Args: Args{Item: "p_lantern"}})
 	g.Node = "n_forge"

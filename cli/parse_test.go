@@ -261,3 +261,24 @@ func TestParseItemsCommand(t *testing.T) {
 		t.Errorf("команда разобралась как %v", cmd.Kind)
 	}
 }
+
+// Префиксы дописываются всем глаголам, кроме одного: use_item их не дописывал,
+// и «use_item hammers» уезжал в бросок по пропу, которого нет. Объект у этого
+// глагола живёт в двух таблицах, поэтому голое имя — проп, а носимое
+// называется явно.
+func TestParseUseItemAddsPrefix(t *testing.T) {
+	bare, err := Parse("use_item hammers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bare.Intent.Args.Item != "p_hammers" {
+		t.Errorf("голое имя разобралось как %q", bare.Intent.Args.Item)
+	}
+	carried, err := Parse("use_item i_lantern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if carried.Intent.Args.Item != "i_lantern" {
+		t.Errorf("носимый предмет переименован в %q", carried.Intent.Args.Item)
+	}
+}

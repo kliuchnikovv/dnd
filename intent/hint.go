@@ -101,14 +101,16 @@ func BuildHint(g *core.Game) SceneHint {
 	for _, n := range g.ReachableNodes() {
 		h.Reachable = append(h.Reachable, Named{string(n), g.DB.Locations[n].Name})
 	}
-	// Инструмент — проп с меткой tool в этом узле: ровно то, что примет
-	// движок. Разойдись эти два списка, игрок «применял» бы бочки.
+	// Инструмент — вещь вида tool: проп этого узла или носимый предмет. Ровно
+	// то, что примет движок: разойдись эти списки, игрок «применял» бы бочки.
 	for _, p := range g.DB.Props[g.Node] {
-		for _, tag := range p.Tags {
-			if tag == "tool" {
-				h.Tools = append(h.Tools, Named{string(p.ID), p.Name})
-				break
-			}
+		if p.Kind == store.ToolKind {
+			h.Tools = append(h.Tools, Named{string(p.ID), p.Name})
+		}
+	}
+	for _, item := range g.Carried() {
+		if item.Kind == store.ToolKind {
+			h.Tools = append(h.Tools, Named{string(item.ID), item.Name})
 		}
 	}
 	sort.Slice(h.Tools, func(i, j int) bool { return h.Tools[i].ID < h.Tools[j].ID })

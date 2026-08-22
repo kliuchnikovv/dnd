@@ -1170,9 +1170,7 @@
       "node_id": "n_police_office",
       "name": "Office typewriter",
       "kind": "tool",
-      "tags": [
-        "tool"
-      ],
+      "tags": [],
       "text": "A squat machine with the letter e worn pale on its key."
     },
     {
@@ -1243,10 +1241,8 @@
       "id": "p_washstand",
       "node_id": "n_emilien_home",
       "name": "Washstand",
-      "kind": "furniture",
-      "tags": [
-        "tool"
-      ],
+      "kind": "tool",
+      "tags": [],
       "text": "A basin, a razor, a strop hanging from a nail beside it."
     },
     {
@@ -1414,9 +1410,7 @@
       "node_id": "n_fort_hq",
       "name": "Map table",
       "kind": "tool",
-      "tags": [
-        "tool"
-      ],
+      "tags": [],
       "text": "A table under a pinned map, dividers and a rule laid across it."
     },
     {
@@ -1447,10 +1441,8 @@
       "id": "p_desk_lamp",
       "node_id": "n_zheber_office",
       "name": "Desk lamp",
-      "kind": "fixture",
-      "tags": [
-        "tool"
-      ],
+      "kind": "tool",
+      "tags": [],
       "text": "The lamp throws a small circle and leaves the corners entirely dark."
     },
     {
@@ -1498,9 +1490,7 @@
       "node_id": "n_fort_hospital",
       "name": "Instrument tray",
       "kind": "tool",
-      "tags": [
-        "tool"
-      ],
+      "tags": [],
       "text": "A tray of instruments laid out on cloth, boiled and not yet used."
     },
     {

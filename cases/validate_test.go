@@ -274,3 +274,25 @@ func TestFactGrantingUnknownItemIsRejected(t *testing.T) {
 		t.Errorf("выдача несуществующего предмета прошла: %v", err)
 	}
 }
+
+// Тег у пропа теперь опечатка: инструментальность переехала в kind, и
+// сообщение обязано сказать это автору, а не просто отвергнуть дело.
+func TestPropToolTagIsRejectedWithAPointer(t *testing.T) {
+	err := mutate(t, func(f *File) { f.Props[0].Tags = []string{"tool"} })
+	if err == nil {
+		t.Fatal("тег вне словаря прошёл")
+	}
+	if !strings.Contains(err.Error(), "kind") {
+		t.Errorf("сообщение не говорит, куда переехала инструментальность: %v", err)
+	}
+}
+
+// Вид предмета — закрытый словарь: опечатка делает предмет молча бесполезным.
+func TestUnknownItemKindIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Items = append(f.Items, store.Item{ID: "i_x", Kind: "credentials", Name: "Бумага"})
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentials") {
+		t.Errorf("вид вне словаря прошёл: %v", err)
+	}
+}

@@ -665,10 +665,8 @@
       "id": "p_hook_lamp",
       "node_id": "n_warehouse",
       "name": "Лампа на крюке",
-      "kind": "fixture",
-      "tags": [
-        "tool"
-      ],
+      "kind": "tool",
+      "tags": [],
       "text": "Лампа на крюке, рядом жестянка с маслом: если заправить, света хватит на весь склад."
     },
     {
@@ -683,10 +681,8 @@
       "id": "p_hammers",
       "node_id": "n_forge",
       "name": "Стойка с молотами",
-      "kind": "furniture",
-      "tags": [
-        "tool"
-      ],
+      "kind": "tool",
+      "tags": [],
       "text": "Молоты висят по росту, рукояти вытерты до блеска."
     },
     {

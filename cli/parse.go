@@ -175,7 +175,10 @@ func Parse(line string) (Command, error) {
 		if len(rest) != 1 {
 			return Command{}, errors.New("use_item требует предмет")
 		}
-		cmd.Intent.Args.Item = rest[0]
+		// Объект этого глагола живёт в двух таблицах: инструмент бывает пропом
+		// узла и носимым предметом. Голое имя — проп (частый случай),
+		// носимое называется явно, с префиксом i_.
+		cmd.Intent.Args.Item = string(propID(rest[0]))
 		return cmd, nil
 	case "use_ability":
 		if len(rest) != 1 {
@@ -205,6 +208,7 @@ func entityID(s string) store.EntityID { return store.EntityID(withPrefix(s, "e_
 func factID(s string) store.FactID     { return store.FactID(withPrefix(s, "f_")) }
 func nodeID(s string) store.NodeID     { return store.NodeID(withPrefix(s, "n_")) }
 func itemID(s string) store.ItemID     { return store.ItemID(withPrefix(s, "i_")) }
+func propID(s string) store.PropID     { return store.PropID(withPrefix(s, "p_")) }
 
 // knownPrefixes — идентификаторы, которые уже размечены. Дописывать «e_»
 // пропу нельзя: игрок ушёл бы в несуществующую сущность, и отказ сообщил бы

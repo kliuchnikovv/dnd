@@ -100,7 +100,9 @@ func validateFile(f File) error {
 		}
 		for _, tag := range p.Tags {
 			if !store.KnownPropTag(tag) {
-				add("проп %s несёт тег %q вне словаря модификаторов", p.ID, tag)
+				add("проп %s несёт тег %q: словарь тегов пуст, "+
+					"инструментальность задаётся kind:%q, среда живёт на узле",
+					p.ID, tag, store.ToolKind)
 			}
 		}
 	}
@@ -277,6 +279,14 @@ func validateFile(f File) error {
 	items := map[store.ItemID]bool{}
 	for _, item := range f.Items {
 		items[item.ID] = true
+		// Вид предмета — закрытый словарь: опечатка в нём делает предмет
+		// молча бесполезным, и заметно это будет только в игре.
+		if !store.KnownItemKind(item.Kind) {
+			add("предмет %s имеет вид %q вне словаря %v", item.ID, item.Kind, store.ItemKinds)
+		}
+		if strings.TrimSpace(item.Name) == "" {
+			add("у предмета %s нет имени — игрок не сможет его назвать", item.ID)
+		}
 	}
 	obtainable := map[store.ItemID]bool{}
 	for _, id := range f.StartInventory {
