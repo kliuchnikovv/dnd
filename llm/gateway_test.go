@@ -49,9 +49,9 @@ func TestRoutesByRole(t *testing.T) {
 	}
 }
 
-// Правило из §11.3: выход парсера мутирует состояние, поэтому провайдер без
+// Правило из §11.3: выход парсера доходит до состояния, поэтому провайдер без
 // гарантии схемы к этой роли не допускается — даже если он объявлен.
-func TestStateMutatingRoleRefusesNonStrictProvider(t *testing.T) {
+func TestProposingRoleRefusesNonStrictProvider(t *testing.T) {
 	loose := NewFake("loose", false)
 	r := NewRouter().Route(RoleIntentParser, Target{loose, "claude-haiku-4-5"})
 	g := NewGateway(r, NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
@@ -65,13 +65,17 @@ func TestStateMutatingRoleRefusesNonStrictProvider(t *testing.T) {
 	}
 }
 
-func TestNonMutatingRoleAcceptsNonStrictProvider(t *testing.T) {
+// Роль, ничего ядру не предлагающая, нестрогого провайдера принимает: её
+// выход — речь, и плохой разбор стоит бледной реплики, а не канона. Раньше
+// здесь стоял нарратор; по реестру он предлагает канон-ambient и строгого
+// провайдера теперь требует, поэтому пример взят из ролей без предложений.
+func TestNonProposingRoleAcceptsNonStrictProvider(t *testing.T) {
 	loose := NewFake("loose", false)
-	r := NewRouter().Route(RoleNarrator, Target{loose, "claude-sonnet-5"})
+	r := NewRouter().Route(RoleActor, Target{loose, "claude-sonnet-5"})
 	g := NewGateway(r, NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
 
-	if _, err := g.Do(context.Background(), Request{Role: RoleNarrator, Input: "сцена"}); err != nil {
-		t.Fatalf("нарратор отвергнут: %v", err)
+	if _, err := g.Do(context.Background(), Request{Role: RoleActor, Input: "сцена"}); err != nil {
+		t.Fatalf("актёр отвергнут: %v", err)
 	}
 }
 

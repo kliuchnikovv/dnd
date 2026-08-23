@@ -23,14 +23,47 @@ const (
 	RoleCanonGuard   Role = "canon_guard"
 	RoleModeration   Role = "moderation"
 	RoleWorldsmith   Role = "worldsmith"
+	// RoleChatMaster — один вызов, который и разбирает фразу игрока, и
+	// отвечает ему репликой Мастера. Роль своя, а не RoleIntentParser,
+	// потому что роутинг и тиринг идут по роли: разбор со речью стоит
+	// иначе, чем разбор молча, и выбирать модель для них надо отдельно.
+	RoleChatMaster Role = "chat_master"
 )
 
-// MutatesState сообщает, управляет ли выход роли изменением состояния.
-// Для таких ролей допустимы только провайдеры с гарантией соответствия
-// схеме: разобранный «почти валидный» JSON мутирует канон.
-func (r Role) MutatesState() bool {
-	return r == RoleIntentParser
+// AllRoles — все объявленные роли в стабильном порядке. Нужен, чтобы
+// проводка проверялась исчерпывающе: роль, объявленную и вызываемую, но не
+// зароученную, шлюз отдаёт как ErrNoProvider, а откат надстройки молчит — и
+// это уже дважды выглядело как плохая модель вместо ненастроенного маршрута.
+func AllRoles() []Role {
+	return []Role{
+		RoleIntentParser,
+		RoleChatMaster,
+		RoleNarrator,
+		RoleActor,
+		RoleCanonGuard,
+		RoleModeration,
+		RoleWorldsmith,
+	}
 }
+
+// RequiresStrictOutput сообщает, допустимы ли для роли только провайдеры с
+// гарантией соответствия схеме. Ответ ВЫВОДИТСЯ из реестра капабилити, а не
+// задаётся списком: список ролей отставал бы от полномочий.
+//
+// Правило: роль что-то предлагает ядру — значит, её выход дойдёт до
+// состояния, и разобранный «почти валидный» JSON мутирует канон. Совет
+// (guard, moderation) и просто речь (актёр) строгого провайдера не требуют:
+// плохой разбор стоит там бледной реплики, а не порчи состояния.
+func RequiresStrictOutput(r Role) bool {
+	return len(Capabilities[r].Proposes) > 0
+}
+
+// MutatesState — прежнее имя того же вопроса.
+//
+// Deprecated: зовите RequiresStrictOutput. Оставлено обёрткой, потому что
+// «мутирует» — уже неправда: роль ничего не мутирует, она предлагает, а
+// применяет ядро (ADR-0001).
+func (r Role) MutatesState() bool { return RequiresStrictOutput(r) }
 
 type Usage struct {
 	InputTokens  int
@@ -88,7 +121,7 @@ var (
 	ErrPartyBudget  = errors.New("llm: суточный потолок парти превышен")
 	ErrTurnCalls    = errors.New("llm: превышено число вызовов на ход")
 	ErrNoProvider   = errors.New("llm: для роли не осталось доступных провайдеров")
-	ErrSchemaUnsafe = errors.New("llm: роль мутирует состояние, а провайдер не гарантирует схему")
+	ErrSchemaUnsafe = errors.New("llm: роль предлагает ядру изменение, а провайдер не гарантирует схему")
 	ErrUnknownModel = errors.New("llm: у модели нет цены в таблице")
 )
 

@@ -38,13 +38,14 @@ func (r *Router) ChainFor(role Role, tier Tier) []Target {
 }
 
 // Chain возвращает цепочку, отбрасывая цели, недопустимые для этой роли:
-// роль, мутирующая состояние, не пойдёт к провайдеру без гарантии схемы.
+// роль, предлагающая ядру что-либо, не пойдёт к провайдеру без гарантии
+// схемы. Пригодность решает реестр капабилити — здесь её только исполняют.
 func (r *Router) Chain(role Role) []Target { return r.filter(role, r.chains[role]) }
 
 func (r *Router) filter(role Role, in []Target) []Target {
 	var out []Target
 	for _, t := range in {
-		if role.MutatesState() && !t.Provider.StrictOutput() {
+		if RequiresStrictOutput(role) && !t.Provider.StrictOutput() {
 			continue
 		}
 		out = append(out, t)
