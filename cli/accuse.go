@@ -3,6 +3,7 @@ package cli
 import (
 	"strings"
 
+	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/core/accusation"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -69,7 +70,11 @@ func (s *Session) feedAccusation(line string) {
 // неверен: иначе слоты брутфорсятся по одному.
 func (s *Session) resolveAccusation(form accusation.Form) {
 	g := s.Game
+	// Обвинение заканчивает дело и в журнал идёт вместе с формой: одним
+	// глаголом его не выразить, а без формы реплей его не повторит.
+	entry := s.journalBeginForm(core.Intent{Verb: "accuse"}, &form)
 	res := g.Accuse(form)
+	s.journalApplied(entry)
 	switch {
 	case res.Refused:
 		s.emit(EventRefusal, "нельзя: %s\n", res.Refusal)

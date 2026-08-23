@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/core/accusation"
 	"github.com/kliuchnikovv/dnd/naming"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -19,12 +20,18 @@ type Session struct {
 	// sink — куда уходит вывод. Сессия печатает только через него: иначе
 	// полноэкранный режим пришлось бы делать вторым форматом вывода, а не
 	// вторым приёмником.
-	sink     Sink
-	r        Render
-	sc       *bufio.Scanner
-	interp   Interpreter
+	sink   Sink
+	r      Render
+	sc     *bufio.Scanner
+	interp Interpreter
+	// chat — переводчик чат-режима. Взаимоисключен с interp: два разбора
+	// одной фразы это два разных ответа на один ввод.
+	chat     ChatInterpreter
 	voicer   Voicer
 	narrator Narrator
+	// refuse — голос Мастера у отказа мира. Пустой означает прежнее «нельзя:
+	// …» побайтово: игра без моделей обязана работать как работала.
+	refuse func(string) string
 	// noted — о какой поломке надстройки уже сказано. Жаловаться на неё
 	// каждой строкой значит топить в шуме сам вывод игры.
 	noted map[string]bool
@@ -32,9 +39,30 @@ type Session struct {
 	// spokenTo — последний, к кому обращались. Разговор продолжается с тем же
 	// человеком: игроку не надо называть его в каждой реплике.
 	spokenTo store.EntityID
+	// held — ход, отложенный вопросом «к кому ты обращаешься?». Ответ на этот
+	// вопрос ДОГОВАРИВАЕТ начатое, а не начинает новое: без этого фраза игрока
+	// исчезала, а названное имя уезжало в движок отдельным обращением — живой
+	// прогон получал «вы заводите разговор о погоде» вместо своего вопроса.
+	held *core.Intent
 	// pending — вопрос, заданный игроку игрой. Следующая его фраза — ответ на
 	// этот вопрос, и разбор обязан это знать.
 	pending string
+	// hunch — показывать ли подсказки чутья. По умолчанию НЕТ: живой прогон
+	// показал, что чутьё срабатывает, пока игрок спокойно осматривает мир —
+	// счётчик холостых ходов считает любой ход без находки, а осмотр без
+	// находки это нормальный осмотр, а не «встал». Пока признак «застрял» не
+	// стал честнее, помощь молчит: подсказка не вовремя хуже её отсутствия,
+	// потому что читает решение вслух.
+	hunch bool
+	// chatShown, chatEaten — сколько реплик Мастера игрок увидел и сколько
+	// съел отказ ядра. Эксперимент надо мерить: высокая доля съеденных значит,
+	// что модель уверенно отвечает на ходы, которых мир не допускает, — и
+	// тогда порядок «сначала ответить» неверен.
+	chatShown, chatEaten int
+	// journal — журнал действий сессии (ADR-0002). nil означает «не пишем»:
+	// проводка флага живёт в cmd/dnd, а игра без журнала обязана работать
+	// как работала.
+	journal *Journal
 	// accusing — открытый набор слотов обвинения. Не nil, пока сессия ждёт
 	// очередной токен: полноэкранный режим отдаёт ввод по одной строке и
 	// не может сам дождаться следующей внутри одного хода.
@@ -51,6 +79,35 @@ func (s *Session) WithSink(k Sink) *Session {
 	return s
 }
 
+// WithJournal включает журнал действий: команда пишется до обработки ядром и
+// отмечается применённой после. Без него сессия не пишет ничего.
+func (s *Session) WithJournal(j *Journal) *Session {
+	s.journal = j
+	return s
+}
+
+// journalBegin пишет команду до обработки. Поломка журнала не отменяет ход:
+// сказать о ней надо, но игра, которая падает из-за надстройки, хуже игры без
+// надстройки.
+func (s *Session) journalBegin(in core.Intent) store.CommandLogEntry {
+	return s.journalBeginForm(in, nil)
+}
+
+func (s *Session) journalBeginForm(in core.Intent, form *accusation.Form) store.CommandLogEntry {
+	e, err := s.journal.begin(in, form, s.turn)
+	if err != nil {
+		s.noteOnce("журнал: " + err.Error())
+	}
+	return e
+}
+
+// journalApplied отмечает команду применённой после возврата из ядра.
+func (s *Session) journalApplied(e store.CommandLogEntry) {
+	if err := s.journal.commit(e); err != nil {
+		s.noteOnce("журнал: " + err.Error())
+	}
+}
+
 // emit — форматированное событие. Обёртка нужна, чтобы места печати меняли
 // только вид события, а не способ вывода.
 func (s *Session) emit(kind EventKind, format string, args ...any) {
@@ -62,16 +119,74 @@ func (s *Session) emitText(kind EventKind, text string) {
 }
 
 // emitSpeech — прямая речь с автором. Точек, где кто-то говорит, несколько
-// (NPC, игрок, напарник-подсказка), и у всех должен быть один и тот же
+// (NPC, игрок), и у всех должен быть один и тот же
 // формат события, иначе полноэкранный режим научится узнавать говорящего
 // по месту вызова, а не по данным.
 func (s *Session) emitSpeech(speaker, format string, args ...any) {
 	s.sink.Emit(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
 }
 
+// WithRefusalVoice отдаёт отказ мира Мастеру. Формулировку решает не он:
+// текст отказа приходит из ядра, Мастер только одевает его в речь — иначе у
+// «можно» появилось бы второе место правды. Голос, вернувший пустую строку
+// (сбой модели), означает откат на прежний вывод.
+func (s *Session) WithRefusalVoice(v func(string) string) *Session {
+	s.refuse = v
+	return s
+}
+
+// turnNotSpent — механический хвост отказа. Печатается КОДОМ, а не голосом:
+// «ход не потрачен» это факт движка, и отдавать его прозе значит позволить ей
+// об этом врать. Без него живая формулировка съедает единственный признак, по
+// которому игрок отличает отказ от провала.
+const turnNotSpent = "  (ход не потрачен)\n"
+
+// emitTurn печатает исход хода. Отказ уходит своим путём: у него есть автор,
+// и он единственный, кого игра отдаёт Мастеру на переформулировку.
+func (s *Session) emitTurn(in core.Intent, res core.TurnResult) {
+	if res.Refused {
+		s.emitRefusal(res.Refusal)
+		return
+	}
+	s.emitText(EventProse, s.r.Turn(s.Game, in, res))
+}
+
+// emitRefusal — отказ мира. Одно место на всю игру: отказы приходят из трёх
+// команд, и расхождение между ними было бы багом, видимым только в одной.
+func (s *Session) emitRefusal(refusal string) {
+	if s.refuse != nil {
+		if said := strings.TrimSpace(s.refuse(refusal)); said != "" {
+			s.sink.Emit(Event{Kind: EventRefusal, Speaker: MasterName,
+				Text: said + "\n" + turnNotSpent})
+			return
+		}
+	}
+	s.emit(EventRefusal, "нельзя: %s\n", refusal)
+}
+
+// WithHunch включает подсказки чутья. Выключены по умолчанию — см. поле hunch.
+func (s *Session) WithHunch() *Session {
+	s.hunch = true
+	return s
+}
+
+// ChatStats — сколько реплик чат-режима показано и сколько съедено отказом
+// ядра. Нули означают, что чат-режим не работал.
+func (s *Session) ChatStats() (shown, eaten int) { return s.chatShown, s.chatEaten }
+
 // Start печатает стартовую сцену. Отдельно от Run, потому что драйверов два:
 // построчный читает stdin сам, полноэкранный владеет своим циклом.
 func (s *Session) Start() {
+	// Брифинг — голос Мастера, список известного — печать кода. Разделены по
+	// той же причине, по которой бросок Мастеру не принадлежит: прозе нельзя
+	// доверять точность, а брифинг это единственное место, где игрок обязан
+	// получить факты дела дословно.
+	if text := s.r.Briefing(s.Game); text != "" {
+		s.emitText(EventProse, text)
+	}
+	if known := s.r.Known(s.Game); known != "" {
+		s.emitText(EventSystem, known)
+	}
 	s.emitText(EventScene, s.r.Scene(s.Game))
 }
 
@@ -84,6 +199,9 @@ func (s *Session) Feed(line string) bool {
 		s.feedAccusation(line)
 		return s.ended()
 	}
+	if s.resumeHeld(line) {
+		return s.ended()
+	}
 	cmd, err := Parse(line)
 	if err != nil {
 		s.interpret(line, err)
@@ -91,6 +209,24 @@ func (s *Session) Feed(line string) bool {
 		return true
 	}
 	return s.ended()
+}
+
+// resumeHeld договаривает ход, отложенный вопросом «к кому?». Отложенный ход
+// отпускается в любом случае: если игрок передумал и написал другое, запирать
+// его в вопросе нельзя — ввод пойдёт обычным путём как новый.
+func (s *Session) resumeHeld(line string) bool {
+	held := s.held
+	if held == nil {
+		return false
+	}
+	s.held = nil
+	id, ok := naming.Resolve(line, s.npcsHere())
+	if !ok {
+		return false
+	}
+	held.Args.Target = store.EntityID(id)
+	s.execute(*held)
+	return true
 }
 
 func (s *Session) Run() error {
@@ -142,7 +278,13 @@ func (s *Session) dispatch(cmd Command) bool {
 	case CmdClocks:
 		s.emitText(EventSystem, r.Clocks(g))
 	case CmdCompare:
-		s.emitText(EventProse, r.Turn(g, core.Intent{Verb: "compare"}, g.Compare(cmd.Facts[0], cmd.Facts[1])))
+		// Сопоставление выводит факты, то есть меняет состояние, и в журнал
+		// идёт наравне с действиями: без него реплей разойдётся с прогоном.
+		in := core.Intent{Verb: "compare", Args: core.Args{Facts: cmd.Facts}}
+		entry := s.journalBegin(in)
+		res := g.Compare(cmd.Facts[0], cmd.Facts[1])
+		s.journalApplied(entry)
+		s.emitTurn(core.Intent{Verb: "compare"}, res)
 	case CmdAccuse:
 		s.startAccusation()
 	case CmdRest:
@@ -153,7 +295,12 @@ func (s *Session) dispatch(cmd Command) bool {
 		if clocks := g.RestPreview(kind); len(clocks) > 0 {
 			s.emit(EventSystem, "длинный отдых продвинет часы: %v\n", clocks)
 		}
-		s.emitText(EventProse, r.Turn(g, core.Intent{Verb: "rest"}, g.Rest(kind)))
+		// Отдых двигает часы — ход, меняющий состояние. Длина отдыха лежит в
+		// Text: реплею нужен короткий он был или длинный.
+		entry := s.journalBegin(core.Intent{Verb: "rest", Args: core.Args{Text: cmd.Text}})
+		res := g.Rest(kind)
+		s.journalApplied(entry)
+		s.emitTurn(core.Intent{Verb: "rest"}, res)
 	case CmdAction:
 		s.applyIntentWithHint(cmd.Intent, cmd.Text)
 	}
@@ -169,16 +316,22 @@ func (s *Session) dispatch(cmd Command) bool {
 // и платит. Требовать УСПЕХ значило бы брать цену прихода, не давая прийти.
 func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	s.speak(in, res)
-	// Напарник вступает, когда расследование встало. Реплика авторская, момент
+	// Чутьё вступает, когда расследование встало. Текст авторский, момент
 	// выбирает движок: подсказка на каждом ходу читает решение вслух, а
 	// подсказка никогда — это закрытая консоль на первой сессии.
-	if line, ok := s.Game.Hint(); ok {
-		if e, found := s.Game.DB.Entities[s.Game.Companion]; found {
-			s.emitSpeech(e.Name, "%s: %s\n", e.Name, line)
+	//
+	// Автор события — само чутьё, а не персонаж. Раньше подсказку произносил
+	// напарник и оказывался в ответе за слова, которые выбрал движок: четыре
+	// подсказки «Гавани» из шести называют человека или запись, то есть ровно
+	// то, что гвард обязан рубить как выдумку персонажа.
+	if s.hunch {
+		if line, ok := s.Game.Hint(); ok {
+			s.sink.Emit(Event{Kind: EventHunch, Speaker: HunchName,
+				Text: HunchMark + line + "\n"})
 		}
 	}
 	if in.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
-		s.Game.Node = in.Args.Node
+		s.Game.MoveTo(in.Args.Node)
 		s.emitText(EventScene, s.r.Scene(s.Game))
 	}
 }
@@ -262,6 +415,20 @@ func (s *Session) applyIntent(in core.Intent) { s.applyIntentWithHint(in, "") }
 // applyIntentWithHint принимает подсказку об адресате из той части строки,
 // что осталась вне кавычек: «Обращаясь к Нильсу» стоит именно там.
 func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
+	ready, ok := s.prepare(in, hint)
+	if !ok {
+		return
+	}
+	s.execute(ready)
+}
+
+// prepare доводит интент до исполнимого вида: актёр, адресат, вопрос игроку,
+// если адресата взять негде. Отделено от исполнения ради чат-режима: там надо
+// знать, что ход состоится, ДО того как игрок увидит реплику Мастера, — а
+// вопрос «к кому ты обращаешься» означает, что не состоится.
+//
+// false означает, что ход не пойдёт: игре есть что спросить.
+func (s *Session) prepare(in core.Intent, hint string) (core.Intent, bool) {
 	in.Actor = s.Game.Actor
 	s.addressee(&in, hint)
 	if s.needsAddressee(in) {
@@ -272,16 +439,31 @@ func (s *Session) applyIntentWithHint(in core.Intent, hint string) {
 			names = append(names, c.Name)
 		}
 		s.emit(EventPrompt, "к кому ты обращаешься? здесь %s\n", strings.Join(names, ", "))
-		return
+		// Ход придержан: ответ на вопрос его договорит. Иначе сказанное
+		// исчезает, и игрок отвечает на вопрос игры в пустоту.
+		s.held = &in
+		return in, false
 	}
+	return in, true
+}
+
+// execute — единственное место, где интент доходит до движка. И команда, и
+// свободный текст, и чат-режим идут через него: расхождение между входами
+// было бы багом, который проявляется только в одном из режимов.
+func (s *Session) execute(in core.Intent) {
 	s.remember(in)
+	// Запись до обработки: команда лежит в журнале раньше, чем ядро тронуло
+	// состояние. Падение между этими двумя строками — единственный случай,
+	// который реплей хвоста pending обязан вылечить.
+	entry := s.journalBegin(in)
 	res := s.Game.Apply(in)
+	s.journalApplied(entry)
 	if said := spokenAloud(in); said != "" && !res.Refused {
 		// Реплика игрока показывается как реплика. Описание того, что он
 		// «сказал это вслух», на каждой фразе читается как шум.
 		s.emitSpeech(PlayerName, "%s\n", Spoken(said))
 	} else {
-		s.emitText(EventProse, s.r.Turn(s.Game, in, res))
+		s.emitTurn(in, res)
 	}
 	s.afterAction(in, res)
 }
