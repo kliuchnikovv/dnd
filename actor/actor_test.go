@@ -1263,3 +1263,53 @@ func TestMasterAnswerOnCaseFactIsNotVoiced(t *testing.T) {
 		t.Errorf("отвергнутая деталь доехала до актёра как материал:\n%s", in)
 	}
 }
+
+// Вердикт ядра по канону доходит до того, кто ведёт аудит. Без этого шва отказ
+// исчезает внутри озвучки: персонаж промолчал, а почему — не знает никто.
+func TestProposalVerdictReachesTheHook(t *testing.T) {
+	type verdict struct {
+		role   llm.Role
+		topic  string
+		text   string
+		reason string
+	}
+	for _, tc := range []struct {
+		name    string
+		topic   string
+		refused bool
+	}{
+		{"канон принят", "погода на рейде", false},
+		{"факт дела отвергнут", "f_toke_lied", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := harbour(t)
+			a, _ := repliesInOrder(t,
+				`{"line":"Сейчас.","needs":["а что там"]}`,
+				`{"line":"Как обычно."}`)
+			m := &fakeMaster{grants: []master.Grant{
+				{Topic: tc.topic, Answer: "морось с моря", Canon: true}}}
+			var got []verdict
+			v := &GameVoicer{Actor: a, Game: g, Master: m,
+				OnPropose: func(role llm.Role, mu core.Mutation, app core.Applied, ref core.Refusal) {
+					got = append(got, verdict{role, mu.Target, app.Text, ref.Reason})
+				}}
+
+			if _, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+				Args: core.Args{Target: "e_bern", Text: "а что там?"}}, core.TurnResult{}); err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("вердиктов: %d, ожидался один: %+v", len(got), got)
+			}
+			if got[0].role != llm.RoleNarrator || got[0].topic != tc.topic {
+				t.Errorf("вердикт не о том предложении: %+v", got[0])
+			}
+			if tc.refused && got[0].reason == "" {
+				t.Error("отказ пришёл без причины")
+			}
+			if !tc.refused && (got[0].reason != "" || got[0].text != "морось с моря") {
+				t.Errorf("применённое пришло как отказ: %+v", got[0])
+			}
+		})
+	}
+}

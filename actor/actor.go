@@ -721,6 +721,13 @@ type GameVoicer struct {
 	// Notify — куда сообщить о поломке надстройки. Молча откатываясь, игра
 	// выглядит рабочей при выключенном Мастере, и поломка живёт долго.
 	Notify func(error)
+	// OnPropose — куда сообщить вердикт ядра по предложенной мутации. Шов до
+	// аудита (ADR-0002): «что предложили» расходится с «что применили» именно
+	// здесь, и без этого шва отказ исчезал бы внутри озвучки — персонаж
+	// промолчал, а почему, не знает никто.
+	//
+	// Необязателен: без него канон работает как работал, молча.
+	OnPropose func(role llm.Role, m core.Mutation, app core.Applied, ref core.Refusal)
 }
 
 func (v *GameVoicer) turn() int {
@@ -847,9 +854,13 @@ func (v *GameVoicer) resolveNeeds(ctx context.Context, needs []string,
 // Ядро отвергает конфликт вердиктом, а не подменой, поэтому действующий ответ
 // приходится взять здесь — иначе второй вопрос дал бы второй мир.
 func (v *GameVoicer) canonize(topic, answer string) (string, bool) {
-	app, ref := propose.Mutation(v.Game, llm.RoleNarrator, core.Mutation{
+	m := core.Mutation{
 		Kind: core.MutCanonAmbient, Target: topic, Text: answer, Delta: v.turn(),
-	})
+	}
+	app, ref := propose.Mutation(v.Game, llm.RoleNarrator, m)
+	if v.OnPropose != nil {
+		v.OnPropose(llm.RoleNarrator, m, app, ref)
+	}
 	if !ref.Refused() {
 		// Текст берётся из вердикта, а не из предложения: применённое и
 		// предложенное совпадают не всегда.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -232,4 +233,82 @@ func TestNothingIsAuditedWithoutJournal(t *testing.T) {
 	if n := len(g.DB.Audit); n != 0 {
 		t.Errorf("аудит заполнился без просьбы: %d строк", n)
 	}
+}
+
+// Вердикт ядра по предложенной мутации — тоже строка аудита, и она ложится на
+// ту же команду, что и остальное в этом ходу. Без неё «что предложили» и «что
+// применили» расходятся молча: реплика персонажа осталась бы в аудите, а
+// отвергнутая деталь мира — нигде.
+func TestAuditRecordsMutationVerdict(t *testing.T) {
+	db := auditSession(t, "examine body\nquit\n", func(s *Session) {
+		s.WithVoicer(voicerFunc(func() {
+			s.AuditMutation(llm.RoleNarrator,
+				core.Mutation{Kind: core.MutCanonAmbient, Target: "погода", Text: "морось"},
+				core.Applied{}, core.Refusal{Reason: "тема уже канонизирована иначе"})
+			s.AuditMutation(llm.RoleWorldsmith,
+				core.Mutation{Kind: core.MutCanonAmbient, Target: "быт", Text: "рынок по средам"},
+				core.Applied{Kind: core.MutCanonAmbient, Target: "быт", Text: "рынок по средам"},
+				core.Refusal{})
+			s.AuditMutation(llm.RoleNarrator,
+				core.Mutation{Kind: core.MutCanonAmbient, Target: "быт", Text: "рынок по пятницам"},
+				core.Applied{Kind: core.MutCanonAmbient, Target: "быт", Text: "рынок по средам"},
+				core.Refusal{})
+		}))
+	})
+
+	cmds := db.Commands("s1")
+	if len(cmds) != 1 {
+		t.Fatalf("команд: %d, ожидалась 1", len(cmds))
+	}
+	rows := db.AuditFor("s1", cmds[0].Seq)
+	var refused, applied *store.AuditEntry
+	for i := range rows {
+		switch {
+		case strings.HasPrefix(rows[i].CoreVerdict, "refused"):
+			refused = &rows[i]
+		case rows[i].CoreVerdict == "applied" && strings.Contains(rows[i].LLMProposal, "mutation"):
+			applied = &rows[i]
+		}
+	}
+	if refused == nil || applied == nil {
+		t.Fatalf("вердикты мутаций не записаны: %+v", rows)
+	}
+	if !strings.Contains(refused.CoreVerdict, "тема уже канонизирована иначе") {
+		t.Errorf("причина отказа не доехала: %q", refused.CoreVerdict)
+	}
+	if refused.LLMRole != string(llm.RoleNarrator) {
+		t.Errorf("предложитель = %q", refused.LLMRole)
+	}
+	if !strings.Contains(refused.LLMProposal, "погода") ||
+		!strings.Contains(refused.LLMProposal, string(core.MutCanonAmbient)) {
+		t.Errorf("предложение не записано: %q", refused.LLMProposal)
+	}
+	if refused.RawInput != "examine body" {
+		t.Errorf("отказ оторван от ввода хода: %q", refused.RawInput)
+	}
+	if applied.LLMRole != string(llm.RoleWorldsmith) ||
+		!strings.Contains(applied.LLMProposal, "рынок по средам") {
+		t.Errorf("применённое записано не так: %+v", applied)
+	}
+	// Принятое предложение, от которого мир не изменился, отличимо от
+	// принятого и применённого: иначе идемпотентность канона выглядит в
+	// разборе как согласие модели с миром.
+	var held bool
+	for _, r := range rows {
+		if strings.Contains(r.CoreVerdict, "действующее значение сильнее") &&
+			strings.Contains(r.LLMProposal, "рынок по пятницам") {
+			held = true
+		}
+	}
+	if !held {
+		t.Errorf("идемпотентный повтор неотличим от применения: %+v", rows)
+	}
+}
+
+// voicerFunc — голос, который вместо реплики делает то, что нужно тесту.
+type voicerFunc func()
+
+func (f voicerFunc) Voice(context.Context, core.Intent, core.TurnResult) (string, error) {
+	f()
+	return "", nil
 }

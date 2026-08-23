@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -106,6 +108,20 @@ type llmProposal struct {
 	Reply   string       `json:"reply,omitempty"`
 	Clarify string       `json:"clarify,omitempty"`
 	Line    string       `json:"line,omitempty"`
+	// Mutation — предложенное изменение мира: не команда игрока, а расширение
+	// канона. Своё поле, потому что разбирают их по-разному: у команды спорят
+	// о разборе фразы, у мутации — о том, что модель решила про мир.
+	Mutation *proposedMutation `json:"mutation,omitempty"`
+}
+
+// proposedMutation — предложение мутации в форме аудита. Копия трёх полей
+// core.Mutation, а не она сама: в колонке разбора должно лежать то, о чём
+// спорят, а не структура ядра целиком с числовыми полями, которых у канона
+// нет.
+type proposedMutation struct {
+	Kind   string `json:"kind"`
+	Target string `json:"target"`
+	Text   string `json:"text,omitempty"`
 }
 
 func (p llmProposal) encode() string {
@@ -127,6 +143,39 @@ func (j *Journal) audit(e store.AuditEntry) {
 	e.SessionID = j.session
 	j.db.AppendAudit(e)
 	j.write(journalRecord{Kind: recordAudit, Audit: &e})
+}
+
+// AuditMutation пишет в аудит вердикт ядра по предложенной мутации.
+//
+// Это и есть та точка, где «предложили» расходится с «применили» (ADR-0002):
+// граница мутаций возвращает applied либо refusal, и без этой строки отказ
+// исчезал бы бесследно — реплика персонажа в аудите есть, а отвергнутая
+// деталь мира не оставляла следа нигде.
+//
+// Причина отказа лежит в той же колонке, что и класс исхода, с префиксом
+// refused: вердикт без причины не годится для разбора, а второй колонки под
+// него в схеме нет.
+func (s *Session) AuditMutation(role llm.Role, m core.Mutation, app core.Applied, ref core.Refusal) {
+	verdict := "applied"
+	switch {
+	case ref.Refused():
+		verdict = "refused: " + ref.Reason
+	case app.Text != "" && app.Text != strings.TrimSpace(m.Text):
+		// Предложение принято, но мир от него не изменился: на занятой теме
+		// действует решённое раньше. Для разбора это отдельный случай — модель
+		// решила про мир иначе, чем мир уже решил.
+		verdict = "applied: действующее значение сильнее предложенного"
+	}
+	proposal := llmProposal{Mutation: &proposedMutation{
+		Kind: string(m.Kind), Target: m.Target, Text: m.Text,
+	}}
+	s.journal.audit(store.AuditEntry{
+		Seq:         s.auditSeq,
+		RawInput:    s.raw,
+		LLMRole:     string(role),
+		LLMProposal: proposal.encode(),
+		CoreVerdict: verdict,
+	})
 }
 
 // verdictOf — вердикт ядра словами данных, а не вывода. Класс исхода печатается

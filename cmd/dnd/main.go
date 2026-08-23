@@ -225,7 +225,10 @@ func main() {
 			Actor: act, Game: game, Turn: session.Turn, Master: gm,
 			Notify: func(err error) {
 				fmt.Fprintf(debugSink(debugRing), "(Мастер не ответил: %v)\n", err)
-			}})
+			},
+			// Вердикт ядра по канону — в аудит-поток той же команды: без него
+			// отвергнутая деталь мира не оставляет следа нигде.
+			OnPropose: session.AuditMutation})
 		voice := &narrator{master: gm, game: game, chat: *chat}
 		session.WithNarrator(voice).WithRefuser(voice)
 		defer func() { reportMetrics(gw, parser, session) }()
