@@ -397,9 +397,14 @@ func TestSchemaCarriesSceneEnums(t *testing.T) {
 	if !ok {
 		t.Fatal("у target нет перечисления присутствующих")
 	}
-	// Цель — это и человек, и деталь места: движок целями считает и то и другое.
-	if len(enum) != len(hint.targets()) {
-		t.Errorf("в перечислении %d целей, в сцене %d", len(enum), len(hint.targets()))
+	// Цель — это и человек, и деталь места, плюс пустое значение: поле
+	// обязательное (иначе модель его не заполняет вовсе), а действие бывает ни
+	// на кого не направлено.
+	if len(enum) != len(hint.targets())+1 {
+		t.Errorf("в перечислении %d целей, в сцене %d плюс пустое", len(enum), len(hint.targets()))
+	}
+	if !containsStr(enum, "") {
+		t.Error("в перечислении нет пустой цели — действие без цели станет невыразимым")
 	}
 	for _, e := range hint.Entities {
 		if !containsStr(enum, e.ID) {
@@ -724,7 +729,9 @@ func TestToolsInSceneRestoreTheVerb(t *testing.T) {
 	}
 	item := props["item"].(map[string]any)
 	enum, ok := item["enum"].([]string)
-	if !ok || len(enum) != 1 || enum[0] != "p_hook_lamp" {
+	// Первым идёт пустое значение: поле обязательное (иначе модель его не
+	// заполняет), а действие бывает не про предмет.
+	if !ok || len(enum) != 2 || enum[1] != "p_hook_lamp" {
 		t.Errorf("предмет без перечисления: %v", item)
 	}
 	if !strings.Contains(hint.Render(), "p_hook_lamp") {
@@ -905,7 +912,7 @@ func TestPresentEntersGrammarWithCarriedItems(t *testing.T) {
 		t.Error("есть что предъявить, а глагола предъявления нет")
 	}
 	enum, ok := props["item"].(map[string]any)["enum"].([]string)
-	if !ok || len(enum) != 1 || enum[0] != "i_writ" {
+	if !ok || len(enum) != 2 || enum[1] != "i_writ" {
 		t.Errorf("носимый предмет не попал в перечисление: %v", props["item"])
 	}
 }
@@ -1192,5 +1199,43 @@ func TestMissingTargetClarifyNamesTheTargets(t *testing.T) {
 		if !strings.Contains(res.Clarify, want) {
 			t.Errorf("уточнение не называет %q: %q", want, res.Clarify)
 		}
+	}
+}
+
+// Модель со строгой схемой заполняет ровно то, что объявлено обязательным. С
+// одним outcome в required она возвращала {"verb":"examine"} без цели даже
+// там, где цель названа словами, и даже после прямого «ОБЯЗАТЕЛЕН» в описании
+// поля и в тексте ввода — четыре фразы, ни одной заполненной цели. Уговоры тут
+// не работают, работает схема.
+func TestTargetIsRequiredBySchema(t *testing.T) {
+	probe := SchemaFor(harbourHint(t))
+	required, ok := probe["required"].([]string)
+	if !ok {
+		t.Fatal("у схемы нет списка обязательных полей")
+	}
+	var hasTarget bool
+	for _, r := range required {
+		if r == "target" {
+			hasTarget = true
+		}
+	}
+	if !hasTarget {
+		t.Error("цель не объявлена обязательной — модель перестанет её заполнять")
+	}
+}
+
+// Пустая цель проходит валидацию: обязательность поля не должна превращаться в
+// обязательность цели у осмотра вокруг себя.
+func TestEmptyTargetIsAccepted(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"look","target":""}`)
+	res, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("осмотр вокруг себя отвергнут: %q", res.Clarify)
+	}
+	if res.Intent.Args.Target != "" {
+		t.Errorf("цель взялась из ниоткуда: %q", res.Intent.Args.Target)
 	}
 }

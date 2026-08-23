@@ -84,11 +84,26 @@ func SchemaFor(hint SceneHint) map[string]any {
 		}
 		return m
 	}
+	// enumOrEmpty — то же, но пустая строка тоже законна: поле обязательное, а
+	// действие бывает ни на кого не направлено.
+	enumOrEmpty := func(list []Named, desc string) map[string]any {
+		m := map[string]any{"type": "string", "description": desc}
+		if ids := idsOf(list); len(ids) > 0 {
+			m["enum"] = append([]string{""}, ids...)
+		}
+		return m
+	}
 	_ = str
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"outcome"},
+		// target объявлен обязательным СОЗНАТЕЛЬНО, вместе с пустым значением в
+		// перечислении. Модель со строгой схемой заполняет ровно то, что
+		// требуется: с одним лишь outcome в required она возвращала
+		// {"verb":"examine"} без цели даже там, где цель названа словами, и
+		// даже после прямого «ОБЯЗАТЕЛЕН» в описании поля и в вводе. Пустая
+		// строка — законный ответ для действий, ни на кого не направленных.
+		"required": []string{"outcome", "target", "topic", "item"},
 		"properties": map[string]any{
 			"outcome": map[string]any{
 				"type": "string",
@@ -98,13 +113,18 @@ func SchemaFor(hint SceneHint) map[string]any {
 				"type": "string", "enum": verbNamesFor(hint),
 				"description": "глагол из реестра; обязателен при outcome=intent",
 			},
-			"target": enumOr(hint.targets(), "id цели: человек из присутствующих либо деталь места"),
-			"topic":  enumOr(hint.Topics, "id факта из банка тем парти"),
-			"node":   enumOr(hint.Reachable, "id смежного открытого узла"),
+			"target": enumOrEmpty(hint.targets(), "id цели: человек из присутствующих либо деталь места. "+
+				"ОБЯЗАТЕЛЕН для действий, направленных на кого-то или что-то: examine, search, "+
+				"question, talk_to, present, stake_out и прочих. Без него действие не исполнится, "+
+				"и игру придётся переспрашивать"),
+			"topic": enumOrEmpty(hint.Topics, "id факта из банка тем парти; "+
+				"пусто, если игрок спрашивает открыто или тема ни при чём"),
+			"node": enumOr(hint.Reachable, "id смежного открытого узла"),
 			"facts": map[string]any{"type": "array",
 				"items":       enumOr(hint.Topics, "id известного факта"),
 				"description": "ровно два id известных фактов для compare"},
-			"item":    enumOr(itemChoices(hint), "id предмета: из «можно применить» либо из «при себе»"),
+			"item": enumOrEmpty(itemChoices(hint), "id предмета: из «можно применить» либо из «при себе»; "+
+				"пусто, если действие не про предмет"),
 			"ability": str,
 			"text":    map[string]any{"type": "string", "description": "свободный текст для theorize, say, emote"},
 			"clarify": map[string]any{"type": "string", "description": "вопрос игроку в характере при outcome=clarify"},

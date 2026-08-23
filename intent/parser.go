@@ -120,7 +120,10 @@ func (p *Parser) attempt(ctx context.Context, text string, hint SceneHint,
 	req.Role = llm.RoleIntentParser
 	req.Schema = schemaJSONFor(hint)
 	req.System = fmt.Sprintf(systemPrompt, arityBrief())
-	req.Input = "Сцена:\n" + hint.Render() + "\nИгрок пишет: " + text
+	req.Input = "Сцена:\n" + hint.Render() + "\nИгрок пишет: " + text +
+		"\n\nЕсли действие направлено на кого-то или что-то из сцены — ОБЯЗАТЕЛЬНО заполни " +
+		"target его идентификатором. Игрок называет цель своими словами и в своём падеже " +
+		"(«бочки» это p_barrels); сопоставь сам."
 	if repair != "" {
 		req.Input += "\n\nПредыдущий ответ был неполон: " + repair +
 			"\nВерни тот же глагол, заполнив пропущенное значением из сцены."
