@@ -17,10 +17,10 @@ func canonGame() *Game {
 func TestCanonIsFirstWins(t *testing.T) {
 	g := canonGame()
 
-	if got := g.CanonPut("ключи от весовой", "у смотрителя весов", 3); got != "у смотрителя весов" {
+	if got := g.canonPut("ключи от весовой", "у смотрителя весов", 3); got != "у смотрителя весов" {
 		t.Errorf("первая канонизация вернула %q", got)
 	}
-	if got := g.CanonPut("ключи от весовой", "у начальника стражи", 7); got != "у смотрителя весов" {
+	if got := g.canonPut("ключи от весовой", "у начальника стражи", 7); got != "у смотрителя весов" {
 		t.Errorf("вторая канонизация переписала канон: %q", got)
 	}
 	got, ok := g.CanonGet("ключи от весовой")
@@ -33,7 +33,7 @@ func TestCanonIsFirstWins(t *testing.T) {
 // вопрос, и второй ответ на него был бы вторым каноном.
 func TestCanonTopicIsNormalised(t *testing.T) {
 	g := canonGame()
-	g.CanonPut("Ключи от Весовой", "у смотрителя весов", 1)
+	g.canonPut("Ключи от Весовой", "у смотрителя весов", 1)
 	if got, ok := g.CanonGet("  ключи   от весовой "); !ok || got != "у смотрителя весов" {
 		t.Errorf("нормализация темы не работает: %q (%v)", got, ok)
 	}
@@ -43,8 +43,8 @@ func TestCanonTopicIsNormalised(t *testing.T) {
 // дыра, в которую потом уедет любая выдумка.
 func TestCanonRejectsEmpty(t *testing.T) {
 	g := canonGame()
-	g.CanonPut("", "что-то", 1)
-	g.CanonPut("тема", "   ", 1)
+	g.canonPut("", "что-то", 1)
+	g.canonPut("тема", "   ", 1)
 	if got := g.Canon(); len(got) != 0 {
 		t.Errorf("пустое ушло в канон: %+v", got)
 	}
@@ -53,8 +53,8 @@ func TestCanonRejectsEmpty(t *testing.T) {
 // Канон читается в стабильном порядке: промпт обязан собираться одинаково.
 func TestCanonReadsInStableOrder(t *testing.T) {
 	g := canonGame()
-	g.CanonPut("яблоки", "с материка", 1)
-	g.CanonPut("аптека", "нет, только травница на площади", 2)
+	g.canonPut("яблоки", "с материка", 1)
+	g.canonPut("аптека", "нет, только травница на площади", 2)
 
 	got := g.Canon()
 	if len(got) != 2 || got[0].Topic != "аптека" || got[1].Topic != "яблоки" {
@@ -69,7 +69,7 @@ func TestCanonIsPerCase(t *testing.T) {
 	a := NewGame(Config{DB: db, CaseID: "harbour"})
 	b := NewGame(Config{DB: db, CaseID: "forte_merlo"})
 
-	a.CanonPut("аптека", "нет такой", 1)
+	a.canonPut("аптека", "нет такой", 1)
 	if _, ok := b.CanonGet("аптека"); ok {
 		t.Error("канон одного дела виден в другом")
 	}

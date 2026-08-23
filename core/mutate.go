@@ -154,7 +154,7 @@ func (g *Game) proposeCanon(m Mutation) (Applied, Refusal) {
 		return Applied{Kind: MutCanonAmbient, Target: topic, Text: have}, Refusal{}
 	}
 	return Applied{
-		Kind: MutCanonAmbient, Target: topic, Text: g.CanonPut(topic, text, m.Delta),
+		Kind: MutCanonAmbient, Target: topic, Text: g.canonPut(topic, text, m.Delta),
 	}, Refusal{}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
+	"github.com/kliuchnikovv/dnd/propose"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -1016,7 +1017,11 @@ func TestNeedsWithoutMasterAreIgnored(t *testing.T) {
 // запрашивая её второй раз.
 func TestCanonReachesThePrompt(t *testing.T) {
 	g := harbour(t)
-	g.CanonPut("ключи от весовой", "у смотрителя весов", 1)
+	// Канон засевается через границу, а не мимо неё: другого входа у него нет.
+	propose.Mutation(g, llm.RoleNarrator, core.Mutation{
+		Kind: core.MutCanonAmbient, Target: "ключи от весовой",
+		Text: "у смотрителя весов", Delta: 1,
+	})
 	v, f := voicer(t, g, `{"line":"У смотрителя."}`)
 
 	if _, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
