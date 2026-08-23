@@ -31,6 +31,12 @@ type DB struct {
 	WorldEvents []WorldEvent
 	Outbox      []OutboxMessage
 
+	// Журнал действий (ADR-0002). Append-only: входящий журнал команд —
+	// зеркало исходящего Outbox, аудит — след недоверенного ввода.
+	// См. store/journal.go.
+	CommandLog []CommandLogEntry
+	Audit      []AuditEntry
+
 	Contradictions []Contradiction
 }
 
