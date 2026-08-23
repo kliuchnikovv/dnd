@@ -68,13 +68,15 @@ func (s *Session) checkEntry(e store.CommandLogEntry) error {
 		return fmt.Errorf("seq %d: журнал снят на ядре %q, сейчас %q",
 			e.Seq, e.CoreVersion, core.Version)
 	}
-	if e.SnapshotID != s.journal.snapshot {
-		return fmt.Errorf("seq %d: журнал снят со снепшота %q, сессия на %q",
-			e.Seq, e.SnapshotID, s.journal.snapshot)
-	}
+	// Seed сверяется раньше снепшота, хотя входит в него: иначе запуск с
+	// другим seed объясняется расхождением хешей, а игрок ошибся флагом.
 	if e.DiceCtx.Seed != s.journal.seed {
 		return fmt.Errorf("seq %d: журнал снят на seed %d, сессия на %d",
 			e.Seq, e.DiceCtx.Seed, s.journal.seed)
+	}
+	if e.SnapshotID != s.journal.snapshot {
+		return fmt.Errorf("seq %d: журнал снят со снепшота %q, сессия на %q",
+			e.Seq, e.SnapshotID, s.journal.snapshot)
 	}
 	return nil
 }

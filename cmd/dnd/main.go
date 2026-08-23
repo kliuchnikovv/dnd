@@ -11,11 +11,15 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/kliuchnikovv/dnd/actor"
 	"github.com/kliuchnikovv/dnd/cases"
@@ -26,6 +30,7 @@ import (
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/tui"
 	"golang.org/x/term"
 )
@@ -34,7 +39,16 @@ func main() {
 	casePath := flag.String("case", "cases/harbour/case.json", "путь к файлу дела")
 	seed := flag.Int64("seed", 1, "seed RNG: прогон воспроизводится парой (seed, ввод)")
 	script := flag.String("script", "", "файл команд вместо интерактивного ввода")
+	journalPath := flag.String("journal", "",
+		"писать журнал действий сессии в файл: команды до обработки, отметки о "+
+			"применении, аудит недоверенного ввода")
+	replayPath := flag.String("replay", "",
+		"прогнать записанный журнал вместо ввода игрока; -case и -seed обязаны "+
+			"совпадать с теми, на которых он снят")
 	nl := flag.Bool("nl", false, "переводить свободный текст в действия через модель")
+	chat := flag.Bool("chat", false,
+		"диалоговый ввод: один вызов разбирает фразу и отвечает репликой Мастера, "+
+			"после чего ядро решает, состоится ли ход")
 	provider := flag.String("provider", "openrouter", "поставщик модели: openrouter | anthropic")
 	model := flag.String("model", "", "идентификатор модели; для openrouter обязателен")
 	modelCheap := flag.String("model-cheap", "",
@@ -47,6 +61,10 @@ func main() {
 	guardLines := flag.Bool("guard-lines", true,
 		"проверять реплики NPC на утечку дела вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
+	hunch := flag.Bool("hunch", false,
+		"показывать подсказки чутья застрявшему игроку; пока выключено — "+
+			"признак «застрял» считает холостым любой ход без находки, включая "+
+			"спокойный осмотр мира")
 	plain := flag.Bool("plain", false,
 		"построчный режим на терминале: без полноэкранного окна, как в скрипте")
 	// Ход при полном протоколе: разбор ввода, актёр, Мастер за данными, актёр
@@ -60,6 +78,16 @@ func main() {
 	flag.Parse()
 	loadDotenv(*envFile)
 
+	if err := checkReplay(*replayPath, *script, *nl, *chat); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	raw, err := os.ReadFile(*casePath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	cfg, err := cases.Load(*casePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -67,6 +95,11 @@ func main() {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(*seed).Stream("resolve")
+	// Снепшот сессии в прототипе — дело плюс seed: начальное состояние
+	// выводится из них детерминированно. Хеш берётся от СОДЕРЖИМОГО дела, а не
+	// от пути: правка дела делает журнал непереигрываемым, и узнать об этом
+	// надо на реплее, а не по разъезжающимся фактам.
+	snapshot := snapshotID(cfg.CaseID, raw, *seed)
 
 	in := os.Stdin
 	if *script != "" {
@@ -81,6 +114,31 @@ func main() {
 
 	game := core.NewGame(*cfg)
 	session := cli.NewSession(game, in, os.Stdout)
+	if *hunch {
+		session.WithHunch()
+	}
+
+	var journal *cli.Journal
+	if *journalPath != "" || *replayPath != "" {
+		journal = cli.NewJournal(game.DB, sessionID(snapshot), snapshot, *seed)
+		session.WithJournal(journal)
+	}
+	if *journalPath != "" {
+		f, err := os.Create(*journalPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		journal.WithWriter(f)
+	}
+	if *replayPath != "" {
+		if err := replaySession(session, *replayPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// fs решается один раз: и создание кольца отладки, и выбор драйвера ниже
 	// обязаны видеть один и тот же ответ, иначе полноэкранный режим и его
@@ -93,7 +151,11 @@ func main() {
 	// noDebugReason — честный текст для панели отладки, когда полного дампа
 	// нет: причина не всегда «не указан -debug-llm» (см. noDebugReasonFor).
 	var noDebugReason string
-	if *nl {
+	if err := checkModes(*nl, *chat); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if usesModels(*nl, *chat) {
 		target, err := resolveProvider(*provider, *model)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -138,22 +200,37 @@ func main() {
 				gw = gw.WithDebug(os.Stderr)
 			}
 		}
-		parser = intent.NewParser(gw)
-		session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
+		// Разбор один и тот же; чат-режим отличается тем, что тем же вызовом
+		// отвечает игроку, и подключается своим методом.
+		if *chat {
+			parser = intent.NewChatParser(gw)
+			session.WithChat(&intent.GameInterpreter{Parser: parser, Game: game})
+		} else {
+			parser = intent.NewParser(gw)
+			session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
+		}
 		act := actor.New(gw)
 		if *guardLines {
 			act = act.WithGuard(actor.NewGuard(gw))
 		}
+		// Почему реплика стала заглушкой — в ту же панель, что и остальные
+		// внештатные сообщения. Игроку это не показывается: четыре пути к
+		// заглушке дают одну фразу, и различать их нужно тому, кто отлаживает,
+		// а не тому, кто играет.
+		act = act.WithNotify(func(reason string) {
+			fmt.Fprintf(debugSink(debugRing), "(%s)\n", reason)
+		})
 		gm := master.New(gw)
 		session.WithVoicer(&actor.GameVoicer{
 			Actor: act, Game: game, Turn: session.Turn, Master: gm,
 			Notify: func(err error) {
 				fmt.Fprintf(debugSink(debugRing), "(Мастер не ответил: %v)\n", err)
 			}})
-		session.WithNarrator(&narrator{master: gm, game: game})
-		defer func() { reportMetrics(gw, parser) }()
+		voice := &narrator{master: gm, game: game, chat: *chat}
+		session.WithNarrator(voice).WithRefuser(voice)
+		defer func() { reportMetrics(gw, parser, session) }()
 	}
-	noDebugReason = noDebugReasonFor(*nl, *debugLLM, debugRing)
+	noDebugReason = noDebugReasonFor(usesModels(*nl, *chat), *debugLLM, debugRing)
 
 	if fs {
 		if err := tui.Run(session, tui.Options{
@@ -171,7 +248,81 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Поломка журнала — не деталь: на нём стоит воспроизводимость, и прогон,
+	// который её потерял, обязан закончиться ненулевым кодом.
+	if err := journal.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
+
+// snapshotID — идентификатор начального состояния: дело плюс seed. Читаемая
+// часть оставлена нарочно: снепшот попадает в баг-репорт, и «harbour@a1b2c3d4»
+// там полезнее одного хеша.
+func snapshotID(caseID store.CaseID, content []byte, seed int64) string {
+	h := sha256.New()
+	h.Write(content)
+	fmt.Fprintf(h, "|%d", seed)
+	return fmt.Sprintf("%s@%s", caseID, hex.EncodeToString(h.Sum(nil))[:8])
+}
+
+// sessionID — какая это сессия. Два прогона одного дела на одном seed — две
+// разные сессии, поэтому в идентификатор входит время запуска: журнал одной не
+// должен молча дописываться в другую.
+func sessionID(snapshot string) store.SessionID {
+	return store.SessionID(fmt.Sprintf("%s/%s", snapshot,
+		time.Now().UTC().Format("20060102T150405")))
+}
+
+// checkReplay отбивает реплей вместе с тем, что ему противоречит. Ввод игрока
+// реплею не нужен, а модель в нём недетерминирована и стоит денег: молча
+// проигнорировать любой из этих флагов значило бы выдать другой прогон за
+// записанный.
+func checkReplay(replay, script string, nl, chat bool) error {
+	if replay == "" {
+		return nil
+	}
+	if script != "" {
+		return errors.New("-replay и -script вместе не работают: журнал сам " +
+			"и есть ввод, а второй источник ходов сделал бы прогон не тем, что записан")
+	}
+	if nl || chat {
+		return errors.New("-replay не работает с -nl и -chat: правда реплея — " +
+			"записанный интент, а второй прогон через модель дал бы другой")
+	}
+	return nil
+}
+
+// replaySession прогоняет журнал с диска. Расхождение снепшота, seed или
+// версии ядра ловит сам реплеер — здесь только чтение файла.
+func replaySession(session *cli.Session, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	dump, err := cli.ReadJournal(f)
+	if err != nil {
+		return err
+	}
+	return session.Replay(dump.Commands)
+}
+
+// checkModes отбивает -nl вместе с -chat. Молчаливый приоритет одного из них
+// был бы худшим исходом: игрок получил бы разбор, о котором не просил, и не
+// узнал бы об этом.
+func checkModes(nl, chat bool) error {
+	if nl && chat {
+		return errors.New("-nl и -chat вместе не работают: это два разных разбора " +
+			"одной фразы. -chat отвечает игроку тем же вызовом, которым разбирает")
+	}
+	return nil
+}
+
+// usesModels — нужен ли шлюз моделей. Оба режима свободного текста считаются
+// одинаково: всё, что ниже зависит от шлюза (кольцо отладки, потолки, метрики,
+// причина пустой панели), обязано видеть один ответ.
+func usesModels(nl, chat bool) bool { return nl || chat }
 
 // fullscreen сообщает, уместен ли полноэкранный режим. Только когда И ввод, И
 // вывод — терминал: пайп, -script и тесты обязаны идти построчным путём,
@@ -231,7 +382,7 @@ func debugSink(ring *tui.Ring) io.Writer {
 func noDebugReasonFor(nl, debugLLM bool, ring *tui.Ring) string {
 	switch {
 	case !nl && debugLLM:
-		return "-debug-llm без -nl ничего не даёт: моделей не вызывает ни один режим"
+		return "-debug-llm без -nl или -chat ничего не даёт: моделей не вызывает ни один режим"
 	case nl && !debugLLM && ring != nil:
 		return "дамп обмена выключен: здесь только внештатные сообщения, " +
 			"для полного дампа запустите с -debug-llm"
@@ -250,6 +401,10 @@ var appRoles = []struct {
 	Tier llm.Tier
 }{
 	{llm.RoleIntentParser, llm.TierMain},
+	// Чат-режим: разбор и реплика одним вызовом. Основной тир и только он —
+	// выход несёт интент, то есть мутирует состояние, и дешёвая модель тут
+	// платила бы каноном за экономию.
+	{llm.RoleChatMaster, llm.TierMain},
 	{llm.RoleActor, llm.TierMain},
 	{llm.RoleActor, llm.TierCheap},    // приветствие, прощание, ремонт реплики
 	{llm.RoleNarrator, llm.TierMain},  // проза сцены и исхода
@@ -263,6 +418,7 @@ var appRoles = []struct {
 func buildRouter(target, cheap llm.Target) *llm.Router {
 	router := llm.NewRouter().
 		Route(llm.RoleIntentParser, target).
+		Route(llm.RoleChatMaster, target).
 		Route(llm.RoleActor, target).
 		Route(llm.RoleNarrator, target).
 		Route(llm.RoleCanonGuard, target)
@@ -275,25 +431,57 @@ func buildRouter(target, cheap llm.Target) *llm.Router {
 	return router
 }
 
-// narrator связывает Мастера с презентацией. Проза необязательна: без -nl
-// печатается авторский текст, и это тот же текст, что служит Мастеру рамкой.
+// narrator связывает Мастера с презентацией — и прозой, и отказом. Обе
+// надстройки необязательны: без -nl печатается авторский текст (он же служит
+// Мастеру рамкой) и прежнее «нельзя: …». Голос один, потому что говорящий
+// один: делить прозу и отказ между двумя объектами значило бы говорить с
+// игроком двумя разными людьми.
 type narrator struct {
 	master *master.Master
 	game   *core.Game
+	// chat — чат-режим. Исход в нём Мастер не описывает: он уже ответил
+	// игроку репликой ДО броска, и вторая проза о том же ходе — это пересказ
+	// своими словами того, что игрок только что прочёл. Ход остаётся в один
+	// вызов модели, то есть дешевле -nl. Описание МЕСТА оживляется по-прежнему:
+	// это другая работа, и реплика её не заменяет.
+	chat bool
 }
 
 func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 	what := master.KindOutcome
-	if p.Kind == cli.ProsePlace {
+	switch {
+	case p.Kind == cli.ProseBriefing:
+		what = master.KindBriefing
+	case p.Kind == cli.ProsePlace:
 		what = master.KindPlace
+	case n.chat:
+		// Пустой ответ означает откат на авторскую рамку — ровно то, что
+		// нужно: исход печатает ядро. Брифинга это не касается: он не исход, и
+		// оживить его — та же работа, что оживить место.
+		return "", nil
 	}
 	return n.master.Narrate(ctx, what, p.Frame,
 		master.World{Setting: n.game.Setting, Scene: p.Scene}, p.Outcome, p.Speaking, llm.Request{})
 }
 
+// Refuse произносит отказ мира. Тот же Мастер и тот же мир, что у прозы:
+// отказ — такая же его реплика, как описание сцены, и делить их между двумя
+// голосами значило бы говорить с игроком двумя разными людьми.
+func (n *narrator) Refuse(ctx context.Context, refusal string) (string, error) {
+	return n.master.Refuse(ctx, refusal,
+		master.World{Setting: n.game.Setting, Scene: sceneFor(n.game)}, llm.Request{})
+}
+
+// sceneFor — что видно вокруг, словами для Мастера. Отказу сцена нужна затем
+// же, зачем прозе: «здесь этого нет» произносится по-разному на пристани и в
+// конторе гильдии.
+func sceneFor(g *core.Game) []string {
+	return []string{"Место: " + g.DB.Locations[g.Node].Name}
+}
+
 // reportMetrics печатает то, без чего слой моделей нельзя вести: расход,
 // стоимость бита и долю непонятого ввода по классу глагола.
-func reportMetrics(gw *llm.Gateway, p *intent.Parser) {
+func reportMetrics(gw *llm.Gateway, p *intent.Parser, sess *cli.Session) {
 	s := gw.Stats()
 	fmt.Fprintf(os.Stderr, "\nрасход: %.4f $  битов: %d\n",
 		float64(s.SpentMicro)/1e6, s.Bits)
@@ -316,6 +504,13 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser) {
 	}
 	if breached := m.Breaches(0.25); len(breached) > 0 {
 		fmt.Fprintf(os.Stderr, "словарь узок в классах: %v\n", breached)
+	}
+	// Цена чат-режима: сколько раз модель ответила на ход, которого мир не
+	// допускает. Высокая доля означает, что порядок «сначала ответить» неверен,
+	// и это единственный способ узнать это, не споря.
+	if shown, eaten := sess.ChatStats(); shown+eaten > 0 {
+		fmt.Fprintf(os.Stderr, "реплик Мастера: %d показано, %d съел отказ ядра (%.0f%%)\n",
+			shown, eaten, float64(eaten)/float64(shown+eaten)*100)
 	}
 }
 

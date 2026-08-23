@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/core/accusation"
@@ -24,6 +25,13 @@ type Journal struct {
 	// именно с него, поэтому идентификатор лежит в каждой строке.
 	snapshot string
 	seed     int64
+	// w — файл журнала, если сессию пишут на диск. Строка уходит туда сразу:
+	// журнал, читаемый только после закрытия файла, не спасает от падения
+	// посреди хода.
+	w io.Writer
+	// werr — первая поломка записи. Липкая: журнал с дырой воспроизводит не ту
+	// сессию, которую записывали.
+	werr error
 }
 
 func NewJournal(db *store.DB, session store.SessionID, snapshot string, seed int64) *Journal {
@@ -52,7 +60,7 @@ func (j *Journal) begin(in core.Intent, form *accusation.Form, turn int) (store.
 		return store.CommandLogEntry{}, fmt.Errorf("интент не сериализуется: %w", err)
 	}
 	dice := store.DiceCtx{Seed: j.seed, Turn: turn}
-	e, _ := j.db.AppendCommand(store.CommandLogEntry{
+	e, appended := j.db.AppendCommand(store.CommandLogEntry{
 		SessionID:      j.session,
 		SnapshotID:     j.snapshot,
 		CoreVersion:    core.Version,
@@ -60,7 +68,10 @@ func (j *Journal) begin(in core.Intent, form *accusation.Form, turn int) (store.
 		DiceCtx:        dice,
 		IdempotencyKey: idempotencyKey(j.session, dice, payload),
 	})
-	return e, nil
+	if appended {
+		j.write(journalRecord{Kind: recordCommand, Command: &e})
+	}
+	return e, j.werr
 }
 
 // commit отмечает команду применённой. Отказ мира тоже применён: запись до
@@ -70,7 +81,11 @@ func (j *Journal) commit(e store.CommandLogEntry) error {
 	if j == nil || e.Seq == 0 {
 		return nil
 	}
-	return j.db.MarkApplied(e.SessionID, e.Seq)
+	if err := j.db.MarkApplied(e.SessionID, e.Seq); err != nil {
+		return err
+	}
+	j.write(journalRecord{Kind: recordApplied, Seq: e.Seq})
+	return j.werr
 }
 
 // idempotencyKey — детерминированный ключ хода: сессия, контекст кости и сам
@@ -111,6 +126,7 @@ func (j *Journal) audit(e store.AuditEntry) {
 	}
 	e.SessionID = j.session
 	j.db.AppendAudit(e)
+	j.write(journalRecord{Kind: recordAudit, Audit: &e})
 }
 
 // verdictOf — вердикт ядра словами данных, а не вывода. Класс исхода печатается
