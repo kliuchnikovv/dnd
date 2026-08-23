@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -24,6 +25,28 @@ type Interpreter interface {
 	// спрашивает то же самое по кругу.
 	Interpret(ctx context.Context, text string, with store.EntityID,
 		pending string) (*core.Intent, string, error)
+}
+
+// ChatInterpreter — переводчик чат-режима: тем же вызовом, которым разобрал
+// фразу, он отвечает игроку репликой Мастера. Реплика безоценочная — об исходе
+// она не знает, потому что бросок ещё не сделан, и решает его ядро.
+//
+// Метод возвращает четыре значения, а не структуру, ровно затем, зачем
+// Interpreter возвращает три: чтобы intent реализовал интерфейс структурно, не
+// импортируя презентацию. Порядок слоёв важнее краткости подписи.
+type ChatInterpreter interface {
+	// InterpretChat возвращает интент, безоценочную реплику Мастера и вопрос
+	// игроку. Ошибка означает сбой канала, а не непонятый ввод.
+	InterpretChat(ctx context.Context, text string, with store.EntityID,
+		pending string) (in *core.Intent, reply, clarify string, err error)
+}
+
+// WithChat включает чат-режим. Он идёт ВМЕСТО перевода свободного текста, а не
+// вместе с ним: два переводчика на один ввод означали бы два разных разбора
+// одной фразы.
+func (s *Session) WithChat(c ChatInterpreter) *Session {
+	s.chat = c
+	return s
 }
 
 // WithInterpreter включает перевод свободного текста.
@@ -78,6 +101,9 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		s.emit(EventRefusal, "не понял — напиши, что ты делаешь, или скажи что-нибудь в кавычках\n")
 		return true
 	}
+	if s.chat != nil {
+		return s.interpretChat(text, parseErr)
+	}
 	if s.interp == nil {
 		s.emit(EventRefusal, "нельзя: %v\n", parseErr)
 		return false
@@ -93,6 +119,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
 		return false
 	case in != nil:
+		s.noteProposal(llm.RoleIntentParser, llmProposal{Intent: in})
 		s.applyIntent(*in)
 		return true
 	default:
@@ -100,8 +127,58 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		// Помним, о чём спросили: следующая фраза игрока — ответ на это.
 		s.pending = question
 		s.emit(EventPrompt, "%s\n", question)
+		// Ход не состоялся, но модель по недоверенному вводу уже
+		// высказалась — и инъекция живёт ровно здесь. Строка аудита пишется
+		// без команды и без вердикта: ядру этот ввод не дошёл.
+		s.noteProposal(llm.RoleIntentParser, llmProposal{Clarify: question})
+		s.journalAudit("")
 		return true
 	}
+}
+
+// interpretChat — чат-режим: один вызов даёт разбор и реплику, ядро решает,
+// состоится ли ход. Порядок именно такой: реплика показывается ПОСЛЕ того, как
+// ядро разрешило. Показать подводку к действию, которого не будет, значит
+// соврать игроку — а ядро над Мастером, а не наоборот.
+func (s *Session) interpretChat(text string, parseErr error) bool {
+	in, reply, clarify, err := s.chat.InterpretChat(s.turnContext(), text, s.spokenTo, s.pending)
+	// Вопрос задан один раз: ответ на него уже пришёл.
+	s.pending = ""
+	switch {
+	case err != nil:
+		// Сбой канала не должен выглядеть как отказ мира: игрок обязан
+		// понимать, что дело в инструменте, а не в его замысле.
+		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
+		return false
+	case in == nil:
+		question := fallbackClarify(clarify)
+		s.pending = question
+		s.emit(EventPrompt, "%s\n", question)
+		s.noteProposal(llm.RoleChatMaster, llmProposal{Reply: reply, Clarify: question})
+		s.journalAudit("")
+		return true
+	}
+
+	s.noteProposal(llm.RoleChatMaster, llmProposal{Intent: in, Reply: reply})
+	ready, ok := s.prepare(*in, "")
+	if !ok {
+		// Игра спросила, к кому обращён ход: он не состоится, и реплике
+		// предварять нечего.
+		return true
+	}
+	// Ядро — единственная власть над «можно», и спрашивается оно ДО показа.
+	// Отказ реплику съедает; сам отказ печатает execute, он же считает
+	// холостой ход, без которого чутьё молчит именно тогда, когда нужно.
+	if reply != "" {
+		if s.Game.Check(ready).Refused {
+			s.chatEaten++
+		} else {
+			s.chatShown++
+			s.emitSpeech(MasterName, "%s\n", reply)
+		}
+	}
+	s.execute(ready)
+	return true
 }
 
 func fallbackClarify(s string) string {

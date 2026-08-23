@@ -8,6 +8,7 @@ import (
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/naming"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -59,6 +60,16 @@ type Session struct {
 	// что модель уверенно отвечает на ходы, которых мир не допускает, — и
 	// тогда порядок «сначала ответить» неверен.
 	chatShown, chatEaten int
+	// raw, llmRole, llmProposal — аудит текущего хода: сырой ввод игрока и то,
+	// что предложила по нему модель (ADR-0002). Живут ровно один ход: аудит
+	// пишется рядом с командой, а не накапливается.
+	raw         string
+	llmRole     string
+	llmProposal string
+	// auditSeq — команда текущего хода. Реплика персонажа приходит уже после
+	// применения, и ей нужно, к чему приписаться. Ноль означает, что команды
+	// не было.
+	auditSeq int
 	// journal — журнал действий сессии (ADR-0002). nil означает «не пишем»:
 	// проводка флага живёт в cmd/dnd, а игра без журнала обязана работать
 	// как работала.
@@ -106,6 +117,25 @@ func (s *Session) journalApplied(e store.CommandLogEntry) {
 	if err := s.journal.commit(e); err != nil {
 		s.noteOnce("журнал: " + err.Error())
 	}
+}
+
+// journalAudit пишет строку аудита текущего хода: сырой ввод игрока,
+// предложение модели, вердикт ядра. Отвечает на единственный вопрос, на
+// который журнал команд не отвечает: что предлагали против того, что применили.
+func (s *Session) journalAudit(verdict string) {
+	s.journal.audit(store.AuditEntry{
+		Seq:         s.auditSeq,
+		RawInput:    s.raw,
+		LLMRole:     s.llmRole,
+		LLMProposal: s.llmProposal,
+		CoreVerdict: verdict,
+	})
+}
+
+// noteProposal запоминает, что предложила модель по этому вводу. Вердикта у неё
+// нет: его выносит ядро, и в одной строке они встречаются позже.
+func (s *Session) noteProposal(role llm.Role, p llmProposal) {
+	s.llmRole, s.llmProposal = string(role), p.encode()
 }
 
 // emit — форматированное событие. Обёртка нужна, чтобы места печати меняли
@@ -195,6 +225,10 @@ func (s *Session) Start() {
 // исполнение и проверка развязки.
 func (s *Session) Feed(line string) bool {
 	s.turn++
+	// Сырой ввод — правда аудита, но НЕ правда реплея: переигрывать текст
+	// через модель нельзя, второй прогон даст другой интент. Реплей берёт
+	// интент из журнала команд, разбор инцидента — эту строку.
+	s.raw, s.llmRole, s.llmProposal, s.auditSeq = line, "", "", 0
 	if s.awaitingAccusation() {
 		s.feedAccusation(line)
 		return s.ended()
@@ -282,8 +316,10 @@ func (s *Session) dispatch(cmd Command) bool {
 		// идёт наравне с действиями: без него реплей разойдётся с прогоном.
 		in := core.Intent{Verb: "compare", Args: core.Args{Facts: cmd.Facts}}
 		entry := s.journalBegin(in)
+		s.auditSeq = entry.Seq
 		res := g.Compare(cmd.Facts[0], cmd.Facts[1])
 		s.journalApplied(entry)
+		s.journalAudit(verdictOf(res))
 		s.emitTurn(core.Intent{Verb: "compare"}, res)
 	case CmdAccuse:
 		s.startAccusation()
@@ -298,8 +334,10 @@ func (s *Session) dispatch(cmd Command) bool {
 		// Отдых двигает часы — ход, меняющий состояние. Длина отдыха лежит в
 		// Text: реплею нужен короткий он был или длинный.
 		entry := s.journalBegin(core.Intent{Verb: "rest", Args: core.Args{Text: cmd.Text}})
+		s.auditSeq = entry.Seq
 		res := g.Rest(kind)
 		s.journalApplied(entry)
+		s.journalAudit(verdictOf(res))
 		s.emitTurn(core.Intent{Verb: "rest"}, res)
 	case CmdAction:
 		s.applyIntentWithHint(cmd.Intent, cmd.Text)
@@ -456,8 +494,10 @@ func (s *Session) execute(in core.Intent) {
 	// состояние. Падение между этими двумя строками — единственный случай,
 	// который реплей хвоста pending обязан вылечить.
 	entry := s.journalBegin(in)
+	s.auditSeq = entry.Seq
 	res := s.Game.Apply(in)
 	s.journalApplied(entry)
+	s.journalAudit(verdictOf(res))
 	if said := spokenAloud(in); said != "" && !res.Refused {
 		// Реплика игрока показывается как реплика. Описание того, что он
 		// «сказал это вслух», на каждой фразе читается как шум.

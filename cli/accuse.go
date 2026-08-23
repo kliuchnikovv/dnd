@@ -73,8 +73,10 @@ func (s *Session) resolveAccusation(form accusation.Form) {
 	// Обвинение заканчивает дело и в журнал идёт вместе с формой: одним
 	// глаголом его не выразить, а без формы реплей его не повторит.
 	entry := s.journalBeginForm(core.Intent{Verb: "accuse"}, &form)
+	s.auditSeq = entry.Seq
 	res := g.Accuse(form)
 	s.journalApplied(entry)
+	s.journalAudit(accusationVerdict(res))
 	switch {
 	case res.Refused:
 		s.emit(EventRefusal, "нельзя: %s\n", res.Refusal)
@@ -94,5 +96,18 @@ func (s *Session) resolveAccusation(form accusation.Form) {
 	}
 	for _, c := range res.Fired {
 		s.emit(EventSystem, "  ⏱ %s\n", g.Flavour(c.FlavourKey))
+	}
+}
+
+// accusationVerdict — вердикт обвинения словами данных. Неверное обвинение и
+// отказ формы — разные вещи: первое стоит попытку, второе нет.
+func accusationVerdict(res core.AccusationResult) string {
+	switch {
+	case res.Refused:
+		return "refused"
+	case res.Correct:
+		return "correct"
+	default:
+		return "wrong"
 	}
 }

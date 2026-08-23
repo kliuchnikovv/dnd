@@ -25,6 +25,23 @@ func (s *Session) Turn() int { return s.turn }
 // видно сразу.
 const PlayerName = "Вы"
 
+// HunchName — как подписано чутьё. Оно принадлежит игроку, а не персонажу:
+// подсказку выбирает движок, и единственное место, где выбранное движком
+// знание законно, — голова самого игрока. Напарник, произносивший её раньше,
+// отвечал за слова, которых не выбирал.
+const HunchName = "Чутьё"
+
+// HunchMark — как чутьё помечено В СТРОКЕ. Пометка живёт в тексте, а не только
+// в авторе события, потому что построчный режим метки автора не печатает
+// вообще: там мысль сливалась бы с прозой Мастера, и игрок читал бы подсказку
+// движка как описание мира.
+const HunchMark = HunchName + ": "
+
+// MasterName — как подписан Мастер. Он такой же голос, как персонаж, и игрок
+// обязан видеть, кто именно с ним говорит. Одно место на всю игру по той же
+// причине, что и PlayerName: расхождение подписей видно сразу.
+const MasterName = "Мастер"
+
 // Voicer — необязательный голос NPC. Без него игра работает как раньше,
 // авторской прозой: озвучка это надстройка, а не условие работы.
 type Voicer interface {
@@ -61,6 +78,15 @@ func (s *Session) speak(in core.Intent, res core.TurnResult) {
 		return
 	}
 	if line != "" {
+		// Реплика персонажа — тоже вывод модели по недоверенному вводу, и
+		// отвечает за свои слова она отдельно от разбора: у неё своя строка
+		// аудита при той же команде.
+		s.journal.audit(store.AuditEntry{
+			Seq:         s.auditSeq,
+			RawInput:    s.raw,
+			LLMRole:     string(llm.RoleActor),
+			LLMProposal: llmProposal{Line: line}.encode(),
+		})
 		s.emitSpeech(s.speakerName(in.Args.Target), "%s\n", Spoken(line))
 	}
 }
@@ -106,6 +132,27 @@ func (s *Session) WithNarrator(n Narrator) *Session {
 		return out
 	}
 	return s
+}
+
+// Refuser — необязательный голос Мастера у отказа мира. Формулировку решает
+// не он: текст отказа приходит из ядра, Мастер только одевает его в речь.
+type Refuser interface {
+	Refuse(ctx context.Context, refusal string) (string, error)
+}
+
+// WithRefuser отдаёт отказ мира Мастеру, беря на себя ровно то же, что
+// WithNarrator: сбой надстройки не рушит ход — печатается прежнее «нельзя:
+// …», — но и не молчит о себе. Молча откатываясь, игра выглядит рабочей при
+// выключенном Мастере.
+func (s *Session) WithRefuser(r Refuser) *Session {
+	return s.WithRefusalVoice(func(refusal string) string {
+		out, err := r.Refuse(s.turnContext(), refusal)
+		if err != nil {
+			s.noteOnce("Мастер промолчал: " + err.Error())
+			return ""
+		}
+		return out
+	})
 }
 
 // noteOnce сообщает о поломке надстройки один раз на прогон. Каждая строка

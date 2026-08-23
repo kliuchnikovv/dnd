@@ -82,3 +82,54 @@ func idempotencyKey(s store.SessionID, d store.DiceCtx, payload []byte) string {
 	h.Write(payload)
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
+
+// llmProposal — то, что модель предложила по недоверенному вводу. Лежит в
+// аудите как JSON, а не как текст: роль говорит, кто предложил, а форма —
+// разбор это был, реплика или вопрос игроку.
+type llmProposal struct {
+	Intent  *core.Intent `json:"intent,omitempty"`
+	Reply   string       `json:"reply,omitempty"`
+	Clarify string       `json:"clarify,omitempty"`
+	Line    string       `json:"line,omitempty"`
+}
+
+func (p llmProposal) encode() string {
+	b, err := json.Marshal(p)
+	if err != nil {
+		// Аудит не отказывает: потерять след недоверенного ввода хуже, чем
+		// записать его криво.
+		return err.Error()
+	}
+	return string(b)
+}
+
+// audit пишет строку аудит-потока. Ссылка на команду — seq; нулевой seq
+// означает, что команды не было: ход через модель прошёл, а до ядра не дошёл.
+func (j *Journal) audit(e store.AuditEntry) {
+	if j == nil {
+		return
+	}
+	e.SessionID = j.session
+	j.db.AppendAudit(e)
+}
+
+// verdictOf — вердикт ядра словами данных, а не вывода. Класс исхода печатается
+// игроку по-русски, но в колонке аудита должно лежать значение, по которому
+// потом фильтруют инциденты, а не строка интерфейса.
+func verdictOf(res core.TurnResult) string {
+	switch {
+	case res.Refused:
+		return "refused"
+	case res.Res == nil:
+		// Ход без броска: ядро его применило, класса исхода у него нет.
+		return "applied"
+	case res.Res.Class == core.OutcomeCrit:
+		return "crit"
+	case res.Res.Class == core.OutcomeSuccess:
+		return "success"
+	case res.Res.Class == core.OutcomePartial:
+		return "partial"
+	default:
+		return "fail"
+	}
+}
