@@ -138,3 +138,114 @@ func TestProposalKindsAreNotAppliedByRulesPath(t *testing.T) {
 		t.Errorf("путь правил записал канон: %+v", got)
 	}
 }
+
+// Дальше — недоверенный вход. ProposeMutation отличается от пути правил
+// главным: он всегда даёт вердикт. Молчание здесь было бы дырой, потому что
+// предлагает тот, кому ядро не доверяет.
+
+func canonProposal(topic, text string, turn int) Mutation {
+	return Mutation{Kind: MutCanonAmbient, Target: topic, Text: text, Delta: turn}
+}
+
+func TestProposedCanonIsApplied(t *testing.T) {
+	g := testGame()
+	app, ref := g.ProposeMutation(canonProposal("погода", "морось с моря", 3))
+	if ref.Refused() {
+		t.Fatalf("валидное предложение отвергнуто: %q", ref.Reason)
+	}
+	if app.Kind != MutCanonAmbient || app.Text != "морось с моря" {
+		t.Errorf("применено не то: %+v", app)
+	}
+	if got, ok := g.CanonGet("погода"); !ok || got != "морось с моря" {
+		t.Errorf("канон не записан: %q (%v)", got, ok)
+	}
+}
+
+// Топик из пространства имён фактов дела отвергается. Иначе ambient-канон
+// стал бы вторым способом выдать факт — тем самым, который гейтит
+// fact_holders.
+func TestProposedCanonRejectsCaseFactNamespace(t *testing.T) {
+	g := testGame()
+	g.DB.Facts["f_toke_lied"] = store.Fact{
+		ID: "f_toke_lied", Key: "Токе соврал о ночи прилива",
+	}
+	for _, topic := range []string{"f_toke_lied", "F_Toke_Lied", "f_чего_угодно",
+		"Токе соврал о ночи прилива"} {
+		app, ref := g.ProposeMutation(canonProposal(topic, "что-то", 1))
+		if !ref.Refused() {
+			t.Errorf("топик %q прошёл как канон: %+v", topic, app)
+		}
+	}
+	if got := g.Canon(); len(got) != 0 {
+		t.Errorf("факт дела уехал в канон: %+v", got)
+	}
+}
+
+func TestProposedCanonRejectsEmpty(t *testing.T) {
+	g := testGame()
+	if _, ref := g.ProposeMutation(canonProposal("погода", "   ", 1)); !ref.Refused() {
+		t.Error("пустой текст стал каноном")
+	}
+	if _, ref := g.ProposeMutation(canonProposal("  ", "морось", 1)); !ref.Refused() {
+		t.Error("пустая тема стала каноном")
+	}
+}
+
+// Повтор того же — не ошибка, а идемпотентность: реплей и переспрос обязаны
+// давать один ответ. Иной текст на занятой теме — отказ, потому что канон
+// держит слово.
+func TestProposedCanonIsIdempotentAndRefusesConflict(t *testing.T) {
+	g := testGame()
+	g.ProposeMutation(canonProposal("погода", "морось с моря", 1))
+
+	app, ref := g.ProposeMutation(canonProposal("Погода", "  морось с моря ", 5))
+	if ref.Refused() {
+		t.Errorf("повтор того же отвергнут: %q", ref.Reason)
+	}
+	if app.Text != "морось с моря" {
+		t.Errorf("повтор вернул %q", app.Text)
+	}
+
+	if _, ref := g.ProposeMutation(canonProposal("погода", "сухо и ясно", 6)); !ref.Refused() {
+		t.Error("конфликтный текст переписал канон")
+	}
+	if got, _ := g.CanonGet("погода"); got != "морось с моря" {
+		t.Errorf("канон сдвинулся: %q", got)
+	}
+}
+
+// Числовые виды — прерогатива правил. Предложить их нельзя: иначе нарратор
+// раздавал бы ранения и двигал часы.
+func TestProposedNumericKindsAreRefused(t *testing.T) {
+	g := testGame()
+	for _, m := range []Mutation{
+		{Kind: MutHarm, Target: "pc", Delta: 1},
+		{Kind: MutResource, Target: "grit", Delta: -1},
+		{Kind: MutClock, Target: "c_suspicion", Delta: 1},
+		{Kind: MutDisposition, Target: "e_toke", Delta: -1},
+		{Kind: MutPosition, Delta: -1},
+	} {
+		before := snapshot(g)
+		app, ref := g.ProposeMutation(m)
+		if !ref.Refused() {
+			t.Errorf("вид %q прошёл недоверенным входом: %+v", m.Kind, app)
+		}
+		if got := snapshot(g); got != before {
+			t.Errorf("вид %q изменил состояние до отказа: %v → %v", m.Kind, before, got)
+		}
+	}
+}
+
+// Незнакомый вид получает отказ, а не тишину: этим недоверенный вход и
+// отличается от applyMutations.
+func TestProposedUnknownKindIsRefusedNotIgnored(t *testing.T) {
+	g := testGame()
+	if _, ref := g.ProposeMutation(Mutation{Kind: "выдать_правду", Target: "toke"}); !ref.Refused() {
+		t.Error("незнакомый вид прошёл молча")
+	}
+	// MutWorldEvent объявлен формой, обработчика нет — значит тоже отказ, а не
+	// вид, который «как-нибудь» применится.
+	if _, ref := g.ProposeMutation(Mutation{Kind: MutWorldEvent, Target: "n_quay"}); !ref.Refused() {
+		t.Error("MutWorldEvent применился без обработчика")
+	}
+}

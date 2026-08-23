@@ -78,8 +78,9 @@ const (
 	MutPosition    MutationKind = "position"
 
 	// MutCanonAmbient — ambient-деталь мира по ключу (case, topic): погода,
-	// быт, фон. Payload — Text. Применяется через ProposeMutation, пишет
-	// только в канон и никогда в факты дела.
+	// быт, фон. Target — тема, Text — ответ, Delta — ход, на котором деталь
+	// стала каноном. Применяется через ProposeMutation, пишет только в канон
+	// и никогда в факты дела.
 	MutCanonAmbient MutationKind = "canon_ambient"
 	// MutWorldEvent — событие слоя мира. Объявлен формой; обработчика нет и
 	// не будет до серверного слоя с воркером мира.
