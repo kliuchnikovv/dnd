@@ -284,3 +284,41 @@ func journaledVerb(t *testing.T, e store.CommandLogEntry) core.Verb {
 	}
 	return decoded.Verb
 }
+
+// journalGame — тот же прогон, что journalRun, но отдаёт игру: состояние нужно
+// сравнивать с состоянием, а не с выводом.
+func journalGame(t *testing.T, script string) *core.Game {
+	t.Helper()
+	cfg, err := cases.Load("../cases/testdata/minimal.json")
+	if err != nil {
+		t.Fatalf("загрузка дела: %v", err)
+	}
+	cfg.Rules = threshold.New()
+	cfg.Dice = dice.NewSource(3).Stream("resolve")
+	g := core.NewGame(*cfg)
+
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader(script), &out).
+		WithJournal(NewJournal(g.DB, "s1", "minimal@test", 3))
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	return g
+}
+
+// sessionOver — сессия поверх той же базы, в которую журнал записан. Годится
+// только для проверок о самом журнале: состояние в этой базе уже отыграно, и
+// сравнивать его после реплея бессмысленно (для этого — replayGame и e2e).
+func sessionOver(t *testing.T, db *store.DB, snapshot string, seed int64) *Session {
+	t.Helper()
+	cfg, err := cases.Load("../cases/testdata/minimal.json")
+	if err != nil {
+		t.Fatalf("загрузка дела: %v", err)
+	}
+	cfg.Rules = threshold.New()
+	cfg.Dice = dice.NewSource(seed).Stream("resolve")
+	cfg.DB = db
+	g := core.NewGame(*cfg)
+	return NewSession(g, strings.NewReader(""), &bytes.Buffer{}).
+		WithJournal(NewJournal(db, "s1", snapshot, seed))
+}

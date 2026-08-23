@@ -70,6 +70,9 @@ type Session struct {
 	// применения, и ей нужно, к чему приписаться. Ноль означает, что команды
 	// не было.
 	auditSeq int
+	// replaying — запись журнала, которую сессия сейчас переигрывает. Не nil
+	// означает реплей: журнал в этот момент читают, а не пишут.
+	replaying *store.CommandLogEntry
 	// journal — журнал действий сессии (ADR-0002). nil означает «не пишем»:
 	// проводка флага живёт в cmd/dnd, а игра без журнала обязана работать
 	// как работала.
@@ -105,6 +108,12 @@ func (s *Session) journalBegin(in core.Intent) store.CommandLogEntry {
 }
 
 func (s *Session) journalBeginForm(in core.Intent, form *accusation.Form) store.CommandLogEntry {
+	if s.replaying != nil {
+		// Реплей журнал читает, а не пишет: команда в нём уже есть, и вторая
+		// её копия сделала бы журнал вдвое длиннее прогона. Отметку
+		// «применена» ставит journalApplied — она же лечит прерванный ход.
+		return *s.replaying
+	}
 	e, err := s.journal.begin(in, form, s.turn)
 	if err != nil {
 		s.noteOnce("журнал: " + err.Error())
@@ -123,6 +132,11 @@ func (s *Session) journalApplied(e store.CommandLogEntry) {
 // предложение модели, вердикт ядра. Отвечает на единственный вопрос, на
 // который журнал команд не отвечает: что предлагали против того, что применили.
 func (s *Session) journalAudit(verdict string) {
+	if s.replaying != nil {
+		// Аудит живого хода уже записан. Вторая строка сообщала бы, что игрок
+		// в этот ход молчал, — а он не молчал, он играл его тогда.
+		return
+	}
 	s.journal.audit(store.AuditEntry{
 		Seq:         s.auditSeq,
 		RawInput:    s.raw,
@@ -312,33 +326,11 @@ func (s *Session) dispatch(cmd Command) bool {
 	case CmdClocks:
 		s.emitText(EventSystem, r.Clocks(g))
 	case CmdCompare:
-		// Сопоставление выводит факты, то есть меняет состояние, и в журнал
-		// идёт наравне с действиями: без него реплей разойдётся с прогоном.
-		in := core.Intent{Verb: "compare", Args: core.Args{Facts: cmd.Facts}}
-		entry := s.journalBegin(in)
-		s.auditSeq = entry.Seq
-		res := g.Compare(cmd.Facts[0], cmd.Facts[1])
-		s.journalApplied(entry)
-		s.journalAudit(verdictOf(res))
-		s.emitTurn(core.Intent{Verb: "compare"}, res)
+		s.applyCompare(cmd.Facts)
 	case CmdAccuse:
 		s.startAccusation()
 	case CmdRest:
-		kind := core.RestShort
-		if cmd.Text == "long" {
-			kind = core.RestLong
-		}
-		if clocks := g.RestPreview(kind); len(clocks) > 0 {
-			s.emit(EventSystem, "длинный отдых продвинет часы: %v\n", clocks)
-		}
-		// Отдых двигает часы — ход, меняющий состояние. Длина отдыха лежит в
-		// Text: реплею нужен короткий он был или длинный.
-		entry := s.journalBegin(core.Intent{Verb: "rest", Args: core.Args{Text: cmd.Text}})
-		s.auditSeq = entry.Seq
-		res := g.Rest(kind)
-		s.journalApplied(entry)
-		s.journalAudit(verdictOf(res))
-		s.emitTurn(core.Intent{Verb: "rest"}, res)
+		s.applyRest(cmd.Text)
 	case CmdAction:
 		s.applyIntentWithHint(cmd.Intent, cmd.Text)
 	}
@@ -443,6 +435,39 @@ func (s *Session) remember(in core.Intent) {
 	if e, ok := s.Game.DB.Entities[in.Args.Target]; ok && e.Kind == store.EntityNPC {
 		s.spokenTo = in.Args.Target
 	}
+}
+
+// applyCompare — сопоставление как ход. Общее тело для команды и реплея: два
+// пути к одному ходу разошлись бы, и разошлись бы молча.
+//
+// Сопоставление выводит факты, то есть меняет состояние, и в журнал идёт
+// наравне с действиями: без него реплей разойдётся с прогоном.
+func (s *Session) applyCompare(facts []store.FactID) {
+	in := core.Intent{Verb: "compare", Args: core.Args{Facts: facts}}
+	entry := s.journalBegin(in)
+	s.auditSeq = entry.Seq
+	res := s.Game.Compare(facts[0], facts[1])
+	s.journalApplied(entry)
+	s.journalAudit(verdictOf(res))
+	s.emitTurn(core.Intent{Verb: "compare"}, res)
+}
+
+// applyRest — отдых как ход. Длина лежит в Text: реплею нужно знать, короткий
+// он был или длинный.
+func (s *Session) applyRest(text string) {
+	kind := core.RestShort
+	if text == "long" {
+		kind = core.RestLong
+	}
+	if clocks := s.Game.RestPreview(kind); len(clocks) > 0 {
+		s.emit(EventSystem, "длинный отдых продвинет часы: %v\n", clocks)
+	}
+	entry := s.journalBegin(core.Intent{Verb: "rest", Args: core.Args{Text: text}})
+	s.auditSeq = entry.Seq
+	res := s.Game.Rest(kind)
+	s.journalApplied(entry)
+	s.journalAudit(verdictOf(res))
+	s.emitTurn(core.Intent{Verb: "rest"}, res)
 }
 
 // applyIntent — единственный путь, которым интент доходит до движка. И
