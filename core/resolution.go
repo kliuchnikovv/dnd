@@ -62,12 +62,28 @@ func AllCostKinds() []CostKind {
 
 type MutationKind string
 
+// Набор видов закрыт и делится на два пути, и деление здесь не косметическое.
+// Первые пять приходят от системы правил — доверенный путь, applyMutations
+// применяет их как есть. Остальные приходят от того, кто ядру не доверен
+// (нарратор, куратор, воркер мира): их вход — только ProposeMutation, где вид
+// проверяется, а незнакомое получает отказ, а не тишину. Вида, меняющего
+// факты дела, party_knowledge, токены правды или механику броска, в этом
+// наборе нет — и это гарантия конструкцией: нельзя предложить то, чего не
+// существует.
 const (
 	MutResource    MutationKind = "resource"
 	MutClock       MutationKind = "clock"
 	MutHarm        MutationKind = "harm"
 	MutDisposition MutationKind = "disposition"
 	MutPosition    MutationKind = "position"
+
+	// MutCanonAmbient — ambient-деталь мира по ключу (case, topic): погода,
+	// быт, фон. Payload — Text. Применяется через ProposeMutation, пишет
+	// только в канон и никогда в факты дела.
+	MutCanonAmbient MutationKind = "canon_ambient"
+	// MutWorldEvent — событие слоя мира. Объявлен формой; обработчика нет и
+	// не будет до серверного слоя с воркером мира.
+	MutWorldEvent MutationKind = "world_event"
 )
 
 // Mutation обобщена намеренно: «слот 3 уровня» — это {resource, "slot_3", -1},
@@ -76,6 +92,9 @@ type Mutation struct {
 	Kind   MutationKind
 	Target string
 	Delta  int
+	// Text — текстовый payload для видов, которые меняют не число, а слово:
+	// канон мира. Числовые виды его не читают.
+	Text string
 }
 
 type RollTerm struct {

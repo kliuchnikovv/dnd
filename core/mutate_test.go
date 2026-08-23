@@ -120,3 +120,21 @@ func boolInt(b bool) int {
 	}
 	return 0
 }
+
+// Недоверенные виды мутаций доверенного обработчика не имеют. Попав в путь
+// правил, они не меняют ни состояние, ни канон: единственный вход для них —
+// ProposeMutation, и обойти его через Resolution.Mutations нельзя.
+func TestProposalKindsAreNotAppliedByRulesPath(t *testing.T) {
+	g := testGame()
+	before := snapshot(g)
+	g.applyMutations([]Mutation{
+		{Kind: MutCanonAmbient, Target: "погода", Text: "морось с моря"},
+		{Kind: MutWorldEvent, Target: "n_quay"},
+	})
+	if got := snapshot(g); got != before {
+		t.Errorf("недоверенный вид изменил состояние: %v → %v", before, got)
+	}
+	if got := g.Canon(); len(got) != 0 {
+		t.Errorf("путь правил записал канон: %+v", got)
+	}
+}
