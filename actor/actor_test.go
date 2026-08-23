@@ -1234,3 +1234,27 @@ func TestRepairPromptForbidsStageDirections(t *testing.T) {
 		t.Errorf("ремонту разрешены ремарки:\n%s", sys)
 	}
 }
+
+// Мастер, потянувшийся к территории дела, отсекается ядром — и персонаж об
+// этом не говорит. Иначе ambient-канон стал бы вторым способом выдать факт,
+// мимо fact_holders: гейт держит границу там, где промпт уже не держит.
+func TestMasterAnswerOnCaseFactIsNotVoiced(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t,
+		`{"line":"Сейчас.","needs":["кто соврал про ночь"]}`,
+		`{"line":"Про это я говорить не стану."}`)
+	m := &fakeMaster{grants: []master.Grant{
+		{Topic: "f_toke_lied", Answer: "Токе соврал", Canon: true}}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+
+	if _, err := v.Voice(context.Background(), core.Intent{Verb: "talk_to",
+		Args: core.Args{Target: "e_bern", Text: "кто соврал?"}}, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := g.Canon(); len(got) != 0 {
+		t.Errorf("факт дела уехал в канон: %+v", got)
+	}
+	if in := f.Calls()[1].Input; strings.Contains(in, "Токе соврал") {
+		t.Errorf("отвергнутая деталь доехала до актёра как материал:\n%s", in)
+	}
+}

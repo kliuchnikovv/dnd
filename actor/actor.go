@@ -19,6 +19,7 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
+	"github.com/kliuchnikovv/dnd/propose"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -823,16 +824,41 @@ func (v *GameVoicer) resolveNeeds(ctx context.Context, needs []string,
 	}
 	out := make([]master.Grant, 0, len(granted))
 	for _, g := range granted {
-		// Канон держит слово: если тема уже решена, действующий ответ
-		// сильнее свежего. Иначе второй вопрос даёт второй мир.
 		if g.Canon {
-			if text := v.Game.CanonPut(g.Topic, g.Answer, v.turn()); text != "" {
-				g.Answer = text
+			text, ok := v.canonize(g.Topic, g.Answer)
+			if !ok {
+				// Ядро деталь не приняло. Озвучить её всё равно значило бы
+				// применить непринятое голосом персонажа: для него это тот же
+				// отказ, что и молчание Мастера.
+				refused = append(refused, g.Topic)
+				continue
 			}
+			g.Answer = text
 		}
 		out = append(out, g)
 	}
 	return out, refused
+}
+
+// canonize проводит деталь Мастера через капабилити-гейт и ядро. Мастер
+// говорит от роли нарратора — от неё же и предлагает.
+//
+// Канон держит слово: если тема уже решена, действующий ответ сильнее свежего.
+// Ядро отвергает конфликт вердиктом, а не подменой, поэтому действующий ответ
+// приходится взять здесь — иначе второй вопрос дал бы второй мир.
+func (v *GameVoicer) canonize(topic, answer string) (string, bool) {
+	app, ref := propose.Mutation(v.Game, llm.RoleNarrator, core.Mutation{
+		Kind: core.MutCanonAmbient, Target: topic, Text: answer, Delta: v.turn(),
+	})
+	if !ref.Refused() {
+		// Текст берётся из вердикта, а не из предложения: применённое и
+		// предложенное совпадают не всегда.
+		return app.Text, true
+	}
+	if have, ok := v.Game.CanonGet(topic); ok {
+		return have, true
+	}
+	return "", false
 }
 
 // canonFor — канон дела в форме, которую понимает Мастер. Он обязан видеть
