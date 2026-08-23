@@ -397,8 +397,9 @@ func TestSchemaCarriesSceneEnums(t *testing.T) {
 	if !ok {
 		t.Fatal("у target нет перечисления присутствующих")
 	}
-	if len(enum) != len(hint.Entities) {
-		t.Errorf("в перечислении %d сущностей, в сцене %d", len(enum), len(hint.Entities))
+	// Цель — это и человек, и деталь места: движок целями считает и то и другое.
+	if len(enum) != len(hint.targets()) {
+		t.Errorf("в перечислении %d целей, в сцене %d", len(enum), len(hint.targets()))
 	}
 	for _, e := range hint.Entities {
 		if !containsStr(enum, e.ID) {
@@ -1070,5 +1071,126 @@ func TestPromptDemandsShortRefusals(t *testing.T) {
 	}
 	if sys := f.Calls()[0].System; !strings.Contains(sys, "одна короткая фраза") {
 		t.Errorf("промпт не требует краткости в отказе:\n%s", sys)
+	}
+}
+
+// --- пропы как цели ---
+
+// Живой игрок первым же ходом написал «осмотреть бочки» и получил «никаких
+// бочек здесь не видно» — при том что сцена печатала «Штабель бочек» прямо над
+// строкой ввода. Пропов не было в подсказке вовсе: движок их целями считает,
+// свободный текст о них не знал.
+func TestPropsAreTargetsInFreeText(t *testing.T) {
+	g := harbourGame(t)
+	hint := BuildHint(g)
+
+	var found bool
+	for _, p := range hint.Props {
+		if p.ID == "p_barrels" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("пропы узла не попали в подсказку: %+v", hint.Props)
+	}
+	if !strings.Contains(hint.Render(), "p_barrels") {
+		t.Errorf("проп не назван в промпте:\n%s", hint.Render())
+	}
+
+	enum := SchemaFor(hint)["properties"].(map[string]any)["target"].(map[string]any)["enum"].([]string)
+	var inEnum bool
+	for _, id := range enum {
+		if id == "p_barrels" {
+			inEnum = true
+		}
+	}
+	if !inEnum {
+		t.Errorf("проп не попал в перечисление целей: %v", enum)
+	}
+}
+
+// Проп, названный моделью, принимается: до этой правки он не проходил
+// проверку допустимости, потому что целями считались только люди.
+func TestModelMayTargetAProp(t *testing.T) {
+	g := harbourGame(t)
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"examine","target":"p_barrels"}`)
+
+	res, err := p.Parse(context.Background(), "осмотреть бочки", BuildHint(g), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("осмотр пропа не принят: %q", res.Clarify)
+	}
+	if res.Intent.Args.Target != "p_barrels" {
+		t.Errorf("цель %q", res.Intent.Args.Target)
+	}
+}
+
+// Запасной путь без модели: имя пропа ищется в фразе так же, как имя человека.
+// Падежи здесь берёт не он, а модель — правило совпадения в naming намеренно
+// узкое, иначе «страна» начнёт совпадать со «стражником».
+func TestPropNameResolvesWhenModelForgetsTarget(t *testing.T) {
+	g := harbourGame(t)
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"examine"}`)
+
+	res, err := p.Parse(context.Background(), "осмотреть штабель бочек", BuildHint(g), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil || res.Intent.Args.Target != "p_barrels" {
+		t.Fatalf("имя пропа не разрешилось: %+v (%q)", res.Intent, res.Clarify)
+	}
+}
+
+// Обращаться можно к людям, а не к бочкам: адресат социального хода
+// подставляется только из присутствующих людей.
+func TestPropIsNotPickedAsAddressee(t *testing.T) {
+	g := harbourGame(t)
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"present","item":"i_writ"}`)
+	g.DB.Items["i_writ"] = store.Item{ID: "i_writ", Kind: "credential", Name: "Предписание"}
+	g.Acquire("i_writ")
+
+	res, err := p.Parse(context.Background(), "показать бумагу бочкам", BuildHint(g), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent != nil && res.Intent.Args.Target == "p_barrels" {
+		t.Error("предъявление адресовано пропу")
+	}
+}
+
+// Примеры сильнее правил — это в сессии подтвердилось трижды. Без примера с
+// деталью места модель не заполняла target даже при пропе в перечислении, и
+// «осмотреть бочки» упиралось в уточнение при бочках в списке над вводом.
+func TestPromptShowsHowToTargetAProp(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
+	if _, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if sys := f.Calls()[0].System; !strings.Contains(sys, `"target":"p_barrels"`) {
+		t.Errorf("в примерах нет цели-детали места:\n%s", sys)
+	}
+}
+
+// Модель систематически не заполняет target — и для людей это незаметно, их
+// имя находится в фразе. Для деталей места не находится: падежи. Значит
+// уточнение обязано НАЗЫВАТЬ цели, иначе игрок гадает, каким словом попасть
+// в бочки, стоящие в списке над строкой ввода.
+func TestMissingTargetClarifyNamesTheTargets(t *testing.T) {
+	g := harbourGame(t)
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"examine"}`)
+
+	res, err := p.Parse(context.Background(), "осмотреть бочки", BuildHint(g), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Accepted() {
+		t.Fatal("тест не о том: цель неожиданно разрешилась")
+	}
+	for _, want := range []string{"Штабель бочек", "Берн"} {
+		if !strings.Contains(res.Clarify, want) {
+			t.Errorf("уточнение не называет %q: %q", want, res.Clarify)
+		}
 	}
 }

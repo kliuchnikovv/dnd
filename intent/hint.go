@@ -23,6 +23,14 @@ type SceneHint struct {
 	Entities  []Named `json:"entities"`
 	Topics    []Named `json:"topics"`
 	Reachable []Named `json:"reachable"`
+	// Props — интерактивные детали узла. Целями движок их считает с самого
+	// начала («осмотреть бочки» — законный ход), но в подсказке их не было, и
+	// свободный текст о них не знал: живой игрок первым же ходом получил
+	// «никаких бочек здесь не видно» при бочках в списке над строкой ввода.
+	//
+	// Отдельно от Entities, потому что разница несущая: к людям обращаются, к
+	// пропам нет. Адресата социального хода подставлять из бочек нельзя.
+	Props []Named `json:"props"`
 	// Tools — пропы текущего узла, которыми можно воспользоваться. Без них
 	// use_item — тупик: обязательный аргумент есть, а взять его негде, и игра
 	// спрашивает «чем именно?», не имея ответа.
@@ -104,6 +112,7 @@ func BuildHint(g *core.Game) SceneHint {
 	// Инструмент — вещь вида tool: проп этого узла или носимый предмет. Ровно
 	// то, что примет движок: разойдись эти списки, игрок «применял» бы бочки.
 	for _, p := range g.DB.Props[g.Node] {
+		h.Props = append(h.Props, Named{string(p.ID), p.Name})
 		if p.Kind == store.ToolKind {
 			h.Tools = append(h.Tools, Named{string(p.ID), p.Name})
 		}
@@ -121,12 +130,24 @@ func BuildHint(g *core.Game) SceneHint {
 		h.Carried = append(h.Carried, Named{string(item.ID), item.Name})
 	}
 	sort.Slice(h.Entities, func(i, j int) bool { return h.Entities[i].ID < h.Entities[j].ID })
+	sort.Slice(h.Props, func(i, j int) bool { return h.Props[i].ID < h.Props[j].ID })
 	return h
 }
 
-func (h SceneHint) hasEntity(id string) bool { return contains(h.Entities, id) }
-func (h SceneHint) hasTopic(id string) bool  { return contains(h.Topics, id) }
-func (h SceneHint) hasNode(id string) bool   { return contains(h.Reachable, id) }
+// hasEntity — есть ли такая цель в сцене. Люди и пропы вместе: целью бывает и
+// то и другое, и проверка допустимости об этом обязана знать.
+func (h SceneHint) hasEntity(id string) bool {
+	return contains(h.Entities, id) || contains(h.Props, id)
+}
+
+// targets — всё, на что можно указать: люди и детали узла.
+func (h SceneHint) targets() []Named {
+	out := make([]Named, 0, len(h.Entities)+len(h.Props))
+	out = append(out, h.Entities...)
+	return append(out, h.Props...)
+}
+func (h SceneHint) hasTopic(id string) bool { return contains(h.Topics, id) }
+func (h SceneHint) hasNode(id string) bool  { return contains(h.Reachable, id) }
 
 func contains(list []Named, id string) bool {
 	for _, n := range list {
@@ -152,6 +173,12 @@ func (h SceneHint) Render() string {
 		b.WriteString("Известные темы:\n")
 		for _, t := range h.Topics {
 			b.WriteString("  " + t.ID + " — " + t.Name + "\n")
+		}
+	}
+	if len(h.Props) > 0 {
+		b.WriteString("Детали места — их можно осматривать и обыскивать:\n")
+		for _, p := range h.Props {
+			b.WriteString("  " + p.ID + " — " + p.Name + "\n")
 		}
 	}
 	b.WriteString("Проходы:\n")

@@ -71,6 +71,10 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 Игрок: «Поздороваться с Берном»
 Ответ: {"outcome":"intent","verb":"talk_to","target":"e_bern"}
 
+Детали места: p_barrels — Штабель бочек
+Игрок: «осмотреть бочки»
+Ответ: {"outcome":"intent","verb":"examine","target":"p_barrels"}
+
 Сцена: e_ivar — Ивар, кузнец; известные темы: f_ledger — гроссбух
 Игрок: «спрошу кузнеца про книгу»
 Ответ: {"outcome":"intent","verb":"question","target":"e_ivar","topic":"f_ledger"}
@@ -173,7 +177,7 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 	// ход не превращается в допрос игрока о том, что он только что написал.
 	need := requires(def.Verb)
 	if need.Target && raw.Target == "" {
-		if id, ok := resolveByName(text, hint.Entities); ok {
+		if id, ok := resolveByName(text, hint.targets()); ok {
 			raw.Target = id
 		}
 	}
@@ -227,6 +231,16 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 	}
 
 	if msg := requires(def.Verb).missing(raw); msg != "" {
+		// Уточнение про цель обязано её назвать. Модель target почти никогда
+		// не заполняет сама — для людей это незаметно, их имя находится в
+		// фразе, а для деталей места не находится из-за падежей. Игрок при
+		// этом видит бочки в списке сцены и не понимает, каким словом в них
+		// попасть.
+		if need.Target && raw.Target == "" {
+			if names := targetNames(hint); names != "" {
+				msg = "к кому или к чему? здесь: " + names
+			}
+		}
 		// Пропущенный обязательный аргумент — единственный случай, который
 		// стоит починить: глагол угадан, не хватает ссылки на сцену.
 		return Result{Clarify: msg, Class: def.Class}, "не заполнено обязательное поле — " + msg
@@ -266,6 +280,16 @@ func fallback(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// targetNames — имена всего, на что можно указать, через запятую.
+func targetNames(hint SceneHint) string {
+	all := hint.targets()
+	names := make([]string, 0, len(all))
+	for _, t := range all {
+		names = append(names, t.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // takesTopic — глаголы, которые тему принимают: обязательно или нет. Открытый

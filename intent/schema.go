@@ -98,7 +98,7 @@ func SchemaFor(hint SceneHint) map[string]any {
 				"type": "string", "enum": verbNamesFor(hint),
 				"description": "глагол из реестра; обязателен при outcome=intent",
 			},
-			"target": enumOr(hint.Entities, "id сущности из списка присутствующих"),
+			"target": enumOr(hint.targets(), "id цели: человек из присутствующих либо деталь места"),
 			"topic":  enumOr(hint.Topics, "id факта из банка тем парти"),
 			"node":   enumOr(hint.Reachable, "id смежного открытого узла"),
 			"facts": map[string]any{"type": "array",
