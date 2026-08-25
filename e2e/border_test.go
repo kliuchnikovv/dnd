@@ -46,6 +46,7 @@ var worldWrites = map[string]string{
 	"MarkPresented":   "отметка предъявленного",
 	"CloseThread":     "закрытие нити",
 	"ProposeMutation": "предложение мутации мимо капабилити-гейта",
+	"KnowPlace":       "выдача знания о месте",
 }
 
 // allowed — известные исключения: файл и метод, который ему позволен. Каждая

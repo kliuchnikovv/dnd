@@ -23,6 +23,9 @@ type DB struct {
 	// Canon — ambient-детали мира, решённые Мастером по ходу игры. Отдельно
 	// от фактов дела: факт дела импровизацией не канонизируется никогда.
 	Canon map[CanonKey]CanonFact
+	// KnownPlaces — места, о которых парти знает. Отдельно от party_knowledge:
+	// место не улика (см. store/places.go).
+	KnownPlaces map[PlaceKey]bool
 
 	// Пустые до M2. См. store/future.go: пустая таблица стоит ноль, миграция
 	// потом стоит дорого.
@@ -42,20 +45,21 @@ type DB struct {
 
 func NewDB() *DB {
 	return &DB{
-		Facts:      map[FactID]Fact{},
-		Holders:    map[FactID][]FactHolder{},
-		Unlocks:    map[FactID][]FactUnlock{},
-		Entities:   map[EntityID]Entity{},
-		Locations:  map[NodeID]Location{},
-		Clocks:     map[ClockID]*Clock{},
-		Characters: map[CharacterID]*Character{},
-		Dossiers:   map[DossierKey]*Dossier{},
-		Props:      map[NodeID][]SceneProp{},
-		Items:      map[ItemID]Item{},
-		Inventory:  map[InventoryKey]bool{},
-		Canon:      map[CanonKey]CanonFact{},
-		Cases:      map[CaseID]*Case{},
-		Regions:    map[RegionID]Region{},
+		Facts:       map[FactID]Fact{},
+		Holders:     map[FactID][]FactHolder{},
+		Unlocks:     map[FactID][]FactUnlock{},
+		Entities:    map[EntityID]Entity{},
+		Locations:   map[NodeID]Location{},
+		Clocks:      map[ClockID]*Clock{},
+		Characters:  map[CharacterID]*Character{},
+		Dossiers:    map[DossierKey]*Dossier{},
+		Props:       map[NodeID][]SceneProp{},
+		Items:       map[ItemID]Item{},
+		Inventory:   map[InventoryKey]bool{},
+		Canon:       map[CanonKey]CanonFact{},
+		KnownPlaces: map[PlaceKey]bool{},
+		Cases:       map[CaseID]*Case{},
+		Regions:     map[RegionID]Region{},
 	}
 }
 
