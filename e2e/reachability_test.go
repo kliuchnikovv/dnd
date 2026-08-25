@@ -99,8 +99,14 @@ func revealedByCompare(g *core.Game, f store.FactID) bool {
 	return false
 }
 
-// Каждое место дела обязано становиться известным: место, о котором нельзя
-// узнать ни из брифинга, ни из факта, ни от соседа, не существует для игрока.
+// Каждое место дела обязано становиться известным одним из трёх путей:
+// брифинг (start_places), факт (fact_unlocks вида node) или рассказ соседа —
+// а рассказ соседа работает только В ОДИН ШАГ от места, куда игрок и так
+// доказуемо попадает без рассказа (это ограничение спеки: персонаж
+// рассказывает про место, смежное тому, где он стоит, а не про весь свет по
+// цепочке). Транзитивное замыкание здесь было бы вакуумным тестом: на
+// связном графе оно склеивает всё со всем независимо от того, объявлено ли
+// место в start_places, и не поймало бы забытый узел.
 func TestEveryPlaceCanBecomeKnown(t *testing.T) {
 	for name, path := range caseFiles {
 		t.Run(name, func(t *testing.T) {
@@ -108,33 +114,31 @@ func TestEveryPlaceCanBecomeKnown(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			known := map[store.NodeID]bool{cfg.Start: true}
+			base := map[store.NodeID]bool{cfg.Start: true}
 			for _, n := range cfg.StartPlaces {
-				known[n] = true
+				base[n] = true
 			}
 			for _, us := range cfg.DB.Unlocks {
 				for _, u := range us {
 					if u.UnlocksKind == "node" {
-						known[store.NodeID(u.UnlocksID)] = true
+						base[store.NodeID(u.UnlocksID)] = true
 					}
 				}
 			}
-			// Смежное известному место рассказывает сосед — до тех пор, пока
-			// множество растёт.
-			for grew := true; grew; {
-				grew = false
-				for n := range known {
-					for _, a := range cfg.DB.Locations[n].Adjacent {
-						if !known[a] {
-							known[a] = true
-							grew = true
-						}
-					}
+			// Допустимо — база плюс один шаг соседства от неё, без повторного
+			// расширения от новых мест.
+			known := map[store.NodeID]bool{}
+			for n := range base {
+				known[n] = true
+			}
+			for n := range base {
+				for _, a := range cfg.DB.Locations[n].Adjacent {
+					known[a] = true
 				}
 			}
 			for id := range cfg.DB.Locations {
 				if !known[id] {
-					t.Errorf("место %s недостижимо: о нём нельзя узнать никак", id)
+					t.Errorf("место %s недостижимо: не в start_places, не открыто фактом и не смежно тому, куда игрок попадает без рассказа", id)
 				}
 			}
 		})
