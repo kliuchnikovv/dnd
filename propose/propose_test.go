@@ -90,6 +90,34 @@ func TestNumericKindsPassNoRole(t *testing.T) {
 	}
 }
 
+// Рассказать дорогу вправе тот, кто говорит, — актёр. Это осознанное
+// расширение его полномочий: до сих пор Proposes у него был пуст.
+func TestActorMayTellThePlace(t *testing.T) {
+	g := game() // n_quay, дело harbour
+	g.DB.Locations["n_warehouse"] = store.Location{ID: "n_warehouse"}
+	g.DB.Locations["n_quay"] = store.Location{ID: "n_quay",
+		Adjacent: []store.NodeID{"n_warehouse"}}
+
+	if _, ref := Mutation(g, llm.RoleActor,
+		core.Mutation{Kind: core.MutPlaceKnown, Target: "n_warehouse"}); ref.Refused() {
+		t.Errorf("актёр не смог рассказать дорогу: %q", ref.Reason)
+	}
+	if !g.KnowsPlace("n_warehouse") {
+		t.Error("место не стало известным")
+	}
+}
+
+// Место вправе рассказать ровно одна роль. Список закрыт нарочно: судья и
+// модерация состояния не касаются вовсе, а Мастер говорит не за персонажа.
+func TestOnlyActorMayTellPlaces(t *testing.T) {
+	allowed := map[llm.Role]bool{llm.RoleActor: true}
+	for _, role := range llm.AllRoles() {
+		if got := Allowed(role, core.MutPlaceKnown); got != allowed[role] {
+			t.Errorf("роль %q: место разрешено=%v, ждали %v", role, got, allowed[role])
+		}
+	}
+}
+
 // Порядок гейтов виден на MutWorldEvent: куратор проходит капабилити и
 // упирается в ядро, нарратор не проходит уже гейт. Пройти обязаны оба.
 func TestWorldEventPassesGateAndStopsInCore(t *testing.T) {

@@ -27,6 +27,7 @@ const RefusalNotAllowed = "роль не вправе предлагать та�
 var needs = map[core.MutationKind]llm.ProposalKind{
 	core.MutCanonAmbient: llm.ProposeCanonAmbient,
 	core.MutWorldEvent:   llm.ProposeWorldMutation,
+	core.MutPlaceKnown:   llm.ProposePlaceKnown,
 }
 
 // Allowed — вправе ли роль предлагать такой вид изменения. Ответ выводится из

@@ -66,16 +66,17 @@ func TestProposingRoleRefusesNonStrictProvider(t *testing.T) {
 }
 
 // Роль, ничего ядру не предлагающая, нестрогого провайдера принимает: её
-// выход — речь, и плохой разбор стоит бледной реплики, а не канона. Раньше
-// здесь стоял нарратор; по реестру он предлагает канон-ambient и строгого
-// провайдера теперь требует, поэтому пример взят из ролей без предложений.
+// выход — вердикт-совет, и плохой разбор стоит бледной реплики, а не канона.
+// Раньше здесь стоял нарратор, потом актёр; оба по реестру теперь что-то
+// предлагают и строгого провайдера требуют, поэтому пример взят из судьи —
+// его выход состояния не касается вовсе.
 func TestNonProposingRoleAcceptsNonStrictProvider(t *testing.T) {
 	loose := NewFake("loose", false)
-	r := NewRouter().Route(RoleActor, Target{loose, "claude-sonnet-5"})
+	r := NewRouter().Route(RoleCanonGuard, Target{loose, "claude-sonnet-5"})
 	g := NewGateway(r, NewLedger(Caps{}, WithClock(fixedClock("2026-08-18"))))
 
-	if _, err := g.Do(context.Background(), Request{Role: RoleActor, Input: "сцена"}); err != nil {
-		t.Fatalf("актёр отвергнут: %v", err)
+	if _, err := g.Do(context.Background(), Request{Role: RoleCanonGuard, Input: "сцена"}); err != nil {
+		t.Fatalf("судья отвергнут: %v", err)
 	}
 }
 

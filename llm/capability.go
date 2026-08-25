@@ -52,6 +52,10 @@ const (
 	ProposeCanonAmbient ProposalKind = "canon_ambient"
 	// ProposeWorldMutation — изменение состояния мира.
 	ProposeWorldMutation ProposalKind = "world_mutation"
+	// ProposePlaceKnown — рассказать игроку о месте, куда отсюда ведёт дорога.
+	// Не решение о мире: место в деле уже есть, персонаж лишь говорит, что оно
+	// существует и где.
+	ProposePlaceKnown ProposalKind = "place_known"
 )
 
 // Capability — полномочия одной роли: что читает и что предлагает.
@@ -86,8 +90,9 @@ var Capabilities = map[Role]Capability{
 		},
 		Proposes: []ProposalKind{ProposeCanonAmbient},
 	},
-	// Актёр не предлагает ничего: его выход — речь и needs. Чего он не знает,
-	// он спрашивает у Мастера, а не сочиняет.
+	// Актёр предлагает ровно одно: место, о котором рассказал. Фактов дела и
+	// решений о мире он по-прежнему не предлагает — чего не знает, спрашивает у
+	// Мастера. Вид узкий, и выдумать место нельзя: набор узлов закрыт делом.
 	//
 	// Канон мира и авторская рамка (сеттинг-библия) в scope не по недосмотру:
 	// без них персонаж выдумывает то, что уже решено, — а ровно это и ловит
@@ -97,6 +102,7 @@ var Capabilities = map[Role]Capability{
 			ReadPlayerInput, ReadPartyKnowledge, ReadOwnDossier,
 			ReadMasterGrants, ReadScenePublic, ReadWorldCanon, ReadAuthoredFlavour,
 		},
+		Proposes: []ProposalKind{ProposePlaceKnown},
 	},
 	// Судьи возвращают вердикт-совет, а не предложение: их выход не доходит
 	// до состояния, и плохой разбор стоит бледной реплики, а не канона.

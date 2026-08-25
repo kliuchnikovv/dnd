@@ -14,7 +14,7 @@ var wantStrict = map[Role]bool{
 	RoleChatMaster:   true,  // предлагает команду
 	RoleNarrator:     true,  // предлагает канон-ambient
 	RoleWorldsmith:   true,  // предлагает канон и мутацию мира
-	RoleActor:        false, // речь и needs, ядра не касается
+	RoleActor:        true,  // предлагает место, о котором рассказал
 	RoleCanonGuard:   false, // вердикт-совет
 	RoleModeration:   false, // вердикт-совет
 }
