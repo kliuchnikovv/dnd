@@ -115,6 +115,7 @@ func TestStateTablesAreNotWrittenAboveDomain(t *testing.T) {
 		"Canon": true, "Facts": true, "Holders": true, "Unlocks": true,
 		"Characters": true, "Clocks": true, "Entities": true, "Locations": true,
 		"Items": true, "Dossiers": true, "Props": true, "Relations": true,
+		"KnownPlaces": true,
 	}
 	for _, layer := range aboveDomain {
 		err := filepath.Walk(layer, func(path string, info os.FileInfo, err error) error {
