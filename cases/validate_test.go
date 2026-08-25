@@ -371,3 +371,14 @@ func TestHandwrittenCasesNameNoWrongHolders(t *testing.T) {
 		}
 	}
 }
+
+// Опечатка в start_places — это место, которого нет: валидатор обязан сказать
+// об этом при загрузке, а не оставить игрока без выхода.
+func TestValidateRejectsUnknownStartPlace(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.StartPlaces = []store.NodeID{"n_нет"}
+	})
+	if err == nil {
+		t.Error("несуществующее стартовое место принято")
+	}
+}

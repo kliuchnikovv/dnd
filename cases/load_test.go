@@ -182,3 +182,21 @@ func TestStartInventoryRejectsUnknownItem(t *testing.T) {
 		t.Fatal("дело с несуществующим предметом в старт-инвентаре загрузилось")
 	}
 }
+
+// Место, названное брифингом, обязано быть известно с начала: иначе игрок
+// читает про склад в первой строке и не может туда пойти.
+func TestStartPlacesReachTheGame(t *testing.T) {
+	cfg, err := Load("harbour/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, n := range cfg.StartPlaces {
+		if n == "n_warehouse" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("склад не объявлен известным с начала")
+	}
+}

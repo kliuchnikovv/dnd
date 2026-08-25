@@ -230,6 +230,12 @@ func validateFile(f File) error {
 		}
 	}
 
+	for _, n := range f.StartPlaces {
+		if !hasLocation(f, n) {
+			add("стартовое место %s не существует", n)
+		}
+	}
+
 	for _, d := range f.Dossiers {
 		if !entities[d.Entity] {
 			add("дневник заведён на несуществующую сущность %s", d.Entity)

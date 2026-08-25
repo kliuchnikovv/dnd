@@ -79,6 +79,11 @@ type File struct {
 		From store.EntityID `json:"from"`
 	} `json:"start_facts"`
 
+	// StartPlaces — места, о которых игрок знает с начала: их назвал брифинг.
+	// Без этого поля место, названное прозой, остаётся недостижимым, потому что
+	// связь прозы с узлом машиночитаемой не бывает.
+	StartPlaces []store.NodeID `json:"start_places"`
+
 	Hints map[store.FactID]string `json:"hints"`
 
 	// Briefing — с чем игрока прислали: кто он, что случилось, чего от него

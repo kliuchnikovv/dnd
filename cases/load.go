@@ -125,18 +125,19 @@ func Parse(raw []byte) (*core.Config, error) {
 	}
 
 	return &core.Config{
-		DB:        db,
-		Truth:     accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
-		Flavour:   f.Flavour,
-		Setting:   f.Setting,
-		CaseID:    f.ID,
-		Tokens:    tokens,
-		Start:     f.Start,
-		Aftermath: f.Aftermath,
-		ColdCase:  f.ColdCase,
-		Briefing:  f.Briefing,
-		Hints:     f.Hints,
-		Actor:     store.CharacterID(f.Actor),
+		DB:          db,
+		Truth:       accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
+		Flavour:     f.Flavour,
+		Setting:     f.Setting,
+		CaseID:      f.ID,
+		Tokens:      tokens,
+		Start:       f.Start,
+		Aftermath:   f.Aftermath,
+		ColdCase:    f.ColdCase,
+		Briefing:    f.Briefing,
+		Hints:       f.Hints,
+		Actor:       store.CharacterID(f.Actor),
+		StartPlaces: f.StartPlaces,
 	}, nil
 }
 
