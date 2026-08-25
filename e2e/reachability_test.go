@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -96,4 +97,46 @@ func revealedByCompare(g *core.Game, f store.FactID) bool {
 		}
 	}
 	return false
+}
+
+// Каждое место дела обязано становиться известным: место, о котором нельзя
+// узнать ни из брифинга, ни из факта, ни от соседа, не существует для игрока.
+func TestEveryPlaceCanBecomeKnown(t *testing.T) {
+	for name, path := range caseFiles {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := cases.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			known := map[store.NodeID]bool{cfg.Start: true}
+			for _, n := range cfg.StartPlaces {
+				known[n] = true
+			}
+			for _, us := range cfg.DB.Unlocks {
+				for _, u := range us {
+					if u.UnlocksKind == "node" {
+						known[store.NodeID(u.UnlocksID)] = true
+					}
+				}
+			}
+			// Смежное известному место рассказывает сосед — до тех пор, пока
+			// множество растёт.
+			for grew := true; grew; {
+				grew = false
+				for n := range known {
+					for _, a := range cfg.DB.Locations[n].Adjacent {
+						if !known[a] {
+							known[a] = true
+							grew = true
+						}
+					}
+				}
+			}
+			for id := range cfg.DB.Locations {
+				if !known[id] {
+					t.Errorf("место %s недостижимо: о нём нельзя узнать никак", id)
+				}
+			}
+		})
+	}
 }

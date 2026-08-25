@@ -2,6 +2,18 @@
   "id": "forte_merlo",
   "archetype": "locked_room",
   "start": "n_police_office",
+  "start_places": [
+    "n_kalderes",
+    "n_bar",
+    "n_bakery",
+    "n_zheber_home",
+    "n_road_to_fort",
+    "n_fort_kpp",
+    "n_fort_yard",
+    "n_fort_hq",
+    "n_fort_barracks",
+    "n_fort_hospital"
+  ],
   "actor": "pc",
   "character": {
     "id": "pc",
