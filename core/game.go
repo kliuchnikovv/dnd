@@ -38,7 +38,11 @@ type Config struct {
 	Setting string
 	Tokens  []TokenGrant
 	Start   store.NodeID
-	Actor   store.CharacterID
+	// StartPlaces — места, о которых игрок знает с начала: их назвал брифинг.
+	// Поле явное, а не выведенное из его текста: связь прозы с узлом
+	// машиночитаемой не бывает, а догадка по подстроке — это второй парсер.
+	StartPlaces []store.NodeID
+	Actor       store.CharacterID
 	// Aftermath — что стало с виновным и с посёлком; печатается после речи
 	// игрока. ColdCase — текст висяка.
 	Aftermath string
@@ -115,7 +119,7 @@ type Game struct {
 }
 
 func NewGame(cfg Config) *Game {
-	return &Game{
+	g := &Game{
 		DB: cfg.DB, Rules: cfg.Rules, Dice: cfg.Dice,
 		K: NewKnowledge(cfg.DB), C: NewClocks(cfg.DB),
 		Node: cfg.Start, Actor: cfg.Actor,
@@ -133,6 +137,14 @@ func NewGame(cfg Config) *Game {
 		// подсказка про его держателей законна с первого хода.
 		visited: map[store.NodeID]bool{cfg.Start: true},
 	}
+	// Где стоишь — то знаешь. Дальше добавляется только объявленное автором:
+	// смежность сама по себе места не открывает, иначе рассказ персонажа
+	// ничего бы не решал.
+	g.knowPlace(cfg.Start)
+	for _, n := range cfg.StartPlaces {
+		g.knowPlace(n)
+	}
+	return g
 }
 
 // MoveTo переставляет игрока в узел и запоминает, что он там был.

@@ -14,6 +14,11 @@ func (g *Game) applyUnlocksFor(f store.FactID) {
 		g.unlocked = map[string]bool{}
 	}
 	for _, u := range g.DB.Unlocks[f] {
+		if u.UnlocksKind == "node" {
+			// Новый смысл: факт не «разрешает войти», а рассказывает о месте.
+			g.knowPlace(store.NodeID(u.UnlocksID))
+			continue
+		}
 		g.unlocked[u.UnlocksKind+":"+u.UnlocksID] = true
 	}
 }
