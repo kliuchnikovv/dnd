@@ -541,6 +541,21 @@ func TestWantOpensAMoveOfItsOwn(t *testing.T) {
 	}
 }
 
+// Дорога — разрешённый материал: планировка посёлка публична, и реплика «прямо
+// по настилу до второй тумбы, там где бухты» с наибольшей вероятностью
+// опознавалась бы гвардом как выдумка и уходила в заглушку, не будь смежное
+// место в списке разрешённого.
+func TestRoadsAreAllowedMaterial(t *testing.T) {
+	sit := Situation{Roads: []Known{{ID: "n_warehouse", Text: "Склад"}}}
+	material := allowedMaterial(Speaker{Name: "Нильс"}, sit, "")
+	for _, m := range material {
+		if m == "Склад" {
+			return
+		}
+	}
+	t.Errorf("смежное место не попало в материал: %v", material)
+}
+
 // Желание — разрешённый материал: иначе страж зарубит собственную просьбу
 // персонажа как выдумку.
 func TestWantIsAllowedMaterial(t *testing.T) {
@@ -1760,6 +1775,39 @@ func TestUntrimmableLineFallsToFloor(t *testing.T) {
 	}
 }
 
+// Вердикт ядра по предложенному месту доходит до того, кто ведёт аудит — тот
+// же шов, что и у канона (см. TestProposalVerdictReachesTheHook). Без вызова
+// v.OnPropose отвергнутое место не оставляло следа нигде: реплика уже
+// сказана, а мир не изменился, и никто не узнал бы, что предложение было и
+// провалилось.
+func TestPlaceProposalVerdictReachesTheHook(t *testing.T) {
+	g := harbour(t)
+	a, _ := actorWith(t, `{"line":"За кузницей таверна.","told_place":"n_tavern"}`)
+	var roles []llm.Role
+	var targets []string
+	var reasons []string
+	v := &GameVoicer{Actor: a, Game: g,
+		OnPropose: func(role llm.Role, m core.Mutation, app core.Applied, ref core.Refusal) {
+			roles = append(roles, role)
+			targets = append(targets, m.Target)
+			reasons = append(reasons, ref.Reason)
+		}}
+
+	if _, err := v.Voice(context.Background(), core.Intent{Verb: "ask_about",
+		Args: core.Args{Target: "e_nils", Text: "а где выпить?"}}, core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || targets[0] != "n_tavern" {
+		t.Fatalf("вердикт по предложенному месту не дошёл: targets=%v", targets)
+	}
+	if roles[0] != llm.RoleActor {
+		t.Errorf("роль вердикта не актёр: %v", roles[0])
+	}
+	if reasons[0] == "" {
+		t.Error("несмежное место отвергнуто ядром, но причина отказа не дошла до аудита")
+	}
+}
+
 // Персонаж, рассказавший дорогу, делает место известным — через границу, а не
 // сам. Живой прогон: Нильс подробно объяснил путь до склада, а игра туда не
 // пустила, потому что рассказ ничего не менял.
@@ -1798,5 +1846,30 @@ func TestToldPlaceOutsideReachIsRefusedQuietly(t *testing.T) {
 	}
 	if g.KnowsPlace("n_tavern") {
 		t.Error("несмежное место стало известным")
+	}
+}
+
+// Реплика, ушедшая в заглушку, места не открывает: зеркало исходного бага
+// «мир меняется без рассказа» — если бы told_place читался раньше проверки на
+// пустоту, место открылось бы даже тогда, когда игрок ничего не услышал.
+//
+// Проверяется на уровне finish, а не через ядро: интересует именно порядок
+// внутри actor — вызовется ли sit.TellPlace, — а не то, примет ли ядро
+// предложение. Ядро тут ни при чём: даже валидное место не должно
+// предлагаться из-под заглушки.
+func TestPlaceIsNotToldWhenLineFallsToFloor(t *testing.T) {
+	a, _ := actorWith(t, `{"line":"","told_place":"n_warehouse"}`)
+	told := false
+	sit := Situation{Verb: "ask_about", TellPlace: func(string) { told = true }}
+
+	got, err := a.Line(context.Background(), Speaker{Name: "Нильс"}, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" {
+		t.Error("заглушка не сработала — реплика пуста")
+	}
+	if told {
+		t.Error("TellPlace вызвался на пустой (заглушённой) реплике")
 	}
 }

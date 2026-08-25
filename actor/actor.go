@@ -95,6 +95,14 @@ type Situation struct {
 	// MarkTold отмечает тему рассказанной. Необязателен: без него темы просто
 	// не помечаются.
 	MarkTold func(Topic)
+	// TellPlace сообщает о месте, которое персонаж назвал рассказанным.
+	// Коллбэк живёт здесь, а не на *Actor: тот один на весь процесс, и поле
+	// на нём переписывалось бы каждый ход, а при двух GameVoicer одновременно
+	// последний зарегистрированный отбирал бы цель у первого. Situation
+	// собирается заново на каждый ход — разделяемого состояния не возникает.
+	// Необязателен: без него рассказ дорогу не открывает, и игра работает как
+	// раньше.
+	TellPlace func(place string)
 	// Scene — обстановка: место, погода, кто рядом. Об этом персонаж говорит
 	// свободно, потому что это у всех на виду.
 	//
@@ -280,10 +288,6 @@ type Actor struct {
 	// принял её за игнор вопроса, и разобраться удалось только чтением кода.
 	// Игроку причина не показывается — это отладка, а не часть разговора.
 	notify func(reason string)
-	// told — куда сообщить о месте, которое персонаж назвал рассказанным.
-	// Необязателен: без него рассказ дорогу не открывает, и игра работает как
-	// раньше.
-	told func(place string)
 }
 
 func New(gw *llm.Gateway) *Actor { return &Actor{gw: gw} }
@@ -292,13 +296,6 @@ func New(gw *llm.Gateway) *Actor { return &Actor{gw: gw} }
 // Необязательно: без него заглушка работает как раньше, молча.
 func (a *Actor) WithNotify(f func(string)) *Actor {
 	a.notify = f
-	return a
-}
-
-// WithTold включает сообщение о том, какое место персонаж назвал. Необязателен:
-// без него рассказ дорогу не открывает, и игра работает как раньше.
-func (a *Actor) WithTold(f func(place string)) *Actor {
-	a.told = f
 	return a
 }
 
@@ -392,8 +389,17 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 			sit.MarkTold(topic)
 		}
 	}
-	if out.TellPlace != "" && a.told != nil {
-		a.told(out.TellPlace)
+	// Место сообщается ТОЛЬКО когда реплика окончательна: место — зеркало
+	// исходного бага «мир меняется без рассказа», и открывать его раньше
+	// проверки на пустоту, обрезки и гварда значило бы повторить тот же баг —
+	// реплику зарубят, а место всё равно откроется. Поэтому вызов не здесь, а
+	// в конце каждой ветки, которая возвращает настоящую реплику, а не
+	// заглушку.
+	told := func(line string) (string, error) {
+		if out.TellPlace != "" && sit.TellPlace != nil {
+			sit.TellPlace(out.TellPlace)
+		}
+		return line, nil
 	}
 	if out.Line == "" {
 		return a.floor(ctx, s, sit, req, "модель вернула пустую строку"), nil
@@ -420,7 +426,7 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 		out.Line = trimmed
 	}
 	if a.guard == nil {
-		return out.Line, nil
+		return told(out.Line)
 	}
 	material := allowedMaterial(s, sit, "")
 	v, err := a.guard.Check(ctx, out.Line, material, req)
@@ -430,7 +436,7 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 		return a.floor(ctx, s, sit, req, "проверка на утечку не отработала: "+err.Error()), nil
 	}
 	if v.OK {
-		return out.Line, nil
+		return told(out.Line)
 	}
 	// Сработавшая проверка не обязана стоить голоса: сначала переспрос «то
 	// же, без придуманного». Заглушка — дно после провала ремонта, а не
@@ -452,7 +458,7 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 		}
 		return a.floor(ctx, s, sit, req, reason), nil
 	}
-	return fixed, nil
+	return told(fixed)
 }
 
 const repairPrompt = `Ты сказал фразу, в которой оказалось придумано то, чего ты знать не можешь.
@@ -785,6 +791,13 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	for _, t := range sit.Talks {
 		out = append(out, t.Note)
 	}
+	// Дорога до смежного места разрешена всегда: планировка посёлка
+	// публична, это география, а не факты дела. Без неё гвард отвергал
+	// «прямо по настилу до второй тумбы, там где бухты» как выдумку — ровно
+	// та реплика, ради которой told_place существует.
+	for _, r := range sit.Roads {
+		out = append(out, r.Text)
+	}
 	out = append(out, sit.Threads...)
 	out = append(out, sit.Wants...)
 	if sit.PlayerText != "" {
@@ -1054,13 +1067,18 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 	if reveals {
 		sit.Reveal = revealed(v.Game, res.Learned)
 	}
-	v.Actor = v.Actor.WithTold(func(place string) {
+	sit.TellPlace = func(place string) {
 		// Предложение, а не запись: ядро проверит, что место существует и что
 		// отсюда туда ведёт дорога. Отказ ход не рушит — реплика уже сказана.
-		propose.Mutation(v.Game, llm.RoleActor, core.Mutation{
-			Kind: core.MutPlaceKnown, Target: place,
-		})
-	})
+		m := core.Mutation{Kind: core.MutPlaceKnown, Target: place}
+		app, ref := propose.Mutation(v.Game, llm.RoleActor, m)
+		// Тот же шов, что у канона: «предложили» расходится с «применили»
+		// именно здесь, и без вызова отказ пропадал бы бесследно — отвергнутое
+		// место не оставляло следа ни в аудите, ни где-либо ещё.
+		if v.OnPropose != nil {
+			v.OnPropose(llm.RoleActor, m, app, ref)
+		}
+	}
 
 	line, err := v.talk(ctx, speaker, sit)
 	if err != nil || line == "" {
