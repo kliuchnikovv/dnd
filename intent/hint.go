@@ -183,7 +183,9 @@ func (h SceneHint) Render() string {
 			b.WriteString("  " + p.ID + " — " + p.Name + "\n")
 		}
 	}
-	b.WriteString("Проходы:\n")
+	// Заголовок был «Проходы» — со смежностью, отменённой этой веткой: список
+	// теперь про знание места, а не про то, куда ведёт граф.
+	b.WriteString("Известные места:\n")
 	for _, n := range h.Reachable {
 		b.WriteString("  " + n.ID + " — " + n.Name + "\n")
 	}
