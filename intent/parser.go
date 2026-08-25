@@ -291,7 +291,7 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 	// имени в фразе — подстрока, а не суждение. Названная тема ценнее
 	// открытого вопроса: она спрашивает именно о том, о чём хотели, поэтому
 	// ищется даже там, где тема необязательна.
-	if raw.Topic == "" && takesTopic(def.Verb) {
+	if raw.Topic == "" && topicGuessableFromText(def.Verb) {
 		if id, ok := resolveByName(text, hint.Topics); ok {
 			raw.Topic = id
 		}
@@ -394,6 +394,27 @@ func targetNames(hint SceneHint) string {
 func takesTopic(v core.Verb) bool {
 	switch v {
 	case "question", "cross_reference", "examine", "search":
+		return true
+	}
+	return false
+}
+
+// topicGuessableFromText — глаголы, для которых подстрочный доводчик темы
+// (resolveByName по hint.Topics) уместен. У question и cross_reference тема —
+// предмет вопроса, и промах дешёв: без темы вопрос остаётся открытым, просто
+// не таким прицельным. У examine и search тема СУЖАЕТ поиск — она меняет,
+// какого держателя ищет ядро (см. holderFor), а имена фактов — это фразы
+// («Тело сборщика податей Халдена найдено на складе у пристани»), и
+// naming.Mentions ловит любое их значимое слово. «Осмотреть тело» на складе
+// «Гавани» подставляло topic=f_body_found по слову «тело» из имени факта — и
+// первый же осмысленный ход свободным текстом превращался в отказ вместо
+// находки. Поэтому у examine и search тема остаётся только той, которую
+// модель назвала явно через схему: takesTopic эти глаголы не покидает — явная
+// тема должна оставаться выразимой, — а доводчик по подстроке для них просто
+// не запускается.
+func topicGuessableFromText(v core.Verb) bool {
+	switch v {
+	case "question", "cross_reference":
 		return true
 	}
 	return false

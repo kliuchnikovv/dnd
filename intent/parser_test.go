@@ -1325,3 +1325,41 @@ func TestExamineTakesTopic(t *testing.T) {
 		t.Errorf("тема осмотра потерялась: %+v", res.Intent)
 	}
 }
+
+// Живой прогон: «осмотреть тело» на складе «Гавани» стало отказом вместо
+// находки. Причина — подстрочный доводчик темы (resolveByName по hint.Topics)
+// подставлял topic=f_body_found по слову «тело», совпавшему со словом в имени
+// уже известного факта «Тело сборщика податей Халдена найдено на складе у
+// пристани». С этой темой ядро не находит держателя (f_body_found не выдаётся
+// осмотром тела) и отказывает; без темы — находит f_ligature. Модель здесь
+// тему НЕ называла (topic:"" в ответе), значит расследование — на подстрочном
+// доводчике examine/search, и связку нужно проверять через core.Apply, а не
+// только через разбор: именно её не хватало в тестах, из-за чего дефект
+// проехал.
+func TestFreeTextExamineOfBodyFindsFactNotRefusal(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"examine","target":"e_body",`+
+		`"topic":"","item":""}`)
+	g := harbourGame(t)
+	g.Node = "n_warehouse"
+	hint := BuildHint(g)
+
+	res, err := p.Parse(context.Background(), "осмотреть тело", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil {
+		t.Fatalf("интент не собрался: clarify=%q", res.Clarify)
+	}
+	if res.Intent.Args.Topic != "" {
+		t.Fatalf("подстрочный доводчик подставил тему, которую модель не называла: %q",
+			res.Intent.Args.Topic)
+	}
+
+	out := g.Apply(*res.Intent)
+	if out.Refused {
+		t.Fatalf("общий осмотр тела стал отказом: %q", out.Refusal)
+	}
+	if len(out.Learned) == 0 {
+		t.Error("осмотр тела не выдал ни одного факта")
+	}
+}
