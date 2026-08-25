@@ -82,6 +82,10 @@ const (
 	// стала каноном. Применяется через ProposeMutation, пишет только в канон
 	// и никогда в факты дела.
 	MutCanonAmbient MutationKind = "canon_ambient"
+	// MutPlaceKnown — место, о котором персонаж рассказал игроку. Target это
+	// узел, Text не используется. Пишет в known_places и никогда в факты дела:
+	// место — публичная география, оно ничего не доказывает.
+	MutPlaceKnown MutationKind = "place_known"
 	// MutWorldEvent — событие слоя мира. Объявлен формой; обработчика нет и
 	// не будет до серверного слоя с воркером мира.
 	MutWorldEvent MutationKind = "world_event"

@@ -122,6 +122,8 @@ func (g *Game) ProposeMutation(m Mutation) (Applied, Refusal) {
 	switch m.Kind {
 	case MutCanonAmbient:
 		return g.proposeCanon(m)
+	case MutPlaceKnown:
+		return g.proposePlace(m)
 	case MutResource, MutHarm, MutClock, MutDisposition, MutPosition:
 		// Числа меняет только система правил после броска. Иначе нарратор
 		// раздавал бы ранения словом.
@@ -185,4 +187,22 @@ const factPrefix = "f_"
 
 func refuseMutation(m Mutation, reason string) (Applied, Refusal) {
 	return Applied{}, Refusal{Kind: m.Kind, Reason: reason}
+}
+
+// proposePlace делает место известным по рассказу персонажа.
+//
+// Смежность текущему узлу — единственное, что здесь стережёт карту: рассказать
+// можно про то, куда отсюда ведёт дорога. Перепрыгнуть через полкарты одной
+// репликой нельзя, и разведка остаётся занятием.
+func (g *Game) proposePlace(m Mutation) (Applied, Refusal) {
+	n := store.NodeID(m.Target)
+	if _, ok := g.DB.Locations[n]; !ok {
+		return refuseMutation(m, "такого места в деле нет")
+	}
+	if !g.DB.Adjacent(g.Node, n) {
+		return refuseMutation(m, "отсюда дорога туда не ведёт")
+	}
+	// Повтор идемпотентен: рассказать дорогу второй раз не ошибка.
+	g.knowPlace(n)
+	return Applied{Kind: MutPlaceKnown, Target: string(n)}, Refusal{}
 }

@@ -249,3 +249,54 @@ func TestProposedUnknownKindIsRefusedNotIgnored(t *testing.T) {
 		t.Error("MutWorldEvent применился без обработчика")
 	}
 }
+
+// Место, о котором рассказали, становится известным через границу — и только
+// смежное текущему узлу. Иначе одна болтливая реплика раскрыла бы карту, и
+// разведка перестала бы быть занятием.
+func TestProposedPlaceMustBeAdjacent(t *testing.T) {
+	g := placesGame() // из core/places_test.go, игрок на n_quay
+	app, ref := g.ProposeMutation(Mutation{Kind: MutPlaceKnown, Target: "n_warehouse"})
+	if ref.Refused() {
+		t.Fatalf("смежное место отвергнуто: %q", ref.Reason)
+	}
+	if app.Kind != MutPlaceKnown || app.Target != "n_warehouse" {
+		t.Errorf("применено не то: %+v", app)
+	}
+	if !g.KnowsPlace("n_warehouse") {
+		t.Error("место не стало известным")
+	}
+
+	// Таверна смежна кузнице, а не пристани: отсюда о ней рассказать нельзя.
+	if _, ref := g.ProposeMutation(Mutation{Kind: MutPlaceKnown, Target: "n_tavern"}); !ref.Refused() {
+		t.Error("несмежное место прошло")
+	}
+	// Несуществующего места не бывает даже в рассказе.
+	if _, ref := g.ProposeMutation(Mutation{Kind: MutPlaceKnown, Target: "n_нет"}); !ref.Refused() {
+		t.Error("несуществующий узел прошёл")
+	}
+}
+
+// Знание места не касается улик. Инвариант §4 спеки: место — публичная
+// география, и попасть в таблицу фактов оно не вправе даже случайно.
+func TestProposedPlaceTouchesNoKnowledge(t *testing.T) {
+	g := placesGame()
+	before := len(g.DB.Knowledge)
+	g.ProposeMutation(Mutation{Kind: MutPlaceKnown, Target: "n_warehouse"})
+	if len(g.DB.Knowledge) != before {
+		t.Errorf("рассказ о месте написал в party_knowledge: %+v", g.DB.Knowledge)
+	}
+	if len(g.K.TopicBank()) != 0 {
+		t.Errorf("место появилось в банке тем: %v", g.K.TopicBank())
+	}
+}
+
+// Повтор — идемпотентность, а не ошибка: персонаж вправе рассказать дорогу
+// второй раз, и это не отказ.
+func TestProposedPlaceRepeatIsApplied(t *testing.T) {
+	g := placesGame()
+	g.ProposeMutation(Mutation{Kind: MutPlaceKnown, Target: "n_forge"})
+	app, ref := g.ProposeMutation(Mutation{Kind: MutPlaceKnown, Target: "n_forge"})
+	if ref.Refused() || app.Kind != MutPlaceKnown {
+		t.Errorf("повтор отвергнут: %q / %+v", ref.Reason, app)
+	}
+}
