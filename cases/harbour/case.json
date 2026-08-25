@@ -556,11 +556,6 @@
       "unlocks_id": "f_toke_at_quay"
     },
     {
-      "fact_id": "f_ledger_erasure",
-      "unlocks_kind": "node",
-      "unlocks_id": "n_warehouse"
-    },
-    {
       "fact_id": "f_seal_cord",
       "unlocks_kind": "topic",
       "unlocks_id": "f_toke_keeps_ledger"
