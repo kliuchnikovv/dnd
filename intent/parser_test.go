@@ -1306,3 +1306,22 @@ func TestQuestionKeepsItsTopic(t *testing.T) {
 		t.Errorf("тема потерялась: %+v", res.Intent)
 	}
 }
+
+// «Искать конкретное» обязано быть выразимо: правило «назвал — знай» в ядре
+// есть (validate отказывает на неизвестной теме), но парсер тему для осмотра
+// не ставил, и свободным текстом такой ход не выражался вовсе.
+func TestExamineTakesTopic(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"examine","target":"e_body",`+
+		`"topic":"f_seal_cord","item":""}`)
+	hint := harbourHint(t)
+	hint.Topics = []Named{{ID: "f_seal_cord", Name: "гильдейский шнур"}}
+	hint.Entities = append(hint.Entities, Named{ID: "e_body", Name: "Тело Халдена"})
+
+	res, err := p.Parse(context.Background(), "осмотреть шнур на теле", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil || res.Intent.Args.Topic != "f_seal_cord" {
+		t.Errorf("тема осмотра потерялась: %+v", res.Intent)
+	}
+}
