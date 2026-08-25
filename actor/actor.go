@@ -103,6 +103,11 @@ type Situation struct {
 	// среди разрешённого. Проверка такую реплику отвергала, и персонаж
 	// отвечал шаблоном.
 	Scene []string
+	// Roads — места, куда отсюда ведёт дорога: ID и название. Материал не про
+	// дело, а про географию, и она у всех на виду. Из него собирается
+	// перечисление told_place: назвать несмежное место персонаж не может
+	// физически.
+	Roads []Known
 }
 
 // Move — закрытый набор того, что персонаж может сделать репликой.
@@ -169,7 +174,7 @@ const systemPrompt = `Ты — человек, который здесь жив�
 
 Отвечай на том же языке, на котором написан твой голос.`
 
-func schemaFor(talks []Topic) map[string]any {
+func schemaFor(talks []Topic, roads []Known) map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -181,9 +186,21 @@ func schemaFor(talks []Topic) map[string]any {
 				"description": "о чём спрашивают, чего ты не знаешь; Мастер ответит"},
 			"hinting_secret": map[string]any{"type": "boolean",
 				"description": "ты дал понять, что знаешь нечто, но не сказал что"},
-			"topic": topicField(talks),
+			"topic":      topicField(talks),
+			"told_place": enumOrEmptyPlaces(roads),
 		},
 	}
+}
+
+// enumOrEmptyPlaces — перечисление мест, о которых персонаж вправе рассказать,
+// плюс пустая строка. Пустая — обычный случай: дорогу объясняют не каждый ход.
+func enumOrEmptyPlaces(roads []Known) map[string]any {
+	ids := []string{""}
+	for _, r := range roads {
+		ids = append(ids, r.ID)
+	}
+	return map[string]any{"type": "string", "enum": ids,
+		"description": "место, о котором ты рассказал, как туда попасть; пусто, если не рассказывал"}
 }
 
 // Topic — заметка о том, что персонаж знает. Идентификатор нужен, чтобы
@@ -263,6 +280,10 @@ type Actor struct {
 	// принял её за игнор вопроса, и разобраться удалось только чтением кода.
 	// Игроку причина не показывается — это отладка, а не часть разговора.
 	notify func(reason string)
+	// told — куда сообщить о месте, которое персонаж назвал рассказанным.
+	// Необязателен: без него рассказ дорогу не открывает, и игра работает как
+	// раньше.
+	told func(place string)
 }
 
 func New(gw *llm.Gateway) *Actor { return &Actor{gw: gw} }
@@ -271,6 +292,13 @@ func New(gw *llm.Gateway) *Actor { return &Actor{gw: gw} }
 // Необязательно: без него заглушка работает как раньше, молча.
 func (a *Actor) WithNotify(f func(string)) *Actor {
 	a.notify = f
+	return a
+}
+
+// WithTold включает сообщение о том, какое место персонаж назвал. Необязателен:
+// без него рассказ дорогу не открывает, и игра работает как раньше.
+func (a *Actor) WithTold(f func(place string)) *Actor {
+	a.told = f
 	return a
 }
 
@@ -293,6 +321,10 @@ type Reply struct {
 	// Topic — поднятая тема из списка заметок. Структурный хинт, а не
 	// грамматика: он нужен, чтобы не поднять ту же тему второй раз.
 	Topic string
+	// TellPlace — место, о котором персонаж рассказал. Схема, а не разбор
+	// текста: догадываться по реплике, упомянул ли он склад, значит завести
+	// второй ненадёжный парсер.
+	TellPlace string
 }
 
 // speak — один вызов модели и разбор ответа. Без политики: ни шаблонов, ни
@@ -302,7 +334,7 @@ func (a *Actor) speak(ctx context.Context, s Speaker, sit Situation, req llm.Req
 
 	req.Role = llm.RoleActor
 	req.Tier = tierFor(act)
-	req.Schema = schemaJSON(sit.Talks)
+	req.Schema = schemaJSON(sit.Talks, sit.Roads)
 	req.System = systemPrompt
 	req.Input = renderPrompt(s, sit, act)
 	if req.MaxTokens == 0 {
@@ -325,12 +357,13 @@ func (a *Actor) speak(ctx context.Context, s Speaker, sit Situation, req llm.Req
 		Needs         []string `json:"needs"`
 		HintingSecret bool     `json:"hinting_secret"`
 		Topic         string   `json:"topic"`
+		TellPlace     string   `json:"told_place"`
 	}
 	if err := json.Unmarshal([]byte(resp.Text), &out); err != nil {
 		return Reply{}, fmt.Errorf("actor: реплика не разобралась: %w", err)
 	}
 	return Reply{Line: clean(out.Line), Needs: out.Needs,
-		HintingSecret: out.HintingSecret, Topic: out.Topic}, nil
+		HintingSecret: out.HintingSecret, Topic: out.Topic, TellPlace: out.TellPlace}, nil
 }
 
 // Line возвращает текст реплики без оформления. Пустая строка без ошибки
@@ -358,6 +391,9 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 		if topic, ok := topicByID(sit.Talks, out.Topic); ok {
 			sit.MarkTold(topic)
 		}
+	}
+	if out.TellPlace != "" && a.told != nil {
+		a.told(out.TellPlace)
 	}
 	if out.Line == "" {
 		return a.floor(ctx, s, sit, req, "модель вернула пустую строку"), nil
@@ -435,7 +471,7 @@ func (a *Actor) repair(ctx context.Context, s Speaker, sit Situation,
 	line, what string, req llm.Request) (string, error) {
 	req.Role = llm.RoleActor
 	req.Tier = llm.TierCheap
-	req.Schema = schemaJSON(nil)
+	req.Schema = schemaJSON(nil, nil)
 	req.System = repairPrompt
 	// Ремонт — правка одной фразы, но потолок всё равно с запасом на
 	// рассуждение: обрезанный ремонт уронит реплику в заглушку, ради ухода
@@ -762,8 +798,8 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	return out
 }
 
-func schemaJSON(talks []Topic) string {
-	b, err := json.Marshal(schemaFor(talks))
+func schemaJSON(talks []Topic, roads []Known) string {
+	b, err := json.Marshal(schemaFor(talks, roads))
 	if err != nil {
 		panic(err) // схема выводится из данных сцены, ошибка означает битый билд
 	}
@@ -860,6 +896,13 @@ func renderPrompt(s Speaker, sit Situation, act Act) string {
 		for _, sc := range sit.Scene {
 			b.WriteString("  " + sc + "\n")
 		}
+	}
+	if len(sit.Roads) > 0 {
+		b.WriteString("Куда отсюда ведёт дорога — об этом можно рассказывать:\n")
+		for _, r := range sit.Roads {
+			b.WriteString("  " + r.ID + " — " + r.Text + "\n")
+		}
+		b.WriteString("Рассказал, как туда попасть — поставь told_place.\n")
 	}
 	if len(sit.Known) == 0 {
 		b.WriteString("Про дело у тебя нет ничего: утверждать о нём нечего.\n")
@@ -1006,10 +1049,18 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		Scene:          SceneOf(v.Game, speaker.ID),
 		Frame:          frameOf(v.Game, res.FlavourKey),
 		CaseNames:      caseNames(v.Game),
+		Roads:          roadsFrom(v.Game),
 	}
 	if reveals {
 		sit.Reveal = revealed(v.Game, res.Learned)
 	}
+	v.Actor = v.Actor.WithTold(func(place string) {
+		// Предложение, а не запись: ядро проверит, что место существует и что
+		// отсюда туда ведёт дорога. Отказ ход не рушит — реплика уже сказана.
+		propose.Mutation(v.Game, llm.RoleActor, core.Mutation{
+			Kind: core.MutPlaceKnown, Target: place,
+		})
+	})
 
 	line, err := v.talk(ctx, speaker, sit)
 	if err != nil || line == "" {
@@ -1184,6 +1235,16 @@ func SceneOf(g *core.Game, speakerID string) []string {
 	}
 	if len(others) > 0 {
 		out = append(out, "Рядом: "+strings.Join(others, ", "))
+	}
+	return out
+}
+
+// roadsFrom — куда отсюда ведёт дорога. Смежность здесь и остаётся: она решает
+// не то, куда можно пойти, а то, о чём персонаж вправе рассказать.
+func roadsFrom(g *core.Game) []Known {
+	var out []Known
+	for _, n := range g.DB.Locations[g.Node].Adjacent {
+		out = append(out, Known{ID: string(n), Text: g.DB.Locations[n].Name})
 	}
 	return out
 }

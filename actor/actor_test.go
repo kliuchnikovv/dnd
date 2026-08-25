@@ -696,7 +696,7 @@ func TestNeedsAndSecretHintAreParsed(t *testing.T) {
 // ней больше нет; запрос к Мастеру есть.
 func TestSchemaIsDialogueShaped(t *testing.T) {
 	g := harbour(t)
-	props := schemaFor(topicsOf(g, "e_bern"))["properties"].(map[string]any)
+	props := schemaFor(topicsOf(g, "e_bern"), nil)["properties"].(map[string]any)
 	if _, ok := props["move"]; ok {
 		t.Error("в схеме остался закрытый набор ходов")
 	}
@@ -1757,5 +1757,46 @@ func TestUntrimmableLineFallsToFloor(t *testing.T) {
 	}
 	if got != "Кто ж его знает. Сыро только, вот и всё, что скажу." {
 		t.Errorf("бесфразный поток не ушёл в дно: %q", got)
+	}
+}
+
+// Персонаж, рассказавший дорогу, делает место известным — через границу, а не
+// сам. Живой прогон: Нильс подробно объяснил путь до склада, а игра туда не
+// пустила, потому что рассказ ничего не менял.
+func TestToldPlaceBecomesKnown(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"line":"Прямо по настилу до второй тумбы.","told_place":"n_warehouse"}`)
+
+	if _, err := v.Voice(context.Background(), core.Intent{Verb: "ask_about",
+		Args: core.Args{Target: "e_nils", Text: "как дойти до склада?"}},
+		core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if !g.KnowsPlace("n_warehouse") {
+		t.Error("рассказанное место не стало известным")
+	}
+	// Перечисление в схеме — смежные узлы: назвать несмежное персонаж не может
+	// физически, а не по обещанию в промпте.
+	if in := f.Calls()[0].Schema; !strings.Contains(in, "n_warehouse") {
+		t.Errorf("смежные места не попали в схему ответа:\n%s", in)
+	}
+}
+
+// Несмежное место ядро отвергает, и ход от этого не рушится: реплика
+// произносится, просто мир не меняется.
+func TestToldPlaceOutsideReachIsRefusedQuietly(t *testing.T) {
+	g := harbour(t)
+	v, _ := voicer(t, g, `{"line":"За кузницей таверна.","told_place":"n_tavern"}`)
+
+	got, err := v.Voice(context.Background(), core.Intent{Verb: "ask_about",
+		Args: core.Args{Target: "e_nils", Text: "а где выпить?"}}, core.TurnResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" {
+		t.Error("реплика потерялась из-за отвергнутого места")
+	}
+	if g.KnowsPlace("n_tavern") {
+		t.Error("несмежное место стало известным")
 	}
 }
