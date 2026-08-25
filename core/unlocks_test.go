@@ -77,8 +77,9 @@ func TestUnlocksFireFromApply(t *testing.T) {
 	}
 }
 
-// Погреб не смежен старту в этом деле лишь по построению хелпера — суть в
-// том, что до факта место не входит в список доступного, а после — входит.
+// Список доступного растёт от знания, а не от смежности: до факта место в
+// нём отсутствует, после факта появляется — независимо от того, что n_cellar
+// и так смежен старту по графу (это проверяет TestMoveGoesToAnyKnownPlace).
 func TestReachableNodesRespectKnownPlaces(t *testing.T) {
 	g := unlockGame()
 	if got := g.ReachableNodes(); len(got) != 0 {
