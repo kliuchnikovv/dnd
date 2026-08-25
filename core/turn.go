@@ -180,13 +180,8 @@ func (g *Game) validate(in Intent, def VerbDef) (TurnResult, bool) {
 			return refuse("этого нет в текущей локации"), true
 		}
 	}
-	if in.Args.Node != "" {
-		if !g.DB.Adjacent(g.Node, in.Args.Node) {
-			return refuse("туда отсюда не пройти"), true
-		}
-		if g.nodeLocked(in.Args.Node) && !g.Unlocked("node", string(in.Args.Node)) {
-			return refuse("туда пока незачем идти"), true
-		}
+	if in.Args.Node != "" && !g.KnowsPlace(in.Args.Node) {
+		return refuse("ты не знаешь, где это"), true
 	}
 	for _, f := range in.Args.Facts {
 		if !g.K.Knows(f) {

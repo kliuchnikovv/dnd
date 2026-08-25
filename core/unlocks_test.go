@@ -41,18 +41,20 @@ func TestLatentHolderIsInvisibleUntilUnlocked(t *testing.T) {
 	}
 }
 
-func TestLearningUnlocksTopicAndNode(t *testing.T) {
+// Факт открывает тему через unlocked и место через known_places: два разных
+// хранилища, потому что тема — про дело, а место — про географию.
+func TestLearningUnlocksTopicAndOpensPlace(t *testing.T) {
 	g := unlockGame()
-	if g.Unlocked("node", "n_cellar") {
-		t.Fatal("узел разблокирован до открытия факта")
+	if g.KnowsPlace("n_cellar") {
+		t.Fatal("место известно до факта")
 	}
 	g.K.Learn("f_key", "e_toke")
 	g.applyUnlocksFor("f_key")
 	if !g.Unlocked("topic", "f_deep") {
-		t.Error("тема не разблокирована")
+		t.Error("тема не открыта")
 	}
-	if !g.Unlocked("node", "n_cellar") {
-		t.Error("узел не разблокирован")
+	if !g.KnowsPlace("n_cellar") {
+		t.Error("место не стало известным")
 	}
 	g.K.Learn("f_deep", "e_bern")
 	got := g.Apply(Intent{Verb: "question", Args: Args{Target: "e_toke", Topic: "f_deep"}})
@@ -70,15 +72,17 @@ func TestUnlocksFireFromApply(t *testing.T) {
 	}}
 	g.K.Learn("f_key", "e_bern") // тема в банке
 	g.Apply(Intent{Verb: "question", Args: Args{Target: "e_toke", Topic: "f_key"}})
-	if !g.Unlocked("node", "n_cellar") {
+	if !g.KnowsPlace("n_cellar") {
 		t.Error("Apply не применил разблокировки выученного факта")
 	}
 }
 
-func TestReachableNodesRespectLocks(t *testing.T) {
+// Погреб не смежен старту в этом деле лишь по построению хелпера — суть в
+// том, что до факта место не входит в список доступного, а после — входит.
+func TestReachableNodesRespectKnownPlaces(t *testing.T) {
 	g := unlockGame()
 	if got := g.ReachableNodes(); len(got) != 0 {
-		t.Errorf("заблокированный узел объявлен достижимым: %v", got)
+		t.Errorf("неизвестный узел объявлен достижимым: %v", got)
 	}
 	g.K.Learn("f_key", "e_toke")
 	g.applyUnlocksFor("f_key")

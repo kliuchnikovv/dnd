@@ -213,7 +213,17 @@ func TestInterpreterFailureIsDistinguishedFromRefusal(t *testing.T) {
 func TestInterpretedMoveChangesNode(t *testing.T) {
 	fi := &fakeInterp{intent: &core.Intent{Verb: "move_zone",
 		Args: core.Args{Node: "n_forge"}}}
-	_, g := runWith(t, fi, "пойду в кузницу\nquit\n")
+	g := renderGame(t)
+	// Гейт перемещения — знание, а не смежность (core/places.go): кузница в
+	// minimal.json смежна пристани, но не объявлена автором, поэтому делаем
+	// её известной напрямую через стор, минуя домен, — сам факт узнавания
+	// здесь не то, что проверяет тест.
+	g.DB.KnowPlace("party", g.CaseID, "n_forge")
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("пойду в кузницу\nquit\n"), &out).WithInterpreter(fi)
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
 	if g.Node != "n_forge" {
 		t.Errorf("узел %q — переводчик и команда ведут себя по-разному", g.Node)
 	}

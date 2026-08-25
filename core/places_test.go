@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/store"
@@ -64,5 +65,42 @@ func TestKnowPlaceReportsFirstTimeOnly(t *testing.T) {
 	}
 	if g.knowPlace("n_forge") {
 		t.Error("повтор объявлен новым")
+	}
+}
+
+// Идти можно в любое известное место, смежное или нет: посёлок маленький, ноги
+// есть. Граф остаётся для прозы дороги и для того, о чём вправе рассказать
+// персонаж, — но стеной быть перестаёт.
+func TestMoveGoesToAnyKnownPlace(t *testing.T) {
+	g := placesGame()
+	g.applyUnlocksFor("f_ledger") // таверна известна, но не смежна пристани
+
+	got := g.Apply(Intent{Verb: "move_zone", Args: Args{Node: "n_tavern"}})
+	if got.Refused {
+		t.Errorf("несмежное известное место отвергнуто: %s", got.Refusal)
+	}
+}
+
+// Неизвестное место недоступно незнанием, а не запретом. Отказ не подсказывает,
+// чем открыть, — как и все отказы гейтов.
+func TestMoveToUnknownPlaceIsRefused(t *testing.T) {
+	g := placesGame()
+	got := g.Apply(Intent{Verb: "move_zone", Args: Args{Node: "n_warehouse"}})
+	if !got.Refused {
+		t.Fatal("неизвестное место пропущено")
+	}
+	for _, leak := range []string{"f_ledger", "узна", "спрос"} {
+		if strings.Contains(got.Refusal, leak) {
+			t.Errorf("отказ подсказывает, чем открыть: %q", got.Refusal)
+		}
+	}
+}
+
+// Список доступного — известные места дела без того, где игрок стоит.
+func TestReachableIsKnownPlacesWithoutCurrent(t *testing.T) {
+	g := placesGame("n_warehouse")
+	got := g.ReachableNodes()
+	if len(got) != 1 || got[0] != "n_warehouse" {
+		t.Errorf("список доступного = %v, ожидалось [n_warehouse]", got)
 	}
 }

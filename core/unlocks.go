@@ -1,8 +1,6 @@
 package core
 
 import (
-	"sort"
-
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -25,27 +23,14 @@ func (g *Game) applyUnlocksFor(f store.FactID) {
 
 func (g *Game) Unlocked(kind, id string) bool { return g.unlocked[kind+":"+id] }
 
-// ReachableNodes — смежные узлы, открытые к посещению. Узел, не упомянутый ни
-// в одном fact_unlocks, считается открытым изначально.
+// ReachableNodes — места, куда можно пойти: известные парти, кроме того, где
+// игрок стоит. Смежность здесь не при чём — гейт стоит на знании (core/places.go).
 func (g *Game) ReachableNodes() []store.NodeID {
 	var out []store.NodeID
-	for _, n := range g.DB.Locations[g.Node].Adjacent {
-		if g.nodeLocked(n) && !g.Unlocked("node", string(n)) {
-			continue
+	for _, n := range g.KnownPlaces() {
+		if n != g.Node {
+			out = append(out, n)
 		}
-		out = append(out, n)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
-}
-
-func (g *Game) nodeLocked(n store.NodeID) bool {
-	for _, us := range g.DB.Unlocks {
-		for _, u := range us {
-			if u.UnlocksKind == "node" && u.UnlocksID == string(n) {
-				return true
-			}
-		}
-	}
-	return false
 }
