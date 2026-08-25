@@ -207,3 +207,104 @@ func TestNarratePinsTheFormOfAddress(t *testing.T) {
 		t.Errorf("форма обращения не закреплена:\n%s", sys)
 	}
 }
+
+// Отказ мира произносит Мастер — но переформулирует, а не решает: текст
+// отказа даёт ядро, Мастер одевает его в язык мира. Игрок должен слышать
+// собеседника, а не служебную строку.
+func TestRefuseSpeaksTheWorldsLanguage(t *testing.T) {
+	m, f := masterWith(t, "Смотритель весов качает головой: об этом здесь не говорят.")
+
+	out, err := m.Refuse(context.Background(), "здесь об этом не расскажут",
+		World{Setting: "посёлок в устье", Scene: []string{"Место: Пристань"}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "не говорят") {
+		t.Errorf("переформулировка не доехала: %q", out)
+	}
+	call := f.Calls()[0]
+	if call.Role != llm.RoleNarrator {
+		t.Errorf("отказ озвучен не ролью Мастера: %q", call.Role)
+	}
+	// Одна строка не стоит дорогой модели — ровно та же причина, что у Grant.
+	if call.Tier != llm.TierCheap {
+		t.Errorf("отказ ушёл дорогим тиром: %q", call.Tier)
+	}
+	if !strings.Contains(call.Input, "здесь об этом не расскажут") {
+		t.Errorf("Мастеру не дали текст отказа:\n%s", call.Input)
+	}
+}
+
+// Мастер видит ТОЛЬКО текст отказа и сцену. Требований гейта ядро наружу не
+// отдаёт вовсе, и подсказать, чем путь открыть, Мастеру структурно нечем —
+// это и держит постановление «отказ гейта не подсказывает».
+func TestRefuseIsToldNothingAboutWhatWouldOpenThePath(t *testing.T) {
+	m, f := masterWith(t, "Дверь не поддаётся.")
+	if _, err := m.Refuse(context.Background(), "туда пока незачем идти",
+		World{Scene: []string{"Место: Пристань"}}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	body := f.Calls()[0].System + f.Calls()[0].Input
+	for _, leak := range []string{"requires", "гейт", "unlock", "f_"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("в промпт отказа утекло %q:\n%s", leak, body)
+		}
+	}
+}
+
+// Пустой отказ модель не беспокоит: вызов без нужды — деньги за шум.
+func TestRefuseSkipsEmptyRefusal(t *testing.T) {
+	m, f := masterWith(t, "не должно быть вызвано")
+	out, err := m.Refuse(context.Background(), "  ", World{}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Errorf("пустой отказ что-то вернул: %q", out)
+	}
+	if len(f.Calls()) != 0 {
+		t.Errorf("модель вызвана впустую: %d вызовов", len(f.Calls()))
+	}
+}
+
+// Брифинг — единственное место, где игрок обязан получить факты дела дословно.
+// Мастер его рассказывает, но не досочиняет: имя, место, время и число здесь
+// авторские, и добавить своё значит соврать игроку о деле с первой же строки.
+func TestBriefingPromptForbidsAddingCaseContent(t *testing.T) {
+	m, f := masterWith(t, "Магистрат прислал вас в Гавань.")
+
+	out, err := m.Narrate(context.Background(), KindBriefing,
+		"Вас прислал магистрат. Тело Халдена нашли на складе.",
+		World{Setting: "посёлок в устье"}, nil, "", llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out == "" {
+		t.Fatal("брифинг не рассказан")
+	}
+	system := strings.ToLower(f.Calls()[0].System)
+	for _, must := range []string{"не добавляй", "имён", "чисел"} {
+		if !strings.Contains(system, must) {
+			t.Errorf("в промпте брифинга нет запрета про %q:\n%s", must, system)
+		}
+	}
+	// Место и исход — другие работы, и путать их нельзя: на брифинге игрок
+	// ещё ничего не видел и ничего не делал.
+	if strings.Contains(f.Calls()[0].Input, "ОПИСАНИЕ МЕСТА") ||
+		strings.Contains(f.Calls()[0].Input, "ИСХОД") {
+		t.Errorf("брифинг подан как место или исход:\n%s", f.Calls()[0].Input)
+	}
+}
+
+// Пустая рамка означает, что автор брифинга не написал: тогда придумывать его
+// Мастеру нечем и незачем.
+func TestBriefingWithoutFrameIsSkipped(t *testing.T) {
+	m, f := masterWith(t, "не должно быть вызвано")
+	out, err := m.Narrate(context.Background(), KindBriefing, "  ", World{}, nil, "", llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" || len(f.Calls()) != 0 {
+		t.Errorf("пустой брифинг дошёл до модели: %q, вызовов %d", out, len(f.Calls()))
+	}
+}

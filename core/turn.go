@@ -23,6 +23,48 @@ type TurnResult struct {
 	Fired      []store.Consequence
 	FalseLead  bool
 	HalfEffect bool
+	// SpokenBy — кто произносит выданный факт вслух. Пусто, когда произносить
+	// некому: факт достался от вещи, от отсутствующего или не достался вовсе.
+	//
+	// Решает это ЯДРО, и другого места решения нет. Раньше «кто говорит»
+	// определяли два слоя над доменом, каждый по признаку «в ходу есть
+	// Learned»: презентация глушила подпись, актёр глушил сам себя. Признак
+	// слишком грубый — труп не говорит, а стражник говорит, — а два места
+	// правды об одном расходятся молча.
+	SpokenBy store.EntityID
+}
+
+// Check отвечает на вопрос «мир это примет?», НИЧЕГО НЕ МЕНЯЯ.
+//
+// Нужен чат-режиму: там реплика Мастера показывается ДО того, как ход
+// исполнен, и показать её на действие, которое ядро не пропустит, значит
+// соврать игроку голосом мира. Спросить вместо этого Apply нельзя — он
+// тратит ход: тикает часы и считает холостые ходы, и ход посчитался бы дважды.
+//
+// Отказывает Check ровно там же и теми же словами, что Apply, — потому что
+// Apply ходит через него же: второго места правды о том, что миру можно, не
+// появляется. Тест прогоняет каждый отказ через обе двери на случай, если
+// когда-нибудь появится.
+func (g *Game) Check(in Intent) TurnResult {
+	def, ok := Verbs[in.Verb]
+	if !ok {
+		return refuse("неизвестное действие")
+	}
+	// theorize мир не проверяет: это заметка игрока, а не действие в нём.
+	// Пустой её не бывает — записывать нечего.
+	if in.Verb == "theorize" {
+		if in.Args.Text == "" {
+			return refuse("гипотеза не может быть пустой")
+		}
+		return TurnResult{}
+	}
+	if def.Hard && g.Incapacitated() {
+		return refuse("персонаж выведен из строя — сначала отдых")
+	}
+	if r, bad := g.validate(in, def); bad {
+		return r
+	}
+	return TurnResult{}
 }
 
 // Apply — пятишаговый ход: валидация, ветка без броска, сборка SceneView,
@@ -33,32 +75,24 @@ func (g *Game) Apply(in Intent) TurnResult {
 		return refuse("неизвестное действие")
 	}
 
-	// theorize — заметка игрока, а не действие в мире: она не проходит
-	// валидацию мира (нет ни цели, ни узла, ни темы), не бросает кубик и не
-	// тикает часы.
-	if in.Verb == "theorize" {
-		if in.Args.Text == "" {
-			return refuse("гипотеза не может быть пустой")
-		}
-		g.Theories = append(g.Theories, in.Args.Text)
-		return TurnResult{FlavourKey: "theorize.recorded"}
-	}
-
-	// Выведенный из строя не действует. Свободные пробы остаются: иначе это
-	// не состояние, а тупик.
-	if def.Hard && g.Incapacitated() {
-		return refuse("персонаж выведен из строя — сначала отдых")
-	}
-
-	// Шаг 1: валидация.
-	if r, bad := g.validate(in, def); bad {
+	// Шаг 1: валидация. Она вся живёт в Check, и Apply ходит через него же:
+	// иначе о том, что миру можно, было бы два места правды, и чат-режим стал
+	// бы показывать реплику Мастера на ход, который ядро не пропустит.
+	if r := g.Check(in); r.Refused {
 		// Отказ — самый чистый признак того, что игрок встал: он попробовал, и
 		// мир не принял. Ход при этом не потрачен, часы не тикают — но
-		// счётчик холостых ходов обязан отказ видеть, иначе напарник молчит
-		// именно тогда, когда нужен. Застрявший игрок производит отказы
+		// счётчик холостых ходов обязан отказ видеть, иначе чутьё молчит
+		// именно тогда, когда нужно. Застрявший игрок производит отказы
 		// дюжинами: живой плейтест так и прошёл мимо всех подсказок.
 		g.noteTurn(def, 0)
 		return r
+	}
+
+	// theorize — заметка игрока, а не действие в мире: кубика не бросает и
+	// часов не тикает. Пустой она не бывает — это уже отсеял Check.
+	if in.Verb == "theorize" {
+		g.Theories = append(g.Theories, in.Args.Text)
+		return TurnResult{FlavourKey: "theorize.recorded"}
 	}
 
 	// Взять инструмент — отдельный ход без броска. Инструмент ничего не даёт,
@@ -87,6 +121,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 		if found {
 			if g.learn(holder.FactID, holder.HolderID) {
 				res.Learned = append(res.Learned, Learned{holder.FactID, holder.HolderID})
+				res.SpokenBy = g.spokenBy(holder.HolderID)
 				g.applyUnlocksFor(holder.FactID)
 			}
 		}
@@ -121,6 +156,7 @@ func (g *Game) Apply(in Intent) TurnResult {
 	if found && resolution.Class >= OutcomeSuccess {
 		if g.learn(holder.FactID, holder.HolderID) {
 			out.Learned = append(out.Learned, Learned{holder.FactID, holder.HolderID})
+			out.SpokenBy = g.spokenBy(holder.HolderID)
 			g.applyUnlocksFor(holder.FactID)
 		}
 	}
@@ -170,6 +206,20 @@ func (g *Game) validate(in Intent, def VerbDef) (TurnResult, bool) {
 		}
 	}
 	return TurnResult{}, false
+}
+
+// spokenBy — кто из держателей вправе произнести факт вслух. Человек в этой же
+// сцене; вещь и отсутствующий молчат.
+//
+// Отсутствующий молчит не из вредности: факт от него законен (его мог назвать
+// кто угодно, кто держит ту же строку), но реплика из пустого места читается
+// как голос ниоткуда.
+func (g *Game) spokenBy(id store.EntityID) store.EntityID {
+	e, ok := g.DB.Entities[id]
+	if !ok || e.Kind != store.EntityNPC || e.Node != g.Node {
+		return ""
+	}
+	return id
 }
 
 // holderFor находит держателя, который может выдать запрошенный факт именно

@@ -53,3 +53,32 @@ func TestGuardHasNoCheapRoute(t *testing.T) {
 		}
 	}
 }
+
+// notUsed — роли, объявленные в llm, но игрой не вызываемые. Список
+// исчерпывающий: всё, чего в нём нет, обязано быть в appRoles.
+//
+// Тест ниже нужен потому, что appRoles ведётся руками, и этого оказалось
+// недостаточно: роль чат-режима была объявлена, вызывалась и НЕ была
+// зароучена — прогон на живой модели упал в ErrNoProvider на первом же ходу,
+// не сломав ни одного теста. Теперь новая роль обязана попасть либо в
+// проводку, либо сюда — с причиной.
+var notUsed = map[llm.Role]string{
+	llm.RoleModeration: "модерация не подключена",
+	llm.RoleWorldsmith: "генерации дел ещё нет",
+}
+
+func TestEveryDeclaredRoleIsEitherRoutedOrDeliberatelyUnused(t *testing.T) {
+	used := map[llm.Role]bool{}
+	for _, use := range appRoles {
+		used[use.Role] = true
+	}
+	for _, role := range llm.AllRoles() {
+		switch {
+		case used[role] && notUsed[role] != "":
+			t.Errorf("роль %q и в проводке, и в списке неиспользуемых", role)
+		case !used[role] && notUsed[role] == "":
+			t.Errorf("роль %q объявлена, но нигде не решено, вызывает её игра "+
+				"или нет: добавьте её в appRoles либо в notUsed с причиной", role)
+		}
+	}
+}

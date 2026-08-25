@@ -296,3 +296,78 @@ func TestUnknownItemKindIsRejected(t *testing.T) {
 		t.Errorf("вид вне словаря прошёл: %v", err)
 	}
 }
+
+// Подсказка на факт, известный парти с самого начала, не сработает НИКОГДА:
+// Hint пропускает известное. Валидатор такое пропускал, и в эталонном деле
+// ровно это и лежало — два теста сбились на «чутьё молчит», прежде чем
+// выяснилось, что молчать оно обязано.
+func TestHintAtStartFactIsRejected(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Hints = map[store.FactID]string{"f_ligature": "Посмотрите на шею."}
+	})
+	if err == nil || !strings.Contains(err.Error(), "f_ligature") {
+		t.Errorf("бесполезная подсказка принята: %v", err)
+	}
+}
+
+// Дело, где есть что добывать, обязано уметь помочь застрявшему: иначе игрок
+// первой сессии закрывает консоль молча.
+func TestCaseWithObtainableFactsNeedsAHint(t *testing.T) {
+	err := mutate(t, func(f *File) {
+		f.Facts = append(f.Facts, store.Fact{ID: "f_second", Key: "второй"})
+		f.Hints = nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "подсказ") {
+		t.Errorf("дело без подсказок принято: %v", err)
+	}
+}
+
+// А дело, все факты которого выданы на старте, подсказки требовать не может:
+// указывать не на что. Так устроены минимальные дела для тестов.
+func TestCaseWithNothingToFindNeedsNoHint(t *testing.T) {
+	if err := mutate(t, func(f *File) { f.Hints = nil }); err != nil {
+		t.Errorf("дело без добываемых фактов отбито за отсутствие подсказок: %v", err)
+	}
+}
+
+// Подсказка не имеет права называть человека, который этого факта НЕ ДЕРЖИТ.
+// Живой прогон получил «Ивар не отходит от стойки, спросите его про деньги»,
+// хотя f_ivar_debt держит Сигрид: подсказка отправляла мимо цели, и это
+// пережило и авторскую редактуру, и мою.
+func TestHintNamingANonHolderIsRejected(t *testing.T) {
+	raw, err := os.ReadFile("../cases/harbour/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := decodeFile(t, raw)
+	// Ивар — кузнец из дела, но f_ivar_debt держит вдова, а не он.
+	f.Hints["f_ivar_debt"] = "Ивар не отходит от стойки. Спросите его про деньги."
+
+	err = validateFile(f)
+	if err == nil || !strings.Contains(err.Error(), "f_ivar_debt") {
+		t.Errorf("подсказка мимо держателя принята: %v", err)
+	}
+}
+
+// Назвать держателя — законно: подсказка указывает именно на него.
+func TestHintNamingItsOwnHolderIsAccepted(t *testing.T) {
+	raw, err := os.ReadFile("../cases/harbour/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := decodeFile(t, raw)
+	f.Hints["f_ivar_debt"] = "С Сигрид вы так и не поговорили."
+
+	if err := validateFile(f); err != nil {
+		t.Errorf("подсказка на своего держателя отбита: %v", err)
+	}
+}
+
+// Оба рукописных дела обязаны проходить эту проверку как есть.
+func TestHandwrittenCasesNameNoWrongHolders(t *testing.T) {
+	for _, path := range []string{"../cases/harbour/case.json", "../cases/forte_merlo/case.json"} {
+		if _, err := Load(path); err != nil {
+			t.Errorf("%s: %v", path, err)
+		}
+	}
+}

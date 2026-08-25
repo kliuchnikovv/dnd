@@ -1573,20 +1573,20 @@
     "when": "night_14_15",
     "why": "caught_investigating"
   },
+  "briefing": "You were sent up from Kalderes: the garrison commander at Forte Merlo is dead in his own office, and the fort would rather call it his own doing. Captain Zheber was found at seven in the morning. You carry a warrant from the prefecture — it opens doors, not mouths. Whatever the office still holds, it holds for a day or two at most.",
   "start_facts": [
     {
       "fact": "f_body_found",
       "from": "e_riff"
     }
   ],
-  "companion": "e_kovac",
   "hints": {
-    "f_portiere_torn": "Kovac taps ash off. 'The office. Nobody's looked at that curtain properly, and somebody should.'",
-    "f_fibers_in_mouth": "'The body's still at the infirmary,' Kovac says. 'Look in his mouth. I would, but they listen to you.'",
-    "f_office_shards_present": "'There was glass on that office floor,' says Kovac. 'Count it, if you have the patience.'",
-    "f_pierre_saw_emilien": "'Old Pierre's up before anyone,' Kovac says. 'He sees the road when it's still dark.'",
-    "f_diary_in_desk": "Kovac studies his cigarette. 'Sanchez kept a diary. It went somewhere after he died, and I never asked where.'",
-    "f_zheber_returned_2305": "'The checkpoint keeps a log,' Kovac says without looking up. 'They keep it badly, which is the interesting part.'"
+    "f_portiere_torn": "Nobody has looked at that office curtain properly. You have not either.",
+    "f_fibers_in_mouth": "The body was examined in a hurry. You never looked in his mouth.",
+    "f_office_shards_present": "There was glass on that office floor. You never counted it.",
+    "f_pierre_saw_emilien": "At the bakery they are up before anyone. You have not asked who was on the road.",
+    "f_diary_in_desk": "There is a desk in this office you have never gone through.",
+    "f_zheber_returned_2305": "The checkpoint keeps a log. You have not asked to see it."
   },
   "aftermath": "Emilien was taken to Kalderes under escort before the garrison woke. The Zheber house was closed within the month, and the road to Forte Merlo kept its checkpoint but lost its captain. Sanchez's diary went into evidence and was never returned to his family.",
   "cold_case_text": "The garrison buried Zheber with honours and the file went to Kalderes marked accidental. Emilien served out his posting and transferred east. The diary stayed in the bottom drawer of a desk that nobody had reason to open again.",

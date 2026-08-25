@@ -612,3 +612,198 @@ func TestUnanswerableOpenQuestionDoesNotRefuse(t *testing.T) {
 		t.Errorf("открытый вопрос кончился отказом:\n%s", out.String())
 	}
 }
+
+// --- чат-режим: один вызов даёт разбор и реплику, ядро разрешает ---
+
+type fakeChat struct {
+	intent  *core.Intent
+	reply   string
+	clarify string
+	err     error
+	calls   int
+}
+
+func (f *fakeChat) InterpretChat(_ context.Context, text string, with store.EntityID,
+	pending string) (*core.Intent, string, string, error) {
+	f.calls++
+	return f.intent, f.reply, f.clarify, f.err
+}
+
+func runChat(t *testing.T, fc *fakeChat, script string) (string, *core.Game) {
+	t.Helper()
+	g := renderGame(t)
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader(script), &out).WithChat(fc)
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	return out.String(), g
+}
+
+// Реплика Мастера идёт ПЕРЕД исходом: в этом весь смысл — игрок получает
+// ответ сразу, а чем оно кончилось, читает следующей строкой.
+func TestChatReplyComesBeforeTheOutcome(t *testing.T) {
+	fc := &fakeChat{
+		intent: &core.Intent{Verb: "question", Args: core.Args{Target: "e_toke"}},
+		reply:  "Вы поворачиваетесь к Токе.",
+	}
+	out, _ := runChat(t, fc, "спрошу Токе, что слышно\nquit\n")
+
+	said := strings.Index(out, "поворачиваетесь")
+	if said < 0 {
+		t.Fatalf("реплика Мастера не напечатана:\n%s", out)
+	}
+	// Ход дошёл до ядра: после реплики обязано быть напечатано хоть что-то,
+	// иначе реплика подменила собой исход, а не предварила его.
+	if strings.TrimSpace(out[said:]) == "Вы поворачиваетесь к Токе." {
+		t.Errorf("после реплики исход не напечатан:\n%s", out)
+	}
+}
+
+// Отказ ядра съедает реплику. Показать подводку к действию, которого не
+// будет, — соврать игроку: ядро над Мастером, а не наоборот.
+func TestChatRefusalEatsTheReply(t *testing.T) {
+	fc := &fakeChat{
+		// Тема, которой парти не знает: ядро откажет на валидации.
+		intent: &core.Intent{Verb: "question",
+			Args: core.Args{Target: "e_toke", Topic: "f_нет"}},
+		reply: "Вы наклоняетесь к нему и спрашиваете вполголоса.",
+	}
+	out, _ := runChat(t, fc, "спрошу Токе про несуществующее\nquit\n")
+
+	if strings.Contains(out, "наклоняетесь") {
+		t.Errorf("реплика показана к ходу, который ядро не пропустило:\n%s", out)
+	}
+	if !strings.Contains(out, "нельзя") {
+		t.Errorf("отказ не напечатан:\n%s", out)
+	}
+}
+
+// Отказ ядра обязан считаться холостым ходом: застрявший игрок производит
+// именно отказы, и без этого напарник молчит ровно тогда, когда нужен
+// (docs/status.md §3.3). Чат-режим не имеет права терять этот счёт.
+func TestChatRefusalStillCountsAsADryTurn(t *testing.T) {
+	fc := &fakeChat{
+		intent: &core.Intent{Verb: "question",
+			Args: core.Args{Target: "e_toke", Topic: "f_нет"}},
+		reply: "Вы наклоняетесь к нему.",
+	}
+	// Дело «Гавань», а не минимальное: в минимальном единственная подсказка
+	// про факт, который парти знает с самого начала, и заговорить напарнику
+	// там нечем — проверять было бы нечего.
+	g := harbourGame(t)
+	fc.intent = &core.Intent{Verb: "question",
+		Args: core.Args{Target: "e_bern", Topic: "f_нет"}}
+	var out bytes.Buffer
+	script := strings.Repeat("спрошу Берна про несуществующее\n", core.HintAfter) + "quit\n"
+	if err := NewSession(g, strings.NewReader(script), &out).
+		WithChat(fc).WithHunch().Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, line := range g.Hints {
+		if strings.Contains(out.String(), line) {
+			return
+		}
+	}
+	t.Errorf("чутьё не сработало после %d отказов подряд:\n%s", core.HintAfter, out.String())
+}
+
+func harbourGame(t *testing.T) *core.Game {
+	t.Helper()
+	cfg, err := cases.Load("../cases/harbour/case.json")
+	if err != nil {
+		t.Fatalf("загрузка дела: %v", err)
+	}
+	cfg.Rules = threshold.New()
+	cfg.Dice = dice.NewSource(1).Stream("resolve")
+	return core.NewGame(*cfg)
+}
+
+// Служебные команды модель не трогают: запирать игрока в диалоге без справки
+// и без выхода нельзя.
+func TestChatLeavesCommandsAlone(t *testing.T) {
+	fc := &fakeChat{intent: &core.Intent{Verb: "look"}}
+	if _, _ = runChat(t, fc, "help\nfacts\nstate\nlook\nquit\n"); fc.calls != 0 {
+		t.Errorf("команды ушли в модель: %d вызовов", fc.calls)
+	}
+}
+
+// Непонятый ввод остаётся вопросом, а не отказом: чат-режим договаривается на
+// границе словаря так же, как обычный разбор.
+func TestChatClarifiesInsteadOfRefusing(t *testing.T) {
+	fc := &fakeChat{clarify: "Что именно вы достаёте?"}
+	out, _ := runChat(t, fc, "достаю из кармана\nquit\n")
+	if !strings.Contains(out, "Что именно вы достаёте?") {
+		t.Errorf("уточняющий вопрос не задан:\n%s", out)
+	}
+}
+
+// Сбой канала не должен выглядеть как отказ мира: игрок обязан понимать, что
+// дело в инструменте, а не в его замысле.
+func TestChatChannelFailureIsNotAWorldRefusal(t *testing.T) {
+	fc := &fakeChat{err: errors.New("шлюз закрыт")}
+	out, _ := runChat(t, fc, "осмотреть бочки\nquit\n")
+	if !strings.Contains(out, "шлюз закрыт") {
+		t.Errorf("сбой канала не назван:\n%s", out)
+	}
+}
+
+// Эксперимент надо мерить, а не обсуждать: доля реплик, выброшенных отказом
+// ядра, и есть его цена. Высокая означает, что модель уверенно отвечает на
+// ходы, которых мир не допускает.
+func TestChatCountsRepliesAndTheOnesEatenByTheCore(t *testing.T) {
+	g := renderGame(t)
+	fc := &fakeChat{reply: "Вы наклоняетесь к нему."}
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("прошёл\nотказ\nquit\n"), &out).WithChat(fc)
+
+	// Первый ход мир принимает, второй — нет.
+	fc.intent = &core.Intent{Verb: "question", Args: core.Args{Target: "e_toke"}}
+	s.Feed("прошёл")
+	fc.intent = &core.Intent{Verb: "question",
+		Args: core.Args{Target: "e_toke", Topic: "f_нет"}}
+	s.Feed("отказ")
+
+	shown, eaten := s.ChatStats()
+	if shown != 1 || eaten != 1 {
+		t.Errorf("показано %d, съедено %d; ждали 1 и 1", shown, eaten)
+	}
+}
+
+// Игра спросила «к кому?» — значит ответ обязан ДОГОВОРИТЬ начатое, а не
+// начать новое. Живой прогон упирался ровно в это: «"А откуда ты знаешь про
+// деньги?"» → «к кому?» → «Нильс», и вопрос игрока исчезал. Одно слово-имя
+// перехватывается как обращение, и Мастер отвечал «вы заводите разговор о
+// погоде» вместо того, что было сказано.
+func TestAnswerToWhomFinishesTheHeldIntent(t *testing.T) {
+	g := twoNPCGame(t)
+	var out bytes.Buffer
+	fv := &intentRecordingVoicer{}
+	NewSession(g, strings.NewReader("«Что за труп?»\nБерн\nquit\n"), &out).
+		WithVoicer(fv).Run()
+
+	if fv.last.Verb != "say" {
+		t.Errorf("ход дошёл до движка как %q, ждали say: имя подменило реплику", fv.last.Verb)
+	}
+	if fv.last.Args.Target != "e_bern" {
+		t.Errorf("адресат %q, ждали e_bern", fv.last.Args.Target)
+	}
+	if !strings.Contains(fv.last.Args.Text, "труп") {
+		t.Errorf("слова игрока не доехали: %q", fv.last.Args.Text)
+	}
+}
+
+// Ответ не по делу отпущенный интент не держит вечно: игрок передумал, и
+// запирать его в вопросе, на который он не хочет отвечать, нельзя.
+func TestUnansweredWhomIsDroppedNotHeldForever(t *testing.T) {
+	g := twoNPCGame(t)
+	var out bytes.Buffer
+	fv := &intentRecordingVoicer{}
+	NewSession(g, strings.NewReader("«Что за труп?»\nlook\nquit\n"), &out).
+		WithVoicer(fv).Run()
+
+	if fv.last.Verb == "say" {
+		t.Error("отпущенная реплика уехала в движок вместе с другой командой")
+	}
+}

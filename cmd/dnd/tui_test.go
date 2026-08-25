@@ -85,3 +85,29 @@ func TestNoDebugReasonFor(t *testing.T) {
 		}
 	}
 }
+
+// -nl и -chat вместе — ошибка запуска, а не молчаливый приоритет одного из
+// них: два разбора одной фразы это два разных ответа на один ввод, и игрок
+// никогда не узнает, какой он получил.
+func TestChatAndNLAreMutuallyExclusive(t *testing.T) {
+	if err := checkModes(true, true); err == nil {
+		t.Error("-nl вместе с -chat прошли молча")
+	}
+	for _, c := range []struct{ nl, chat bool }{{true, false}, {false, true}, {false, false}} {
+		if err := checkModes(c.nl, c.chat); err != nil {
+			t.Errorf("-nl=%v -chat=%v отбито зря: %v", c.nl, c.chat, err)
+		}
+	}
+}
+
+// Чат-режим — такой же потребитель шлюза, как -nl: панель отладки обязана
+// объяснять пустоту одинаково в обоих. Иначе игрок, запустивший -chat без
+// -debug-llm, читает по Tab «запустите с -debug-llm», уже его указав.
+func TestChatUsesModelsLikeNL(t *testing.T) {
+	if !usesModels(false, true) {
+		t.Error("-chat не признан режимом с моделями")
+	}
+	if usesModels(false, false) {
+		t.Error("без флагов игра не должна поднимать шлюз")
+	}
+}

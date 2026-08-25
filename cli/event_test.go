@@ -33,8 +33,17 @@ func TestSessionEmitsToSink(t *testing.T) {
 	if len(rec.events) == 0 {
 		t.Fatal("сессия не отдала ни одного события")
 	}
-	if rec.events[0].Kind != EventScene {
-		t.Errorf("первое событие %q, ждали сцену", rec.events[0].Kind)
+	// Порядок старта: брифинг (проза Мастера), известное (печать кода), место.
+	// Игрок обязан узнать, зачем он здесь, прежде чем увидеть, где он.
+	var order []EventKind
+	for _, e := range rec.events {
+		order = append(order, e.Kind)
+	}
+	want := []EventKind{EventProse, EventSystem, EventScene}
+	for i, k := range want {
+		if i >= len(order) || order[i] != k {
+			t.Fatalf("порядок старта %v, ждали %v", order, want)
+		}
 	}
 }
 
@@ -89,4 +98,106 @@ func TestPlayerSpeechIsMarkedAsPlayers(t *testing.T) {
 		}
 	}
 	t.Errorf("речь игрока не помечена автором: %+v", rec.events)
+}
+
+// Отказ мира произносит Мастер: в чате безличная служебная строка рядом с
+// живыми репликами читается как поломка, а не как ответ собеседника.
+func TestRefusalCarriesMasterAsSpeaker(t *testing.T) {
+	g := renderGame(t)
+	rec := &recordSink{}
+	s := NewSession(g, strings.NewReader("question toke f_нет\nquit\n"), &strings.Builder{}).
+		WithSink(rec).
+		WithRefusalVoice(func(string) string { return "Токе отводит взгляд: об этом не здесь." })
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, e := range rec.events {
+		if e.Kind != EventRefusal {
+			continue
+		}
+		if e.Speaker != MasterName {
+			t.Errorf("отказ без автора: %+v", e)
+		}
+		if !strings.Contains(e.Text, "отводит взгляд") {
+			t.Errorf("голос Мастера не доехал: %q", e.Text)
+		}
+		// Механику печатает код, а не модель: «ход не потрачен» — это факт
+		// движка, и отдавать его прозе значит позволить ей об этом врать.
+		if !strings.Contains(e.Text, "ход не потрачен") {
+			t.Errorf("потерян признак того, что отказ не потратил ход: %q", e.Text)
+		}
+		return
+	}
+	t.Fatalf("отказа в событиях нет: %+v", rec.events)
+}
+
+// Без голоса Мастера отказ печатается как раньше, побайтово: игра без моделей
+// обязана работать как работала.
+func TestRefusalWithoutVoiceIsUnchanged(t *testing.T) {
+	var plain, voiced strings.Builder
+	script := "question toke f_нет\nquit\n"
+	if err := NewSession(renderGame(t), strings.NewReader(script), &plain).Run(); err != nil {
+		t.Fatal(err)
+	}
+	// Голос, который промолчал (сбой модели), обязан дать тот же вывод: откат
+	// на авторский текст — не «почти как раньше», а ровно как раньше.
+	if err := NewSession(renderGame(t), strings.NewReader(script), &voiced).
+		WithRefusalVoice(func(string) string { return "" }).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plain.String(), "нельзя:") {
+		t.Fatalf("отказ не напечатан: %q", plain.String())
+	}
+	if plain.String() != voiced.String() {
+		t.Errorf("молчащий голос изменил вывод:\n без: %q\n с:   %q", plain.String(), voiced.String())
+	}
+}
+
+// Подсказке не нужен говорящий: она принадлежит игроку, а не персонажу.
+// Раньше она уходила речью напарника и требовала, чтобы тот был в деле; теперь
+// требуется только сама подсказка.
+func TestHunchIsEmittedWithoutAnySpeakingEntity(t *testing.T) {
+	// Дело «Гавань»: в минимальном единственная подсказка указывает на факт из
+	// start_facts, то есть на уже известное, и сработать не может никогда.
+	g := harbourGame(t)
+	rec := &recordSink{}
+	// Отказы подряд — самый чистый признак того, что игрок встал.
+	script := strings.Repeat("question bern f_нет\n", core.HintAfter) + "quit\n"
+	// Чутьё выключено по умолчанию — тест проверяет его саму механику,
+	// поэтому включает.
+	s := NewSession(g, strings.NewReader(script), &strings.Builder{}).WithSink(rec).WithHunch()
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, e := range rec.events {
+		if e.Kind != EventHunch {
+			continue
+		}
+		if e.Speaker != HunchName {
+			t.Errorf("подсказка подписана %q, ждали %q", e.Speaker, HunchName)
+		}
+		return
+	}
+	t.Fatalf("подсказки в событиях нет: %+v", rec.events)
+}
+
+// По умолчанию чутьё молчит. Живой прогон показал, почему: счётчик холостых
+// ходов считает любой ход без находки, а осмотр без находки — это нормальный
+// осмотр, а не «встал». Подсказка приходила спокойно исследующему игроку и
+// читала решение вслух; не вовремя она хуже, чем никак.
+func TestHunchIsSilentUnlessAskedFor(t *testing.T) {
+	g := harbourGame(t)
+	rec := &recordSink{}
+	script := strings.Repeat("question bern f_нет\n", core.HintAfter+2) + "quit\n"
+	if err := NewSession(g, strings.NewReader(script), &strings.Builder{}).
+		WithSink(rec).Run(); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range rec.events {
+		if e.Kind == EventHunch {
+			t.Errorf("чутьё сработало без спроса: %q", e.Text)
+		}
+	}
 }

@@ -7,12 +7,69 @@ import (
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/naming"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
 // validateFile проверяет инварианты рукописного дела. Падает при загрузке, а не
 // на сороковой минуте прогона. Возвращает все нарушения разом: чинить дело по
 // одному сообщению за запуск — это часы вместо минут.
+// namedIn — кто из людей дела назван в тексте. Совпадение с поправкой на падеж
+// берётся из naming: второй его экземпляр здесь разъехался бы с первым.
+//
+// Сравниваются только РАЗЛИЧАЮЩИЕ слова имени. naming.Mentions по построению
+// щедр — «Токе, писарь гильдии» он находит и по слову «гильдии», и для ввода
+// игрока это правильно: двусмысленность разрешается дальше по цепочке. Здесь
+// разрешать её нечем, а ложная тревога валит запуск дела, поэтому слово,
+// которое встречается ещё в названии места или в имени другого, за имя не
+// считается. Без этого честная подсказка «в конторе гильдии ведут книги»
+// читалась как упоминание писаря.
+func namedIn(text string, f File) map[store.EntityID]bool {
+	lower := strings.ToLower(text)
+	out := map[store.EntityID]bool{}
+	for _, e := range f.Entities {
+		if e.Kind != store.EntityNPC {
+			continue
+		}
+		for _, w := range distinctiveWords(e, f) {
+			if naming.Mentions(lower, w) {
+				out[e.ID] = true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// distinctiveWords — слова имени, которые указывают именно на этого человека.
+func distinctiveWords(who store.Entity, f File) []string {
+	var out []string
+	for _, w := range strings.Fields(strings.ToLower(who.Name)) {
+		w = strings.Trim(w, ",.;:!?«»\"'()")
+		if len([]rune(w)) < 4 || sharedWord(w, who.ID, f) {
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
+}
+
+// sharedWord — это слово встречается ещё где-то: в названии места или в имени
+// другой сущности. Такое слово человека не опознаёт.
+func sharedWord(word string, self store.EntityID, f File) bool {
+	for _, l := range f.Locations {
+		if naming.Mentions(strings.ToLower(l.Name), word) {
+			return true
+		}
+	}
+	for _, e := range f.Entities {
+		if e.ID != self && naming.Mentions(strings.ToLower(e.Name), word) {
+			return true
+		}
+	}
+	return false
+}
+
 func validateFile(f File) error {
 	var bad []string
 	add := func(format string, args ...any) { bad = append(bad, fmt.Sprintf(format, args...)) }
@@ -242,23 +299,63 @@ func validateFile(f File) error {
 				t.Fact, kind[t.Fact])
 		}
 	}
-	// Напарник — единственный канал диегетической подсказки. Без него игрок,
-	// застрявший в первой сессии, закрывает консоль молча.
-	if f.Companion == "" {
-		add("у дела нет напарника — подсказке неоткуда прозвучать")
-	} else if !entities[f.Companion] {
-		add("напарник %s не существует", f.Companion)
+	// Подсказка чутья — единственный канал помощи застрявшему. Без неё игрок,
+	// вставший в первой сессии, закрывает консоль молча. Говорящего подсказке
+	// не нужно: она принадлежит игроку, а не персонажу.
+	//
+	// Требуется она там, где есть что добывать. Дело, все факты которого
+	// выданы на старте, указывать может только на известное — а на известное
+	// чутьё молчит по построению.
+	// Брифинг обязателен. Без него игрок не знает, зачем он здесь, и всё, что
+	// дальше опирается на место преступления или на бумагу в кармане, читается
+	// как знание из ниоткуда — живой прогон встал ровно на этом.
+	if strings.TrimSpace(f.Briefing) == "" {
+		add("у дела нет брифинга — игрок не узнает, зачем он здесь")
+	}
+	holds := map[store.FactID]map[store.EntityID]bool{}
+	for _, h := range f.FactHolders {
+		if holds[h.FactID] == nil {
+			holds[h.FactID] = map[store.EntityID]bool{}
+		}
+		holds[h.FactID][h.HolderID] = true
+	}
+	knownAtStart := map[store.FactID]bool{}
+	for _, s := range f.StartFacts {
+		knownAtStart[s.Fact] = true
+	}
+	findable := 0
+	for _, fact := range f.Facts {
+		if !knownAtStart[fact.ID] {
+			findable++
+		}
+	}
+	if findable > 0 && len(f.Hints) == 0 {
+		add("у дела нет подсказок — застрявшему игроку неоткуда получить помощь")
 	}
 	for id, line := range f.Hints {
 		if !facts[id] {
 			add("подсказка ссылается на несуществующий факт %s", id)
 		}
+		// Подсказка на стартовый факт не сработает НИКОГДА: Hint пропускает
+		// известное. Молча это выглядит как «чутьё сломано» — и однажды именно
+		// так и выглядело, пока не выяснилось, что молчать оно обязано.
+		if knownAtStart[id] {
+			add("подсказка про %s указывает на факт, известный парти с начала: "+
+				"чутьё пропускает известное и не сработает никогда", id)
+		}
 		if strings.TrimSpace(line) == "" {
 			add("подсказка про %s пуста", id)
 		}
-	}
-	if len(f.Hints) == 0 {
-		add("у дела нет ни одной подсказки")
+		// Названный в подсказке человек обязан этот факт ДЕРЖАТЬ. Иначе
+		// подсказка отправляет мимо цели, а выглядит уверенно: живой прогон
+		// получил «Ивар не отходит от стойки, спросите его про деньги», хотя
+		// держит f_ivar_debt вдова. Ошибка пережила и авторскую редактуру, и
+		// правку вслед за ней — глазами она не ловится.
+		for who := range namedIn(line, f) {
+			if !holds[id][who] {
+				add("подсказка про %s называет %s, который этого факта не держит", id, who)
+			}
+		}
 	}
 
 	if strings.TrimSpace(f.Aftermath) == "" {

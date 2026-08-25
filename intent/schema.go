@@ -133,6 +133,27 @@ func SchemaFor(hint SceneHint) map[string]any {
 	}
 }
 
+// chatSchemaJSONFor — схема чат-режима: та же, плюс обязательная реплика.
+// Обязательная СОЗНАТЕЛЬНО, по той же причине, что target, topic и item:
+// со свободным полем модель его не заполняет, сколько бы ни просили в
+// описании (docs/status.md §3.5).
+//
+// Реплика в схеме обычного разбора не появляется: там её никто не покажет, и
+// модель платила бы выводом за выброшенный текст.
+func chatSchemaJSONFor(hint SceneHint) string {
+	schema := SchemaFor(hint)
+	props := schema["properties"].(map[string]any)
+	props["reply"] = map[string]any{"type": "string",
+		"description": "одна-две фразы Мастера игроку: что он делает и что видит " +
+			"в этот момент. НЕ утверждай исход — бросок ещё не сделан"}
+	schema["required"] = append(schema["required"].([]string), "reply")
+	b, err := json.Marshal(schema)
+	if err != nil {
+		panic(err) // схема статична: ошибка здесь означает сломанный билд
+	}
+	return string(b)
+}
+
 func idsOf(list []Named) []string {
 	out := make([]string, 0, len(list))
 	for _, n := range list {
@@ -165,4 +186,7 @@ type reply struct {
 	Text    string   `json:"text"`
 	Clarify string   `json:"clarify"`
 	Reason  string   `json:"reason"`
+	// Reply — реплика Мастера. Просится только в чат-режиме; в обычном
+	// разборе поля нет в схеме, и оно остаётся пустым.
+	Reply string `json:"reply"`
 }

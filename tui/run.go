@@ -29,6 +29,11 @@ func (s sink) Emit(e cli.Event) {
 func Run(s *cli.Session, opts Options) error {
 	m := newModel(s, opts)
 	s.WithSink(sink{ch: m.events, done: m.done})
-	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
+	// WithMouseCellMotion — чтобы колесо доходило до нас, а не до скроллбека
+	// терминала. Цена названа вслух: при включённом репортинге мыши выделение
+	// текста мышью требует Shift (в iTerm2 и Terminal.app — Option), потому
+	// что клики теперь наши. Прокрутка истории разговора важнее: без неё
+	// длинный разговор недоступен вообще, а копирование остаётся по Shift.
+	_, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	return err
 }

@@ -1240,6 +1240,172 @@ func TestRepairPromptForbidsStageDirections(t *testing.T) {
 	}
 }
 
+// Персонаж знает сказанное в ЭТОМ разговоре — так заявлено дизайном, и промпт
+// генерации историю ему показывает. Гвард этого не соблюдал: sit.History в
+// разрешённый материал не входила вовсе, и пересказ собственных слов он был
+// вправе счесть выдумкой. Живой прогон получил из этого канцелярскую заглушку
+// на прямой вопрос «откуда ты знаешь?».
+func TestOwnPastRepliesAreAllowedMaterial(t *testing.T) {
+	sit := Situation{
+		Scene: []string{"Место: Пристань"},
+		History: []store.Exchange{
+			{Player: "что слышно?", Reply: "Ивара бы про деньги спросили."},
+		},
+	}
+	material := allowedMaterial(Speaker{Name: "Нильс", Voice: "быстрый"}, sit, "")
+
+	var found bool
+	for _, m := range material {
+		if strings.Contains(m, "Ивара бы про деньги") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("свои прошлые слова не попали в материал: %v", material)
+	}
+}
+
+// А слова ИГРОКА — не попадают, и это не забывчивость. Иначе мир вписывается
+// вводом: назови «фермера Олсена» сам, попроси персонажа повторить — и
+// выдуманный человек станет законным материалом.
+func TestPlayerLinesFromHistoryAreNotMaterial(t *testing.T) {
+	sit := Situation{
+		History: []store.Exchange{
+			{Player: "фермер Олсен с того берега всё видел", Reply: "Не знаю такого."},
+		},
+	}
+	material := allowedMaterial(Speaker{Name: "Нильс"}, sit, "")
+
+	for _, m := range material {
+		if strings.Contains(m, "Олсен") {
+			t.Errorf("слова игрока стали разрешённым материалом: %q", m)
+		}
+	}
+}
+
+// --- почему реплика стала заглушкой ---
+
+// К заглушке ведут четыре разных пути, и снаружи они дают одну и ту же фразу.
+// Живой прогон принял её за игнор вопроса, и разобраться удалось только чтением
+// кода: причина не писалась никуда, даже в кольцо отладки.
+func TestFloorSaysWhyItFellThrough(t *testing.T) {
+	sit := Situation{Scene: []string{"Место: Пристань"}, PlayerText: "откуда ты знаешь про деньги?"}
+	speaker := Speaker{Name: "Нильс", Voice: "быстрый"}
+
+	cases := []struct {
+		name    string
+		reply   string
+		guard   LineGuard
+		expects string
+	}{
+		{
+			name:    "модель промолчала",
+			reply:   `{"line":""}`,
+			expects: "пуст",
+		},
+		{
+			name:    "реплика длиннее предела",
+			reply:   `{"line":"` + strings.Repeat("а", maxLine+1) + `"}`,
+			expects: "длин",
+		},
+		{
+			name:    "проверка сломалась",
+			reply:   `{"line":"Ивару бы про деньги вопрос задать."}`,
+			guard:   &stubGuard{err: errors.New("шлюз закрыт")},
+			expects: "проверка",
+		},
+		{
+			name:    "утечка не починилась",
+			reply:   `{"line":"Ивару бы про деньги вопрос задать."}`,
+			guard:   &stubGuard{ok: false, what: "выдуманный человек"},
+			expects: "утечк",
+		},
+	}
+
+	for _, c := range cases {
+		a, _ := actorWith(t, c.reply)
+		if c.guard != nil {
+			a = a.WithGuard(c.guard)
+		}
+		var said []string
+		a = a.WithNotify(func(reason string) { said = append(said, reason) })
+
+		line, err := a.Line(context.Background(), speaker, sit, llm.Request{})
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if line == "" {
+			t.Fatalf("%s: реплики нет вовсе", c.name)
+		}
+		if len(said) == 0 {
+			t.Errorf("%s: заглушка сработала молча", c.name)
+			continue
+		}
+		if !strings.Contains(strings.ToLower(strings.Join(said, " ")), c.expects) {
+			t.Errorf("%s: причина не названа, сказано %q, ждали упоминание %q",
+				c.name, said, c.expects)
+		}
+	}
+}
+
+// Удачная реплика ни о чём не сообщает: шум в отладке хуже тишины, а
+// сообщение о заглушке ценно ровно тем, что редко.
+func TestGoodLineNotifiesNothing(t *testing.T) {
+	a, _ := actorWith(t, `{"line":"Сыро сегодня."}`)
+	var said []string
+	a = a.WithNotify(func(reason string) { said = append(said, reason) })
+
+	if _, err := a.Line(context.Background(), Speaker{Name: "Нильс"},
+		Situation{PlayerText: "здравствуй"}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(said) != 0 {
+		t.Errorf("на удачной реплике сказано лишнее: %v", said)
+	}
+}
+
+// Промпт актёра не выходит за его scope в реестре капабилити
+// (llm.Capabilities[llm.RoleActor]): фраза игрока, party_knowledge, своё
+// досье, гранты Мастера, сцена и авторская рамка мира. Правды дела и фактов,
+// которых парти не знает, в нём нет — и это проверяется на собранном промпте,
+// а не на намерении: материал собирается в пяти местах, и достаточно одного
+// нового поля, чтобы дело утекло к модели молча.
+func TestActorPromptStaysInsideItsReadScope(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"move":"smalltalk","line":"Мокро сегодня."}`)
+	if _, err := v.Voice(context.Background(),
+		core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_bern"}},
+		core.TurnResult{}); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("вызовов %d, ожидался один", len(calls))
+	}
+	prompt := calls[0].Input
+
+	// Токены правильного ответа «Гавани» — правда дела, вне scope любой роли.
+	for _, leak := range []string{"seal_cord", "night_before_tide", "audit_shortfall"} {
+		if strings.Contains(prompt, leak) {
+			t.Errorf("промпт актёра содержит правду дела %q", leak)
+		}
+	}
+
+	// Факты, которых парти не знает, тоже вне scope: знание парти — граница.
+	known := map[store.FactID]bool{}
+	for _, id := range g.K.TopicBank() {
+		known[id] = true
+	}
+	for id, fact := range g.DB.Facts {
+		if known[id] || fact.Key == "" {
+			continue
+		}
+		if strings.Contains(prompt, string(id)) {
+			t.Errorf("промпт актёра называет неизвестный парти факт %q", id)
+		}
+	}
+}
+
 // Мастер, потянувшийся к территории дела, отсекается ядром — и персонаж об
 // этом не говорит. Иначе ambient-канон стал бы вторым способом выдать факт,
 // мимо fact_holders: гейт держит границу там, где промпт уже не держит.
@@ -1311,5 +1477,285 @@ func TestProposalVerdictReachesTheHook(t *testing.T) {
 				t.Errorf("применённое пришло как отказ: %+v", got[0])
 			}
 		})
+	}
+}
+
+// Выданный факт произносит персонаж, а не механическая строка. Кто произносит,
+// решило ядро (`TurnResult.SpokenBy`) — актёр это решение исполняет, а не
+// выводит заново.
+func TestHolderSpeaksTheFactHeJustGaveUp(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"line":"Тело нашли на складе, поутру."}`)
+	in := core.Intent{Verb: "question", Args: core.Args{Target: "e_bern", Topic: "f_body_found"}}
+	res := core.TurnResult{
+		Learned:  []core.Learned{{Fact: "f_body_found", From: "e_bern"}},
+		SpokenBy: "e_bern",
+	}
+
+	got, err := v.Voice(context.Background(), in, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" {
+		t.Fatal("держатель промолчал о факте, который сам же выдал")
+	}
+	// Раньше question глушился классом глагола: реплики на нём не было вовсе.
+	if len(f.Calls()) != 1 {
+		t.Fatalf("вызовов актёра %d, ожидался один", len(f.Calls()))
+	}
+	in0 := f.Calls()[0].Input
+	if !strings.Contains(in0, "Тело сборщика податей Халдена найдено на складе у пристани") {
+		t.Errorf("факт не пришёл персонажу как то, что он сейчас говорит:\n%s", in0)
+	}
+	if !strings.Contains(in0, "СЕЙЧАС ТЫ ЭТО ГОВОРИШЬ") {
+		t.Errorf("персонажу не сказано, что факт надо произнести:\n%s", in0)
+	}
+}
+
+// Факт от вещи персонаж не произносит: труп и книга учёта не говорят, и
+// перекладывать их слова на стоящего рядом человека нельзя.
+func TestNobodySpeaksAFactFromAThing(t *testing.T) {
+	g := harbour(t)
+	v, f := voicer(t, g, `{"line":"Не должно быть слышно."}`)
+	in := core.Intent{Verb: "examine", Args: core.Args{Target: "e_body"}}
+	res := core.TurnResult{Learned: []core.Learned{{Fact: "f_body_found", From: "e_body"}}}
+
+	got, err := v.Voice(context.Background(), in, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" || len(f.Calls()) != 0 {
+		t.Errorf("вещь заговорила: %q, вызовов %d", got, len(f.Calls()))
+	}
+}
+
+// На ходу с фактом круг к Мастеру не запускается: персонажу есть что сказать, и
+// добирать материал незачем — это лишний вызов на каждом факте.
+func TestRevealTurnDoesNotAskTheMaster(t *testing.T) {
+	g := harbour(t)
+	a, f := repliesInOrder(t, `{"line":"Тело нашли на складе.","needs":["а кто его нашёл"]}`)
+	m := &fakeMaster{grants: []master.Grant{
+		{Topic: "кто нашёл", Answer: "рыбаки", Canon: true}}}
+	v := &GameVoicer{Actor: a, Game: g, Master: m}
+
+	got, err := v.Voice(context.Background(),
+		core.Intent{Verb: "question", Args: core.Args{Target: "e_bern", Topic: "f_body_found"}},
+		core.TurnResult{
+			Learned:  []core.Learned{{Fact: "f_body_found", From: "e_bern"}},
+			SpokenBy: "e_bern",
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" {
+		t.Fatal("реплика потерялась")
+	}
+	if m.calls != 0 {
+		t.Errorf("Мастер вызван %d раз на ходу, где персонажу есть что сказать", m.calls)
+	}
+	if len(f.Calls()) != 1 {
+		t.Errorf("вызовов актёра %d — круг договаривания запустился впустую", len(f.Calls()))
+	}
+}
+
+// Заглушка озвучивается дешёвой моделью: смысл берётся из шаблона, голос — у
+// персонажа. Захардкоженная строка одна на всех, и живой прогон принимал её за
+// сбой движка — «Кто ж его знает. Сыро только» звучит одинаково у стражника,
+// мальчишки и вдовы.
+
+// floorSpeaker — персонаж и ситуация, которых хватает для дна.
+func floorSituation() (Speaker, Situation) {
+	return Speaker{ID: "e_bern", Name: "Берн, стражник", Voice: "сухой и служебный"},
+		Situation{Verb: "talk_to", PlayerText: "нет ли тут таверны?",
+			Life:      "стоит смену под дождём, ворчит на устав",
+			Scene:     []string{"дождь", "фонари качаются"},
+			CaseNames: []string{"Токе", "Нильс", "Пристань"}}
+}
+
+func TestFloorIsVoicedByTheCheapModel(t *testing.T) {
+	a, f := repliesInOrder(t, `{"line":""}`, "Таверны? Не по моей части, я тут мокну до отлива.")
+	s, sit := floorSituation()
+
+	got, err := a.Line(context.Background(), s, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Таверны? Не по моей части, я тут мокну до отлива." {
+		t.Errorf("заглушка не озвучена: %q", got)
+	}
+	if len(f.Calls()) != 2 {
+		t.Fatalf("вызовов %d, ожидались два: реплика и озвучка дна", len(f.Calls()))
+	}
+	voice := f.Calls()[1]
+	if voice.Tier != llm.TierCheap {
+		t.Errorf("дно озвучено не дешёвым тиром: %q", voice.Tier)
+	}
+	if voice.Role != llm.RoleActor {
+		t.Errorf("дно озвучено ролью %q", voice.Role)
+	}
+	// Смысл подан как то, что менять нельзя, а фраза игрока — чтобы реплика
+	// примыкала к вопросу.
+	if !strings.Contains(voice.Input, "нет ли тут таверны?") {
+		t.Errorf("вопрос игрока не дошёл до озвучки:\n%s", voice.Input)
+	}
+	if !strings.Contains(voice.Input, "Кто ж его знает") {
+		t.Errorf("смысл заглушки не дошёл до озвучки:\n%s", voice.Input)
+	}
+}
+
+// Материала дела у озвучки нет: она пересказывает шаблон, а не рассказывает о
+// деле. Факты, канон и гранты в промпт не попадают.
+func TestFloorVoicingGetsNoCaseMaterial(t *testing.T) {
+	a, f := repliesInOrder(t, `{"line":""}`, "Не моё это дело, сударь.")
+	s, sit := floorSituation()
+	sit.Known = []Known{{ID: "f_toke_lied", Text: "Токе соврал о ночи прилива"}}
+	sit.Canon = []store.CanonFact{{Topic: "погода", Text: "морось третью неделю"}}
+
+	if _, err := a.Line(context.Background(), s, sit, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	in := f.Calls()[1].Input
+	for _, leak := range []string{"f_toke_lied", "Токе соврал", "морось третью неделю"} {
+		if strings.Contains(in, leak) {
+			t.Errorf("в озвучку дна утёк материал дела (%q):\n%s", leak, in)
+		}
+	}
+}
+
+// Шаблон остаётся дном под дном: озвучка — надстройка над путём сбоя, и её
+// собственный сбой не имеет права стоить игроку реплики.
+func TestFloorFallsBackToTemplate(t *testing.T) {
+	tmpl := "Кто ж его знает. Сыро только, вот и всё, что скажу."
+	long := strings.Repeat("слово ", 80)
+	for _, tc := range []struct {
+		name  string
+		reply string
+	}{
+		{"пустой ответ", ""},
+		{"длиннее предела", long},
+		{"назвал сущность дела", "Про таверну не знаю, спросите Нильса — он всё знает."},
+		// Схемы у озвучки нет, и модель отвечает как умеет. Живой тест поймал
+		// пришедший сюда JSON реплики: без проверки он уехал бы игроку дословно.
+		{"ответ похож на JSON", `{"line":"Не знаю."}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, f := repliesInOrder(t, `{"line":""}`, tc.reply)
+			s, sit := floorSituation()
+			got, err := a.Line(context.Background(), s, sit, llm.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tmpl {
+				t.Errorf("вернулось %q, ожидался шаблон дословно", got)
+			}
+			if len(f.Calls()) != 2 {
+				t.Errorf("вызовов %d — озвучка дна пошла по кругу", len(f.Calls()))
+			}
+		})
+	}
+}
+
+// Сбой канала на озвучке дна тоже отдаёт шаблон, а не ошибку: ход уже
+// закоммичен, и ронять его из-за надстройки нельзя.
+func TestFloorSurvivesGatewayFailure(t *testing.T) {
+	f := llm.NewFake("fake", true).ReplyWith(func(r llm.Request) string {
+		if r.Tier == llm.TierCheap {
+			return "" // канал вернул пустое
+		}
+		return `{"line":""}`
+	})
+	gw := llm.NewGateway(
+		llm.NewRouter().Route(llm.RoleActor, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewLedger(llm.Caps{}))
+	s, sit := floorSituation()
+
+	got, err := New(gw).Line(context.Background(), s, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Кто ж его знает. Сыро только, вот и всё, что скажу." {
+		t.Errorf("сбой озвучки не откатился к шаблону: %q", got)
+	}
+}
+
+// Озвучка дна не вправе назвать того, кого в промпте не было. Живой прогон
+// показал, чем это кончается: дешёвая модель получила шаблон «Кто ж его знает.
+// Сыро только» и вплела в него Марусю с таверной — человека, которого в деле
+// нет. Дно закрывало дыру выдумки и само стало ею.
+func TestFloorVoicingRejectsInventedNames(t *testing.T) {
+	for _, reply := range []string{
+		"Да ладно же, у Маруси в таверне можно, но сыро там всё, вот и всё, что скажу.",
+		"Кто ж его знает. Спросите в Мокром Парусе, а тут сыро только.",
+	} {
+		a, _ := repliesInOrder(t, `{"line":""}`, reply)
+		s, sit := floorSituation()
+		got, err := a.Line(context.Background(), s, sit, llm.Request{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "Кто ж его знает. Сыро только, вот и всё, что скажу." {
+			t.Errorf("выдумка прошла в озвучке дна: %q", got)
+		}
+	}
+}
+
+// Слова, которые в промпте были, озвучке разрешены: иначе она не сможет
+// обратиться к собеседнику и назвать себя, и «своим голосом» превратится в
+// набор безличных фраз.
+func TestFloorVoicingKeepsWhatWasInThePrompt(t *testing.T) {
+	a, _ := repliesInOrder(t, `{"line":""}`,
+		"Да кто ж его знает, сударь. Сыро тут, вот и всё, что я, Берн, скажу.")
+	s, sit := floorSituation()
+	got, err := a.Line(context.Background(), s, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "Берн") {
+		t.Errorf("озвучка не смогла назвать себя: %q", got)
+	}
+}
+
+// Длинная реплика обрезается по границе фразы, а не выбрасывается целиком.
+// Живой прогон: настоящий ответ Нильса — по делу и в характере — превысил
+// предел на 16 знаков и был потерян весь. Нильс тараторит по авторскому
+// замыслу («сыплет подробностями»), значит предел он будет задевать всегда.
+func TestLongLineIsTrimmedNotDiscarded(t *testing.T) {
+	first := "Под навесом весовой можно, я там сплю. "
+	long := first + strings.Repeat("А ещё сарай у Токе пустой стоит, он теперь при деньгах. ", 6)
+	if len([]rune(long)) <= maxLine {
+		t.Fatal("тест не проверяет обрезку: строка короче предела")
+	}
+	a, _ := repliesInOrder(t, `{"line":"`+long+`"}`)
+	s, sit := floorSituation()
+
+	got, err := a.Line(context.Background(), s, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "Кто ж его знает. Сыро только, вот и всё, что скажу." {
+		t.Fatal("длинная реплика ушла в дно вместо обрезки")
+	}
+	if len([]rune(got)) > maxLine {
+		t.Errorf("обрезка не уложилась в предел: %d знаков", len([]rune(got)))
+	}
+	if !strings.HasPrefix(got, "Под навесом весовой можно, я там сплю.") {
+		t.Errorf("обрезка потеряла начало ответа: %q", got)
+	}
+	if strings.HasSuffix(strings.TrimSpace(got), "он") {
+		t.Errorf("обрезка оборвала фразу на полуслове: %q", got)
+	}
+}
+
+// Обрезать не по чему — тогда дно: одна фраза длиннее предела это не речь, а
+// поток, и подавать её обрубком хуже, чем заглушкой.
+func TestUntrimmableLineFallsToFloor(t *testing.T) {
+	a, _ := repliesInOrder(t, `{"line":"`+strings.Repeat("слово ", 60)+`"}`, "")
+	s, sit := floorSituation()
+	got, err := a.Line(context.Background(), s, sit, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Кто ж его знает. Сыро только, вот и всё, что скажу." {
+		t.Errorf("бесфразный поток не ушёл в дно: %q", got)
 	}
 }

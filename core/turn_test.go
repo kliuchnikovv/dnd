@@ -203,3 +203,35 @@ func TestToolDoesNotTravelBetweenNodes(t *testing.T) {
 		t.Errorf("инструмент уехал в другой узел: %v", tools)
 	}
 }
+
+// ask_about — свободный вопрос о мире, и на нём держится импровизация: ядро
+// фактов не выдаёт, кости не бросает и времени не тратит, а слой над доменом
+// отдаёт ход персонажу, который при незнании спросит Мастера.
+//
+// Тест характеризующий: глагол в реестре был и раньше, но парсер отправлял в
+// него ноль фраз (правило промпта «вопрос человеку — это question»), и это
+// поведение никто не стерёг.
+func TestAskAboutGivesNoFactsAndCostsNothing(t *testing.T) {
+	g := discoverGame(OutcomeSuccess)
+	g.DB.Entities["e_nils"] = store.Entity{ID: "e_nils", Kind: store.EntityNPC, Node: "n_quay"}
+	before := g.C.Snapshot()
+
+	got := g.Apply(Intent{Verb: "ask_about", Args: Args{Target: "e_nils"}})
+	if got.Refused {
+		t.Fatalf("свободный вопрос о мире отвергнут: %s", got.Refusal)
+	}
+	if got.Res != nil {
+		t.Error("ask_about бросил кость — вопрос о мире не проба навыка")
+	}
+	if len(got.Learned) != 0 {
+		t.Errorf("ask_about выдал факт дела: %v", got.Learned)
+	}
+	if got.SpokenBy != "" {
+		t.Errorf("ask_about назвал говорящего факта: %q", got.SpokenBy)
+	}
+	for i, c := range g.C.Snapshot() {
+		if c.Filled != before[i].Filled {
+			t.Errorf("часы %s тикнули на вопросе о мире", c.ID)
+		}
+	}
+}

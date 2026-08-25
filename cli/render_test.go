@@ -334,30 +334,40 @@ func TestHelpMentionsItems(t *testing.T) {
 	}
 }
 
-// Мастеру запрещено говорить за того, кто сейчас ответит. Но когда ход выдал
-// факт, персонаж молчит намеренно — авторская реплика уже в рамке, и Мастер
-// остаётся единственным голосом. Запретить ему пересказать реакцию значит
-// потерять её вовсе: живой прогон так и потерял ответ стражника на
-// предъявленное предписание.
-func TestSpeakerIsNotHeldBackWhenNobodyWillAnswer(t *testing.T) {
+// Кто произносит факт — решает ядро, и подпись обязана читать это решение, а
+// не выводить его заново из «в ходу есть Learned». Признак был слишком грубый:
+// он глушил и стражника, которому есть что сказать, и труп, которому нечего.
+func TestSpeakerFollowsTheCoreDecision(t *testing.T) {
 	g := renderGame(t)
 	n := &fakeNarrator{prose: "проза"}
 	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
-
-	// Ход, который выдаёт факт: озвучка молчит, значит запрета быть не должно.
-	// Исход подаётся напрямую — тест о ветвлении подписи, а не о выдаче.
 	talkTo := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}
+
+	// Факт от человека в сцене: он его и произнесёт, значит Мастеру за него
+	// говорить нельзя. Исход подаётся напрямую — тест о ветвлении подписи, а
+	// не о выдаче факта.
 	s.r.Turn(g, talkTo, core.TurnResult{FlavourKey: "talk_to",
-		Learned: []core.Learned{{Fact: "f_ligature", From: "e_toke"}}})
-	if got := n.speaking[0]; got != "" {
-		t.Errorf("Мастеру запрещено говорить за %q, хотя отвечать никто не будет", got)
+		Learned:  []core.Learned{{Fact: "f_ligature", From: "e_toke"}},
+		SpokenBy: "e_toke"})
+	if got := n.speaking[0]; got == "" {
+		t.Error("Мастеру разрешено говорить за того, кто сейчас произнесёт факт")
+	}
+
+	// Факт от вещи: произносить некому, и Мастер остаётся единственным
+	// голосом. Запретить ему реакцию значит потерять её вовсе — живой прогон
+	// так и потерял ответ стражника на предъявленное предписание.
+	s.r.Turn(g, talkTo, core.TurnResult{FlavourKey: "talk_to",
+		Learned: []core.Learned{{Fact: "f_ligature", From: "e_body"}}})
+	if got := n.speaking[1]; got != "" {
+		t.Errorf("Мастеру запрещено говорить за %q, хотя произносить некому", got)
 	}
 
 	// Ход без выдачи: персонаж ответит следующей строкой, запрет нужен.
 	s.r.Turn(g, talkTo, core.TurnResult{FlavourKey: "talk_to"})
-	if got := n.speaking[1]; got == "" {
+	if got := n.speaking[2]; got == "" {
 		t.Error("Мастеру разрешено говорить за того, кто сейчас ответит")
 	}
+
 }
 
 // Легенда экрана фактов объясняла звёздочку и молчала о том, обязательна ли
@@ -369,5 +379,47 @@ func TestFactsLegendDoesNotImplyAGate(t *testing.T) {
 	got := Render{}.Facts(g)
 	if !strings.Contains(got, "обвинять") {
 		t.Errorf("легенда не говорит, что подтверждение не условие обвинения:\n%s", got)
+	}
+}
+
+// Содержание факта Мастеру не отдаётся, когда произносит его персонаж. Запрета
+// «не говори за него» здесь недостаточно: живой прогон получил ровно это —
+// Мастер обязан показать, чем кончился ход, а кончился он фактом, и он вставил
+// факт в кавычки Нильса. Следом то же сказал сам Нильс. Лечится не силой
+// формулировки, а тем, что сказать нечем: содержания в промпте нет.
+func TestNarratorIsNotGivenAFactSomebodyElseWillSpeak(t *testing.T) {
+	g := renderGame(t)
+	n := &fakeNarrator{prose: "проза"}
+	s := NewSession(g, strings.NewReader(""), &strings.Builder{}).WithNarrator(n)
+	talkTo := core.Intent{Verb: "talk_to", Args: core.Args{Target: "e_toke"}}
+
+	// Факт произносит человек: Мастеру он не достаётся вовсе.
+	out := s.r.Turn(g, talkTo, core.TurnResult{FlavourKey: "talk_to",
+		Learned:  []core.Learned{{Fact: "f_ligature", From: "e_toke"}},
+		SpokenBy: "e_toke"})
+	for _, o := range n.outcome {
+		if strings.HasPrefix(o, "узнали:") {
+			t.Errorf("Мастеру отдано то, что скажет персонаж: %q", o)
+		}
+	}
+	// Квитанция при этом на месте: провал озвучки не должен стоить знания.
+	if !strings.Contains(out, "+ узнали:") {
+		t.Errorf("квитанция исчезла:\n%s", out)
+	}
+
+	// Факт от вещи произносить некому — тут содержание Мастеру нужно, иначе
+	// исход хода останется неописанным.
+	n.outcome = nil
+	s.r.Turn(g, core.Intent{Verb: "examine", Args: core.Args{Target: "e_body"}},
+		core.TurnResult{FlavourKey: "examine",
+			Learned: []core.Learned{{Fact: "f_ligature", From: "e_body"}}})
+	var told bool
+	for _, o := range n.outcome {
+		if strings.HasPrefix(o, "узнали:") {
+			told = true
+		}
+	}
+	if !told {
+		t.Errorf("факт от вещи не доехал до Мастера: %v", n.outcome)
 	}
 }

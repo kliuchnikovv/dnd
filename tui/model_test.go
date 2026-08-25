@@ -361,3 +361,81 @@ func TestDebugPaneIsLabelled(t *testing.T) {
 		t.Errorf("панель без заголовка:\n%s", got)
 	}
 }
+
+// Enter обязан положить свою строку в транскрипт ДО того, как ход что-то
+// ответит: иначе игрок не видит, на что отвечают, и разговор читается как
+// монолог мира.
+func TestEnterEchoesInputIntoTranscript(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+
+	m.input.SetValue("осмотреть бочки")
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+
+	if !strings.Contains(m.transcript.Render(60), "осмотреть бочки") {
+		t.Errorf("ввод не попал в транскрипт:\n%s", m.transcript.Render(60))
+	}
+}
+
+// Пустая строка — валидный ответ на вопрос игры (слот обвинения), но эхом
+// она печатается пустым блоком под подписью: подпись без слов.
+func TestEmptyAnswerIsNotEchoed(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+	m.lastKind = cli.EventPrompt
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+
+	if strings.Contains(m.transcript.Render(60), cli.PlayerName) {
+		t.Errorf("пустой ответ отмечен подписью:\n%s", m.transcript.Render(60))
+	}
+}
+
+// Колесо мыши обязано крутить транскрипт, а не скроллбек терминала. Без
+// перехвата игрок, потянувшийся к истории разговора, видит историю шелла: свои
+// же команды и метрики прошлых прогонов вместо разговора с Берном.
+func TestWheelScrollsTheTranscript(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = next.(model)
+	for i := 0; i < 60; i++ {
+		next, _ = m.Update(eventMsg{cli.Event{Kind: cli.EventProse,
+			Text: fmt.Sprintf("строка %d\n", i)}})
+		m = next.(model)
+	}
+	if m.view.AtTop() {
+		t.Fatal("транскрипт не набрал высоты — тест ничего не проверяет")
+	}
+
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	up := next.(model)
+	if up.view.YOffset >= m.view.YOffset {
+		t.Errorf("колесо вверх не прокрутило транскрипт: смещение %d при %d",
+			up.view.YOffset, m.view.YOffset)
+	}
+
+	next, _ = up.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	down := next.(model)
+	if down.view.YOffset <= up.view.YOffset {
+		t.Errorf("колесо вниз не вернуло транскрипт: смещение %d при %d",
+			down.view.YOffset, up.view.YOffset)
+	}
+}
+
+// Колесо не должно попадать в строку ввода: там оно ничего не значит, а
+// default-ветка Update отдаёт неразобранное именно ей.
+func TestWheelDoesNotReachTheInput(t *testing.T) {
+	m := newModel(nil, Options{})
+	next, _ := m.Update(startedMsg{})
+	m = next.(model)
+	m.input.SetValue("предъявить предписание Берну")
+
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	if got := next.(model).input.Value(); got != "предъявить предписание Берну" {
+		t.Errorf("колесо изменило ввод: %q", got)
+	}
+}

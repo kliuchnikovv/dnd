@@ -23,6 +23,10 @@ type Result struct {
 	Candidate string
 	// Class — класс предложенного глагола, пуст если глагол не предлагался.
 	Class core.VerbClass
+	// Reply — безоценочная реплика Мастера, пришедшая тем же вызовом. Только
+	// в чат-режиме; в обычном разборе её никто не просит. Об исходе она не
+	// знает и знать не может — бросок ещё не сделан.
+	Reply string
 }
 
 func (r Result) Accepted() bool { return r.Intent != nil }
@@ -30,10 +34,21 @@ func (r Result) Accepted() bool { return r.Intent != nil }
 type Parser struct {
 	gw      *llm.Gateway
 	metrics *Metrics
+	// chat — режим одного вызова: модель разбирает фразу и тем же ответом
+	// отвечает игроку. Флаг, а не отдельный тип: разбор и проверка значений
+	// у обоих режимов одни и те же, и вторая копия validate разъехалась бы с
+	// первой молча.
+	chat bool
 }
 
 func NewParser(gw *llm.Gateway) *Parser {
 	return &Parser{gw: gw, metrics: NewMetrics()}
+}
+
+// NewChatParser — парсер чат-режима: один вызов даёт и разбор, и реплику
+// Мастера. Эксперимент рядом с основным путём, а не вместо него.
+func NewChatParser(gw *llm.Gateway) *Parser {
+	return &Parser{gw: gw, metrics: NewMetrics(), chat: true}
 }
 
 func (p *Parser) Metrics() *Metrics { return p.metrics }
@@ -44,8 +59,19 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 1. Глагол выбирается ТОЛЬКО из перечисленных в схеме. Своих не придумывай.
 2. target, topic и node — это идентификаторы ИЗ СПИСКА сцены ниже. Ничего,
    чего в списке нет, использовать нельзя: такой сущности в мире не существует.
-3. Вопрос человеку — это question. Тема НЕОБЯЗАТЕЛЬНА: указывай её, только
-   если игрок спросил об известной теме из списка. Спросил открыто («что
+3. Вопрос человеку — это question ИЛИ ask_about, и различие важное:
+   - question — вопрос о ДЕЛЕ: о теле, о шнуре, о той ночи, о том, кто где был.
+     Тема НЕОБЯЗАТЕЛЬНА и по умолчанию ПУСТА: указывай её только если игрок
+     спросил именно об этом факте. Совпадение слова с формулировкой факта
+     темой не делает, и единственная известная тема не становится темой
+     оттого, что других нет.
+   - ask_about — вопрос о МИРЕ: где поесть, где переждать воду, кто держит
+     весовую, как тут вообще живут, что за место. К делу это не относится, и
+     фактов тут не выдают — человек просто отвечает, а чего не знает, о том
+     спросит того, кто знает.
+   Сомневаешься, о деле вопрос или о мире, — ask_about: спросить о мире можно
+   всегда, а question на неподходящем вопросе даёт отказ, и игрок остаётся
+   вообще без ответа. Спросил открыто («что
    слышно?», «кто убийца?», «расскажи про ту ночь») — question без темы, и
    человек расскажет то, что готов рассказать. Не отказывай и не переводи это
    в say: словарь тут ни при чём.
@@ -83,6 +109,21 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 Игрок: «спрошу кузнеца, кто убийца»
 Ответ: {"outcome":"intent","verb":"question","target":"e_ivar"}
 
+Сцена: e_nils — Нильс, посыльный; известные темы: f_body_found — тело нашли на складе у пристани
+Игрок: «прошу указать дорогу до склада»
+Ответ: {"outcome":"intent","verb":"ask_about","target":"e_nils"}
+Это вопрос о мире, не о деле: игрок спросил дорогу. Темы нет, хотя слово
+«склад» есть и в вопросе, и в формулировке факта — совпадение слова не есть
+совпадение темы, и единственную известную тему нельзя ставить только потому,
+что она единственная.
+
+Сцена: e_nils — Нильс, посыльный
+Игрок: «а где тут можно поесть?»
+Ответ: {"outcome":"intent","verb":"ask_about","target":"e_nils"}
+Темы нет, хотя слово «склад» есть и в вопросе, и в формулировке факта. Игрок
+спросил дорогу, а не про тело: совпадение слова — не совпадение темы. Ставить
+единственную известную тему только потому, что она единственная, нельзя.
+
 Разговор идёт с e_bern
 Игрок: «есть ли какие-нибудь слухи в последнее время?»
 Ответ: {"outcome":"intent","verb":"question","target":"e_bern"}
@@ -94,6 +135,30 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 При себе: i_writ — Предписание магистрата; сцена: e_bern — Берн, стражник
 Игрок: «показать предписание Берну»
 Ответ: {"outcome":"intent","verb":"present","item":"i_writ","target":"e_bern"}`
+
+// chatAddendum — то, чем чат-режим отличается от разбора: разобрав фразу,
+// модель тем же ответом отвечает игроку. Добавка, а не свой промпт: правила
+// разбора у режимов одни, и второй их экземпляр разъехался бы с первым.
+const chatAddendum = `
+
+Кроме разбора ты ОТВЕЧАЕШЬ игроку — голосом Мастера, в поле reply.
+
+Реплика безоценочная. Ты не знаешь, чем кончится действие: бросок ещё не
+сделан, а решает его не ты. Поэтому НЕ УТВЕРЖДАЙ ИСХОД — ни успеха, ни
+провала, ни того, что игрок нашёл, услышал или разглядел. Покажи только
+начало: как он тянется, наклоняется, поворачивается, обращается. Чем оно
+кончилось, игрок прочтёт следующей строкой.
+
+  Игрок: «осмотреть бочки»
+  reply: «Вы наклоняетесь к штабелю, ведя рукой по сырой клёпке.»
+  НЕ: «Под верхней бочкой обнаруживается обрывок шнура.» — это исход.
+
+За людей не говори: тот, к кому обращён ход, ответит сам, своей репликой,
+следующей строкой. Ни его слов, ни его тона, ни того, смягчился он или
+насторожился.
+
+Одна-две фразы, на «вы», языком мира. Ни чисел, ни броска, ни служебных
+пометок: механику печатает не ты.`
 
 // Parse переводит текст в интент. Возвращает ошибку только на отказе шлюза
 // или сломанном ответе; непонятый ввод — это Result, а не ошибка.
@@ -120,6 +185,11 @@ func (p *Parser) attempt(ctx context.Context, text string, hint SceneHint,
 	req.Role = llm.RoleIntentParser
 	req.Schema = schemaJSONFor(hint)
 	req.System = fmt.Sprintf(systemPrompt, arityBrief())
+	if p.chat {
+		req.Role = llm.RoleChatMaster
+		req.Schema = chatSchemaJSONFor(hint)
+		req.System += chatAddendum
+	}
 	req.Input = "Сцена:\n" + hint.Render() + "\nИгрок пишет: " + text +
 		"\n\nЕсли действие направлено на кого-то или что-то из сцены — ОБЯЗАТЕЛЬНО заполни " +
 		"target его идентификатором. Игрок называет цель своими словами и в своём падеже " +
@@ -138,6 +208,10 @@ func (p *Parser) attempt(ctx context.Context, text string, hint SceneHint,
 		return Result{}, "", fmt.Errorf("intent: ответ не разобрался: %w", err)
 	}
 	res, repairNext := p.validate(raw, hint, text)
+	// Реплика проверке значений не подлежит: она не ссылается на сцену, а
+	// описывает то, что игрок только что сделал. Пустая — законный исход:
+	// надстройка не должна быть условием работы хода.
+	res.Reply = strings.TrimSpace(raw.Reply)
 	return res, repairNext, nil
 }
 
@@ -248,6 +322,18 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 		// стоит починить: глагол угадан, не хватает ссылки на сцену.
 		return Result{Clarify: msg, Class: def.Class}, "не заполнено обязательное поле — " + msg
 	}
+	// Аргумент, которого глагол не берёт, до ядра не доходит. Модель со строгой
+	// схемой заполняет поля, потому что они в required, а не потому что они
+	// нужны: живой прогон дал node в КАЖДОМ интенте, включая question и
+	// talk_to, и тему дела в вопросе о мире. Пользы от такого аргумента нет
+	// никакой, а провалить ход он может — validate проверяет по узлу смежность
+	// и запертость, и разговор отвергается из-за запертого склада.
+	if !takesTopic(def.Verb) {
+		raw.Topic = ""
+	}
+	if !requires(def.Verb).Node {
+		raw.Node = ""
+	}
 	if raw.Target != "" && !hint.hasEntity(raw.Target) {
 		return reject("этого здесь нет — кого ты имеешь в виду?")
 	}
@@ -297,9 +383,13 @@ func targetNames(hint SceneHint) string {
 
 // takesTopic — глаголы, которые тему принимают: обязательно или нет. Открытый
 // вопрос законен, но названная тема всё равно лучше, и упустить её нельзя.
+//
+// ask_about здесь НЕТ, и это не пропуск: вопрос о мире темы дела не имеет по
+// определению. Пока он тут стоял, единственная известная тема приезжала в
+// вопрос про дорогу — и ядро отказывало по ней.
 func takesTopic(v core.Verb) bool {
 	switch v {
-	case "question", "ask_about", "cross_reference":
+	case "question", "cross_reference":
 		return true
 	}
 	return false
@@ -325,16 +415,39 @@ type GameInterpreter struct {
 	Req llm.Request
 }
 
+// InterpretChat — тот же разбор, что Interpret, плюс безоценочная реплика
+// Мастера тем же вызовом. Реализует интерфейс чат-режима, которого ждёт CLI, —
+// структурно, без импорта презентации.
+//
+// Дешёвые перехваты работают и здесь: одно слово-имя это по-прежнему обращение,
+// и платить за него вызовом незачем. Реплики у такого хода нет — её заменяет
+// ответ самого человека, который сейчас и заговорит.
+func (gi *GameInterpreter) InterpretChat(ctx context.Context, text string,
+	with store.EntityID, pending string) (*core.Intent, string, string, error) {
+	return gi.interpret(ctx, text, with, pending)
+}
+
 func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with store.EntityID,
 	pending string) (*core.Intent, string, error) {
+	in, _, clarify, err := gi.interpret(ctx, text, with, pending)
+	return in, clarify, err
+}
+
+// interpret — общее тело обоих путей. Реплика возвращается всегда, а
+// показывает её только чат-режим: одно место разбора вместо двух, которые
+// разъехались бы молча.
+func (gi *GameInterpreter) interpret(ctx context.Context, text string, with store.EntityID,
+	pending string) (in *core.Intent, reply, clarify string, err error) {
 	hint := BuildHint(gi.Game)
 	// Одно слово — имя того, к кому игрок повернулся. Самый дешёвый ход в
 	// разговоре, и вызов модели ему не нужен: имя в сцене это подстрока, а не
 	// суждение. Живой прогон отвечал на «Берн» отказом — модель искала
 	// действие там, где действие было очевидно.
 	if id, ok := bareName(text, hint.Entities); ok {
+		// Реплики у такого хода нет, и придумывать её незачем: сейчас
+		// заговорит сам человек, к которому повернулись.
 		return &core.Intent{Verb: "talk_to", Actor: gi.Game.Actor,
-			Args: core.Args{Target: store.EntityID(id), Text: text}}, "", nil
+			Args: core.Args{Target: store.EntityID(id), Text: text}}, "", "", nil
 	}
 	// Разговор — часть сцены. Транскрипт лежит в дневнике собеседника: его
 	// ведёт озвучка, а разбор им пользуется, и второго места правды не
@@ -345,7 +458,7 @@ func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with stor
 	}
 	res, err := gi.Parser.Parse(ctx, text, hint, gi.Req)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	switch {
 	case res.Accepted():
@@ -360,12 +473,12 @@ func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with stor
 		if res.Intent.Args.Text == "" {
 			res.Intent.Args.Text = text
 		}
-		return res.Intent, "", nil
+		return res.Intent, res.Reply, "", nil
 	case res.Candidate != "":
 		// Ввод вне словаря — это не ошибка, а сигнал о его узости. Игроку
 		// говорим честно, метрика уже записана.
-		return nil, "так не получится: " + res.Candidate, nil
+		return nil, "", "так не получится: " + res.Candidate, nil
 	default:
-		return nil, res.Clarify, nil
+		return nil, "", res.Clarify, nil
 	}
 }

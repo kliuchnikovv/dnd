@@ -134,7 +134,7 @@ func Parse(raw []byte) (*core.Config, error) {
 		Start:     f.Start,
 		Aftermath: f.Aftermath,
 		ColdCase:  f.ColdCase,
-		Companion: f.Companion,
+		Briefing:  f.Briefing,
 		Hints:     f.Hints,
 		Actor:     store.CharacterID(f.Actor),
 	}, nil

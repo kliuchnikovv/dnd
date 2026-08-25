@@ -184,6 +184,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.key(msg)
+
+	case tea.MouseMsg:
+		// Колесо крутит транскрипт. Без этого его крутит сам терминал — и
+		// показывает свой скроллбек: игрок, потянувшийся к истории разговора,
+		// видит историю шелла. Дальше строки ввода событие не идёт: колесу
+		// там делать нечего, а default-ветка отдала бы его именно ей.
+		m.view, _ = m.view.Update(msg)
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -240,11 +248,24 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.history.Add(line)
+		if line != "" {
+			// Своя строка — часть разговора, и встать она обязана ДО того,
+			// как ход что-то ответит: иначе игрок не видит, на что отвечают.
+			// Пустая строка (валидный токен слота обвинения) эхом даёт
+			// подпись без слов, поэтому не печатается.
+			m.transcript.AppendInput(line)
+		}
 		m.input.SetValue("")
 		m.busy = true
 		// Ответ ушёл — приглашение больше не актуально. Если ход задаст
 		// следующий слот, eventMsg выставит новое приглашение сам.
 		m.prompt = ""
+		m.refresh()
+		// Та же оговорка, что у eventMsg: пока открыта панель отладки, своя
+		// строка не должна уводить её к концу — там читают дамп.
+		if !m.debugOpen {
+			m.view.GotoBottom()
+		}
 		return m, m.feed(line)
 	}
 	var cmd tea.Cmd

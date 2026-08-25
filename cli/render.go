@@ -15,6 +15,10 @@ type ProseKind string
 const (
 	ProsePlace   ProseKind = "place"
 	ProseOutcome ProseKind = "outcome"
+	// ProseBriefing — с чем игрока прислали. Свой вид, а не место и не исход:
+	// это не то, что игрок видит вокруг, и не то, что он только что сделал, —
+	// это то, что ему рассказали до приезда.
+	ProseBriefing ProseKind = "briefing"
 )
 
 // Prose — заказ на прозу Мастера.
@@ -46,6 +50,36 @@ func (r Render) prose(p Prose) string {
 		return p.Frame
 	}
 	return r.Narrate(p)
+}
+
+// Briefing — авторское введение в дело, оживлённое Мастером. Механику сюда не
+// мешаем: список известного печатает Known, и по той же причине, по которой
+// бросок печатает код, — прозе нельзя доверять точность.
+func (r Render) Briefing(g *core.Game) string {
+	if strings.TrimSpace(g.Briefing) == "" {
+		return ""
+	}
+	return r.prose(Prose{Kind: ProseBriefing, Frame: g.Briefing}) + "\n"
+}
+
+// Known — что игрок знает и что несёт, на старте. Факты называются СВОИМИ
+// СЛОВАМИ, а не идентификаторами: экран facts показывает f_-ключи, потому что
+// там они нужны для compare, а брифинг читают как текст.
+func (Render) Known(g *core.Game) string {
+	var b strings.Builder
+	if bank := g.K.TopicBank(); len(bank) > 0 {
+		b.WriteString("Что известно:\n")
+		for _, f := range bank {
+			fmt.Fprintf(&b, "  · %s\n", g.DB.Facts[f].Key)
+		}
+	}
+	if carried := g.Carried(); len(carried) > 0 {
+		b.WriteString("При себе:\n")
+		for _, item := range carried {
+			fmt.Fprintf(&b, "  · %s\n", item.Name)
+		}
+	}
+	return b.String()
 }
 
 // sceneOf — что видно вокруг. Мастеру это нужно, чтобы не противоречить
@@ -110,16 +144,18 @@ func (r Render) Turn(g *core.Game, in core.Intent, t core.TurnResult) string {
 	return b.String()
 }
 
-// speakerName — имя того, к кому обращён ход: он же сейчас и ответит. Пусто,
-// если ход обращён не к человеку — или если отвечать никто не будет.
+// speakerName — имя того, кто сейчас ответит своей репликой. Пусто, если
+// отвечать никто не будет: тогда Мастер остаётся единственным голосом, и
+// запрещать ему нечего.
 //
-// Второе важнее первого. Ход, выдавший факт, озвучку глушит намеренно: там уже
-// есть авторская реплика. Запретить Мастеру говорить за молчащего значит
-// потерять реакцию вовсе — живой прогон так и потерял ответ стражника на
-// предъявленное предписание, оставив прозу про дождь.
+// На ходу, выдавшем факт, решение принимает ядро (TurnResult.SpokenBy), а
+// презентация его читает. Своего правила здесь больше нет: прежнее «есть
+// Learned — значит никто не ответит» глушило и стражника, которому есть что
+// сказать, и труп, которому нечего, — а Мастер, оставшись без запрета,
+// договаривал за персонажа сам.
 func speakerName(g *core.Game, in core.Intent, t core.TurnResult) string {
 	if len(t.Learned) > 0 {
-		return ""
+		return g.DB.Entities[t.SpokenBy].Name
 	}
 	e, ok := g.DB.Entities[in.Args.Target]
 	if !ok || e.Kind != store.EntityNPC {
@@ -136,8 +172,15 @@ func outcomeOf(g *core.Game, t core.TurnResult) []string {
 	if t.Res != nil {
 		out = append(out, "исход: "+t.Res.Class.String())
 	}
-	for _, l := range t.Learned {
-		out = append(out, "узнали: "+g.DB.Facts[l.Fact].Key)
+	// Факт, который произнесёт персонаж, Мастеру не отдаётся. Запрета «не
+	// говори за него» мало: Мастер обязан показать, чем кончился ход, а
+	// кончился он фактом — и живой прогон получил факт в кавычках Нильса, а
+	// следом то же от самого Нильса. Тот же приём, что с отказом гейта:
+	// подсказать нечем структурно, потому что содержания в промпте нет.
+	if t.SpokenBy == "" {
+		for _, l := range t.Learned {
+			out = append(out, "узнали: "+g.DB.Facts[l.Fact].Key)
+		}
 	}
 	if names := costNames(t.Costs); names != "" {
 		out = append(out, "цена: "+names)

@@ -88,17 +88,25 @@ var Capabilities = map[Role]Capability{
 	},
 	// Актёр не предлагает ничего: его выход — речь и needs. Чего он не знает,
 	// он спрашивает у Мастера, а не сочиняет.
+	//
+	// Канон мира и авторская рамка (сеттинг-библия) в scope не по недосмотру:
+	// без них персонаж выдумывает то, что уже решено, — а ровно это и ловит
+	// гвард. Утечки здесь нет: и то и другое — публичный материал мира.
 	RoleActor: {
 		Reads: []ReadScope{
 			ReadPlayerInput, ReadPartyKnowledge, ReadOwnDossier,
-			ReadMasterGrants, ReadScenePublic,
+			ReadMasterGrants, ReadScenePublic, ReadWorldCanon, ReadAuthoredFlavour,
 		},
 	},
 	// Судьи возвращают вердикт-совет, а не предложение: их выход не доходит
 	// до состояния, и плохой разбор стоит бледной реплики, а не канона.
+	// Гварду видно ровно то же, что актёру, плюс проверяемая реплика: он
+	// судит, вышел ли персонаж за свой материал, и материал обязан быть тем
+	// же самым. Более узкий scope у судьи означал бы, что он рубит законное.
 	RoleCanonGuard: {
 		Reads: []ReadScope{
-			ReadCandidateLine, ReadPartyKnowledge, ReadOwnDossier, ReadScenePublic,
+			ReadCandidateLine, ReadPlayerInput, ReadPartyKnowledge, ReadOwnDossier,
+			ReadMasterGrants, ReadScenePublic, ReadWorldCanon, ReadAuthoredFlavour,
 		},
 	},
 	RoleModeration: {

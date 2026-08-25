@@ -868,6 +868,24 @@ func TestExamplesAgreeWithTheRules(t *testing.T) {
 	if !strings.Contains(sys, `"verb":"question","target":"e_ivar"`) {
 		t.Error("нет примера открытого вопроса человеку")
 	}
+	// Живой прогон: на «прошу указать дорогу до склада» парсер поставил
+	// topic=f_body_found — единственную известную тему, — и ядро отказало по
+	// ней. Слово «склад» есть и в вопросе, и в формулировке факта, поэтому
+	// правило «указывай тему, только если спросили о ней» без примера не
+	// удержало: совпадение слова читается как совпадение темы.
+	if !strings.Contains(sys, "дорогу до склада") {
+		t.Error("нет примера, где слово из темы во фразе НЕ делает её темой")
+	}
+	// Вопрос о мире и вопрос о деле — разные глаголы, и промпт обязан их
+	// различать. Пока правило гласило «вопрос человеку — это question», в
+	// ask_about не уходило НИ ОДНОЙ фразы: два живых прогона, четыре вопроса о
+	// мире, все четыре в question — и ни один не дошёл до персонажа.
+	if !strings.Contains(sys, "ask_about") {
+		t.Error("промпт не различает вопрос о мире и вопрос о деле")
+	}
+	if !strings.Contains(sys, `"verb":"ask_about"`) {
+		t.Error("нет примера свободного вопроса о мире")
+	}
 }
 
 // --- предъявление предмета ---
@@ -1237,5 +1255,54 @@ func TestEmptyTargetIsAccepted(t *testing.T) {
 	}
 	if res.Intent.Args.Target != "" {
 		t.Errorf("цель взялась из ниоткуда: %q", res.Intent.Args.Target)
+	}
+}
+
+// Аргумент, которого глагол не берёт, до ядра не доходит.
+//
+// Оба случая из живых прогонов. Тема: на «прошу указать дорогу до склада»
+// модель поставила topic=f_body_found — единственную известную, — и ядро
+// отказало «здесь об этом не расскажут»; глагол при этом был ask_about, то
+// есть вопрос о мире, у которого темы дела нет по определению. Узел: node
+// приезжал в КАЖДОМ интенте, включая question и talk_to, где он не значит
+// ничего, — а провалить ход он может, потому что validate проверяет по нему
+// смежность и запертость. Разговор, отвергнутый из-за запертого склада, —
+// именно этот шум.
+func TestArgsTheVerbDoesNotTakeAreDropped(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"ask_about","target":"e_nils",`+
+		`"topic":"f_body_found","node":"n_warehouse","item":""}`)
+	hint := harbourHint(t)
+	hint.Topics = []Named{{ID: "f_body_found", Name: "тело нашли на складе"}}
+
+	res, err := p.Parse(context.Background(),
+		"прошу указать дорогу до склада", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil {
+		t.Fatalf("интент не собрался: clarify=%q", res.Clarify)
+	}
+	if res.Intent.Args.Topic != "" {
+		t.Errorf("тема дела уехала в вопрос о мире: %q", res.Intent.Args.Topic)
+	}
+	if res.Intent.Args.Node != "" {
+		t.Errorf("узел уехал в глагол, который его не берёт: %q", res.Intent.Args.Node)
+	}
+}
+
+// У глагола, который тему берёт, её не отбирают: названная тема ценнее
+// открытого вопроса, и правило про шум не вправе её съесть.
+func TestQuestionKeepsItsTopic(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"question","target":"e_nils",`+
+		`"topic":"f_body_found","item":""}`)
+	hint := harbourHint(t)
+	hint.Topics = []Named{{ID: "f_body_found", Name: "тело нашли на складе"}}
+
+	res, err := p.Parse(context.Background(), "спрошу про тело", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Intent == nil || res.Intent.Args.Topic != "f_body_found" {
+		t.Errorf("тема потерялась: %+v", res.Intent)
 	}
 }

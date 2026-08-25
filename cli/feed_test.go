@@ -62,3 +62,46 @@ func TestRunAndFeedAgree(t *testing.T) {
 			viaRun.String(), viaFeed.String())
 	}
 }
+
+// Игра начинается брифингом: кто ты, что случилось, чего от тебя ждут. Живой
+// прогон встал ровно на его отсутствии — «мы ничего не знаем о деле в начале
+// игры», и всё, что дальше опиралось на склад и на предписание магистрата,
+// читалось как знание из ниоткуда. Материал у дела был: стартовый факт и
+// предмет в инвентаре. Игра их не показывала.
+func TestStartOpensWithABriefing(t *testing.T) {
+	g := harbourGame(t)
+	var out strings.Builder
+	NewSession(g, strings.NewReader(""), &out).Start()
+
+	got := out.String()
+	// Авторский текст брифинга.
+	if !strings.Contains(got, g.Briefing) || strings.TrimSpace(g.Briefing) == "" {
+		t.Errorf("авторский брифинг не напечатан:\n%s", got)
+	}
+	// Что известно: стартовый факт называется своими словами.
+	if !strings.Contains(got, "Халдена") {
+		t.Errorf("известное о деле не показано:\n%s", got)
+	}
+	// Что при себе: без этого «предъявить предписание» неоткуда узнать.
+	if !strings.Contains(got, "Предписание магистрата") {
+		t.Errorf("инвентарь не показан:\n%s", got)
+	}
+	// И только потом место.
+	if strings.Index(got, "== ") < strings.Index(got, "Халдена") {
+		t.Errorf("сцена напечатана раньше брифинга:\n%s", got)
+	}
+}
+
+// Брифинг печатается ОДИН раз, на старте: повторять его каждый ход — шум, а
+// перечитать можно командами facts и items.
+func TestBriefingIsPrintedOnce(t *testing.T) {
+	g := harbourGame(t)
+	var out strings.Builder
+	s := NewSession(g, strings.NewReader(""), &out)
+	s.Start()
+	s.Feed("look")
+
+	if got := strings.Count(out.String(), g.Briefing); got != 1 {
+		t.Errorf("брифинг напечатан %d раз, ждали один", got)
+	}
+}

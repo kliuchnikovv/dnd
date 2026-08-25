@@ -79,12 +79,14 @@ type File struct {
 		From store.EntityID `json:"from"`
 	} `json:"start_facts"`
 
-	// Companion — напарник, через которого приходят диегетические подсказки.
-	// Hints — реплики по фактам: подсказка указывает на цель, а не на ответ.
-	Companion store.EntityID          `json:"companion"`
-	Hints     map[store.FactID]string `json:"hints"`
+	Hints map[store.FactID]string `json:"hints"`
 
-	// Aftermath — что стало с виновным, с посёлком, с напарником. Печатается
+	// Briefing — с чем игрока прислали: кто он, что случилось, чего от него
+	// ждут, что в посёлке и так знают. Обязателен: без него игра начинается с
+	// того, что игрок не знает даже, зачем он здесь.
+	Briefing string `json:"briefing"`
+
+	// Aftermath — что стало с виновным, с посёлком, с теми, кто был рядом. Печатается
 	// после речи игрока. ColdCase — текст висяка: часы вышли, верного
 	// обвинения нет.
 	Aftermath string `json:"aftermath"`

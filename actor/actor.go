@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
@@ -44,6 +45,17 @@ type Situation struct {
 	// Known — материал: факты, на которые персонажу разрешено ссылаться.
 	// Всё, чего здесь нет, персонаж сообщить не может.
 	Known []Known
+	// CaseNames — имена людей, вещей и мест дела. В промпт НЕ попадает
+	// никогда: это список запрета для проверки озвученной заглушки, а не
+	// материал. Заглушке некого называть по имени, и назвавшая — выдумка.
+	CaseNames []string
+	// Reveal — факт, который персонаж ГОВОРИТ прямо сейчас. Его выдал этот
+	// ход, и произносит его тот, кого назвало ядро: механическая строка
+	// «узнали» остаётся квитанцией, а знание игрок получает голосом.
+	//
+	// Не расширение материала: факт уже в Known, парти его знает. Здесь
+	// сказано только, что из материала сейчас надо произнести.
+	Reveal *Known
 	// Setting — сеттинг-библия дела: уклад, погода, то, что тут все и так
 	// знают. Авторская рамка, за которую разговор цепляется вместо выдумки.
 	Setting string
@@ -246,9 +258,21 @@ type WorldMaster interface {
 type Actor struct {
 	gw    *llm.Gateway
 	guard LineGuard
+	// notify — куда сообщить, ПОЧЕМУ реплика стала заглушкой. К заглушке ведут
+	// четыре разных пути, и снаружи они дают одну и ту же фразу: живой прогон
+	// принял её за игнор вопроса, и разобраться удалось только чтением кода.
+	// Игроку причина не показывается — это отладка, а не часть разговора.
+	notify func(reason string)
 }
 
 func New(gw *llm.Gateway) *Actor { return &Actor{gw: gw} }
+
+// WithNotify включает сообщения о том, почему реплика не получилась.
+// Необязательно: без него заглушка работает как раньше, молча.
+func (a *Actor) WithNotify(f func(string)) *Actor {
+	a.notify = f
+	return a
+}
 
 // WithGuard включает проверку реплики на выдумку.
 func (a *Actor) WithGuard(g LineGuard) *Actor {
@@ -335,8 +359,29 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 			sit.MarkTold(topic)
 		}
 	}
-	if out.Line == "" || len([]rune(out.Line)) > maxLine {
-		return a.floor(sit), nil
+	if out.Line == "" {
+		return a.floor(ctx, s, sit, req, "модель вернула пустую строку"), nil
+	}
+	if len([]rune(out.Line)) > maxLine {
+		// Обрезаем по границе фразы, а не выбрасываем целиком. Живой прогон:
+		// ответ Нильса — по делу и в характере — превысил предел на 16 знаков
+		// и был потерян весь. Нильс тараторит по авторскому замыслу («сыплет
+		// подробностями»), значит предел он задевает постоянно, и выброс
+		// стоил игроку речи там, где хватало точки.
+		//
+		// Обрезать не по чему — тогда дно: одна фраза длиннее предела это
+		// поток, а не речь, и обрубок читается хуже заглушки.
+		trimmed := trimToSentence(out.Line, maxLine)
+		if trimmed == "" {
+			return a.floor(ctx, s, sit, req, fmt.Sprintf(
+				"реплика длиннее предела (%d знаков против %d) и не режется по фразе",
+				len([]rune(out.Line)), maxLine)), nil
+		}
+		if a.notify != nil {
+			a.notify(fmt.Sprintf("реплика обрезана по фразе: %d знаков против %d",
+				len([]rune(out.Line)), maxLine))
+		}
+		out.Line = trimmed
 	}
 	if a.guard == nil {
 		return out.Line, nil
@@ -346,7 +391,7 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 	if err != nil {
 		// Сбой проверки трактуется как отказ: лучше бледно и правдиво, чем
 		// живо и с выдуманным фермером.
-		return a.floor(sit), nil
+		return a.floor(ctx, s, sit, req, "проверка на утечку не отработала: "+err.Error()), nil
 	}
 	if v.OK {
 		return out.Line, nil
@@ -356,12 +401,20 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 	// первая реакция.
 	fixed, err := a.repair(ctx, s, sit, out.Line, v.What, req)
 	if err != nil || fixed == "" {
-		return a.floor(sit), nil
+		reason := "утечка не починилась (" + v.What + "): ремонт вернул пустое"
+		if err != nil {
+			reason = "утечка не починилась (" + v.What + "): " + err.Error()
+		}
+		return a.floor(ctx, s, sit, req, reason), nil
 	}
 	// Отремонтированное проверяется снова: ремонт вправе подставить вторую
 	// выдумку вместо первой, и один круг здесь тоже один.
-	if v, err := a.guard.Check(ctx, fixed, material, req); err != nil || !v.OK {
-		return a.floor(sit), nil
+	if v2, err := a.guard.Check(ctx, fixed, material, req); err != nil || !v2.OK {
+		reason := "утечка после ремонта (" + v.What + " → " + v2.What + ")"
+		if err != nil {
+			reason = "перепроверка после ремонта не отработала: " + err.Error()
+		}
+		return a.floor(ctx, s, sit, req, reason), nil
 	}
 	return fixed, nil
 }
@@ -426,14 +479,157 @@ func (a *Actor) repair(ctx context.Context, s Speaker, sit Situation,
 // floor — дно: фраза без модели, когда реплики не получилось. Набор ходов
 // остался здесь и только здесь — как подсказка, чем уместнее заполнить
 // пустоту, а не как грамматика ответа.
-func (a *Actor) floor(sit Situation) string {
+//
+// reason называет путь, которым сюда пришли. Он уходит в отладку, а не игроку:
+// четыре пути дают одну фразу, и без причины «guard зарубил» неотличимо от
+// «персонажу нечего сказать».
+func (a *Actor) floor(ctx context.Context, s Speaker, sit Situation, req llm.Request,
+	reason string) string {
 	act := Classify(sit.PlayerText)
-	return template(fallbackMove(movesFor(act, sit)), sit)
+	tmpl := template(fallbackMove(movesFor(act, sit)), sit)
+
+	// Смысл выбран кодом, голос просим у дешёвой модели: захардкоженная строка
+	// одна на всех, и живой прогон принимал её за сбой движка — «Кто ж его
+	// знает. Сыро только» звучит одинаково у стражника, мальчишки и вдовы.
+	voiced, ok := a.voiceFloor(ctx, s, sit, req, tmpl)
+	if a.notify != nil {
+		how := "шаблоном"
+		if ok {
+			how = "озвучена голосом персонажа"
+		}
+		a.notify("реплика заменена заглушкой (" + how + "): " + reason)
+	}
+	if ok {
+		return voiced
+	}
+	return tmpl
 }
 
-// maxLine — здравый предел. Длинная реплика почти всегда означает, что
-// персонаж начал рассказывать то, чего не знает.
+// voiceFloor пересказывает шаблон голосом персонажа. Второй результат — вышло
+// ли: не вышло значит «отдавай шаблон дословно».
+//
+// Судья здесь не зовётся намеренно. Дно — уже путь сбоя, и второй вызов
+// проверки на нём либо стоит ещё денег, либо уводит в круг «дно → проверка →
+// дно». Вместо него три детерминированные проверки, и любая непройденная
+// возвращает шаблон: выдумывать модели не из чего, потому что материала дела в
+// промпте нет вовсе, а назвать кого-то по имени она не вправе.
+func (a *Actor) voiceFloor(ctx context.Context, s Speaker, sit Situation,
+	req llm.Request, tmpl string) (string, bool) {
+	req.Role = llm.RoleActor
+	req.Tier = llm.TierCheap
+	req.Schema = ""
+	req.System = floorPrompt
+	req.MaxTokens = 200
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ты — %s.\nТвой голос: %s\nТвоё отношение к этим людям: %s.\n",
+		s.Name, s.Voice, dispositionWord(s.Disposition))
+	if sit.Life != "" {
+		b.WriteString("Твой день: " + sit.Life + "\n")
+	}
+	if sit.PlayerText != "" {
+		b.WriteString("Тебе сказали: " + sit.PlayerText + "\n")
+	}
+	b.WriteString("\nСмысл твоего ответа — вот он, и менять его нельзя:\n  " + tmpl + "\n")
+	req.Input = b.String()
+
+	resp, err := a.gw.Do(ctx, req)
+	if err != nil {
+		return "", false
+	}
+	line := clean(resp.Text)
+	if line == "" || len([]rune(line)) > maxLine {
+		return "", false
+	}
+	// Схемы у этого вызова нет, а модель отвечает как умеет: живой тест поймал
+	// пришедший сюда JSON реплики, и без проверки он уехал бы игроку дословно.
+	// Заглушка — слова вслух, и фигурных скобок в них не бывает.
+	if strings.ContainsAny(line, "{}") {
+		return "", false
+	}
+	for _, name := range sit.CaseNames {
+		if name != "" && name != s.Name && strings.Contains(line, name) {
+			return "", false
+		}
+	}
+	if named := namedOutsidePrompt(line, req.Input); named != "" {
+		// Живой прогон: на шаблон «Кто ж его знает. Сыро только» дешёвая
+		// модель ответила «у Маруси в таверне можно» — человека с таким
+		// именем в деле нет вовсе. Проверка по именам дела такое не ловит
+		// (выдуманного там и не будет), поэтому правило другое: назвать
+		// можно только то, что в промпте уже стояло.
+		return "", false
+	}
+	return line, true
+}
+
+// namedOutsidePrompt возвращает первое имя собственное из реплики, которого не
+// было в промпте, — или пустую строку, если таких нет.
+//
+// Заглушке называть некого: смысл ей дали готовый, и всякое имя в ней либо
+// пересказ промпта, либо выдумка. Заглавная буква — грубый признак, но в
+// русском именно она отличает Марусю от таверны, а промах в эту сторону стоит
+// лишь того, что игрок получит шаблон дословно.
+//
+// Первое слово фразы не считается: с заглавной начинается любая речь.
+func namedOutsidePrompt(line, prompt string) string {
+	known := strings.ToLower(prompt)
+	sentenceStart := true
+	for _, word := range strings.FieldsFunc(line, func(r rune) bool {
+		return unicode.IsSpace(r)
+	}) {
+		bare := strings.TrimFunc(word, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+		})
+		ends := strings.ContainsAny(word, ".!?…")
+		if bare == "" {
+			sentenceStart = sentenceStart || ends
+			continue
+		}
+		first := []rune(bare)[0]
+		if !sentenceStart && unicode.IsUpper(first) &&
+			!strings.Contains(known, strings.ToLower(bare)) {
+			return bare
+		}
+		sentenceStart = ends
+	}
+	return ""
+}
+
+const floorPrompt = `Скажи то же самое своим голосом.
+
+Тебе дан СМЫСЛ ответа — одна строка. Твоя работа: произнести этот смысл так,
+как сказал бы его именно ты, одной-двумя короткими фразами. Ничего нового не
+добавляй: ни людей, ни мест, ни событий, ни чисел, ни обещаний. Никого не
+называй по имени.
+
+Пиши только слова вслух: без ремарок, без описаний своих действий и без тире в
+начале. Отвечай на том же языке, на котором написан твой голос.`
+
+// maxLine — здравый предел длины реплики. Дальше него текст обрезается по
+// границе фразы (см. finish): предел стоит против потока, а не против
+// подробности, и терять целую живую реплику из-за десятка лишних знаков он не
+// вправе.
 const maxLine = 220
+
+// trimToSentence обрезает реплику по последней законченной фразе, влезающей в
+// предел. Пусто означает, что резать не по чему.
+func trimToSentence(line string, max int) string {
+	runes := []rune(line)
+	if len(runes) <= max {
+		return strings.TrimSpace(line)
+	}
+	cut := -1
+	for i := 0; i < max && i < len(runes); i++ {
+		if strings.ContainsRune(".!?…", runes[i]) {
+			cut = i
+		}
+	}
+	if cut < 0 {
+		return ""
+	}
+	return strings.TrimSpace(string(runes[:cut+1]))
+}
 
 func allowedMove(m Move, allowed []string) bool {
 	for _, a := range allowed {
@@ -535,6 +731,20 @@ func allowedMaterial(s Speaker, sit Situation, factID string) []string {
 	}
 	for _, gr := range sit.Grants {
 		out = append(out, gr.Topic+": "+gr.Answer)
+	}
+	// Сказанное персонажем в ЭТОМ разговоре — уже его слова, а не выдумка:
+	// дизайн прямо заявляет, что разговор он помнит, и промпт генерации
+	// историю ему показывает. Без этой строки гвард был вправе зарубить
+	// пересказ собственной реплики, и живой прогон получил канцелярскую
+	// заглушку на прямой вопрос «откуда ты знаешь?».
+	//
+	// Строки ИГРОКА сюда не идут намеренно: иначе мир вписывается вводом —
+	// назови «фермера Олсена» сам, попроси повторить, и выдуманный человек
+	// станет законным материалом.
+	for _, e := range sit.History {
+		if e.Reply != "" {
+			out = append(out, e.Reply)
+		}
 	}
 	for _, t := range sit.Talks {
 		out = append(out, t.Note)
@@ -659,6 +869,12 @@ func renderPrompt(s Speaker, sit Situation, act Act) string {
 			b.WriteString("  " + k.ID + " — " + k.Text + "\n")
 		}
 	}
+	if sit.Reveal != nil {
+		b.WriteString("\nСЕЙЧАС ТЫ ЭТО ГОВОРИШЬ — скажи это своими словами, " +
+			"одной-двумя фразами:\n  " + sit.Reveal.Text + "\n" +
+			"Это уже решено: не отказывайся, не уклоняйся и не переспрашивай. " +
+			"Остальное из списка не пересказывай.\n")
+	}
 	return b.String()
 }
 
@@ -739,24 +955,39 @@ func (v *GameVoicer) turn() int {
 
 // Voice возвращает реплику или пустую строку, если сейчас говорить нечему.
 //
-// Персонаж молчит, когда ход выдал факт: там уже есть авторская реплика, и
-// вторая была бы шумом. Молчит и на глаголах, которые к нему не обращены.
+// Кто произносит выданный факт, решает ядро (`TurnResult.SpokenBy`) — здесь
+// это решение исполняется, а не выводится заново. Названный держатель говорит;
+// если ядро не назвало никого (факт от вещи или от отсутствующего), персонаж
+// молчит и факт остаётся прозой Мастера.
+//
+// На ходу-выдаче класс глагола не глушит: `question` — исследование, а не
+// разговор, но именно им человека и спрашивают, и молчать в ответ на свой же
+// выданный факт он не может. На всех прочих ходах правило прежнее: голос
+// уместен там, где ход обращён к человеку.
 func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnResult) (string, error) {
-	if in.Args.Target == "" || len(res.Learned) > 0 {
+	if in.Args.Target == "" {
+		return "", nil
+	}
+	reveals := res.SpokenBy != "" && res.SpokenBy == in.Args.Target
+	if len(res.Learned) > 0 && !reveals {
 		return "", nil
 	}
 	def, ok := core.Verbs[in.Verb]
 	if !ok {
 		return "", nil
 	}
-	// Голос уместен там, где ход и есть обращение к человеку.
-	if def.Class != core.ClassSocial && def.Class != core.ClassNone {
+	if !reveals && def.Class != core.ClassSocial && def.Class != core.ClassNone {
 		return "", nil
 	}
 	speaker, ok := SpeakerFor(v.Game, in.Args.Target)
 	if !ok {
 		return "", nil
 	}
+	// Что здесь собрано — и есть read scope роли актёра
+	// (llm.Capabilities[llm.RoleActor].Reads): фраза игрока, party_knowledge,
+	// своё досье, гранты Мастера, сцена и авторская рамка мира. Правды дела и
+	// неизвестных парти фактов тут нет и быть не может — новое поле сверять с
+	// реестром, а не с соседними полями.
 	sit := Situation{
 		Verb:       string(in.Verb),
 		PlayerText: in.Args.Text,
@@ -774,6 +1005,10 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		KnowsSomething: knowsUnrevealed(v.Game, in.Args.Target),
 		Scene:          SceneOf(v.Game, speaker.ID),
 		Frame:          frameOf(v.Game, res.FlavourKey),
+		CaseNames:      caseNames(v.Game),
+	}
+	if reveals {
+		sit.Reveal = revealed(v.Game, res.Learned)
 	}
 
 	line, err := v.talk(ctx, speaker, sit)
@@ -802,7 +1037,13 @@ func (v *GameVoicer) talk(ctx context.Context, speaker Speaker, sit Situation) (
 	if err != nil {
 		return "", err
 	}
-	grants, refused := v.resolveNeeds(ctx, first.Needs, sit)
+	// На ходу-выдаче круг к Мастеру не нужен: персонажу есть что сказать, и
+	// добирать материал значило бы платить второй вызов на каждом факте.
+	var grants []master.Grant
+	var refused []string
+	if sit.Reveal == nil {
+		grants, refused = v.resolveNeeds(ctx, first.Needs, sit)
+	}
 	if len(grants) == 0 && len(refused) == 0 {
 		// Мастера нет, спрашивать нечего или он не ответил — договаривать
 		// нечем, и переспрашивать модель впустую значит платить за шум.
@@ -810,6 +1051,35 @@ func (v *GameVoicer) talk(ctx context.Context, speaker Speaker, sit Situation) (
 	}
 	sit.Grants, sit.Refused, sit.MasterAnswered = grants, refused, true
 	return v.Actor.Line(ctx, speaker, sit, v.Req)
+}
+
+// caseNames — имена людей, вещей и мест дела: список запрета для озвученной
+// заглушки. В промпт не уходит, только в проверку.
+func caseNames(g *core.Game) []string {
+	var out []string
+	for _, e := range g.DB.Entities {
+		if e.Name != "" {
+			out = append(out, e.Name)
+		}
+	}
+	for _, l := range g.DB.Locations {
+		if l.Name != "" {
+			out = append(out, l.Name)
+		}
+	}
+	return out
+}
+
+// revealed — факт этого хода в форме материала. Берётся первый: ход выдаёт
+// один факт, а не список, и второй здесь означал бы, что персонаж зачитывает
+// сводку.
+func revealed(g *core.Game, learned []core.Learned) *Known {
+	for _, l := range learned {
+		if key := g.DB.Facts[l.Fact].Key; key != "" {
+			return &Known{ID: string(l.Fact), Text: key}
+		}
+	}
+	return nil
 }
 
 // resolveNeeds спрашивает Мастера о том, чего у персонажа нет.

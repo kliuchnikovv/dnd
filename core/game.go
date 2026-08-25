@@ -43,9 +43,10 @@ type Config struct {
 	// игрока. ColdCase — текст висяка.
 	Aftermath string
 	ColdCase  string
-	// Companion — сущность-напарник; Hints — реплики по фактам.
-	Companion store.EntityID
-	Hints     map[store.FactID]string
+	// Briefing — с чем игрока прислали: кто он, что случилось, чего от него
+	// ждут. Hints — реплики по фактам.
+	Briefing string
+	Hints    map[store.FactID]string
 }
 
 // Game — всё изменяемое состояние прогона. Ядро; системы правил здесь нет
@@ -71,11 +72,15 @@ type Game struct {
 	D     *Dossiers
 	Debts map[store.EntityID]int
 
-	// Companion — напарник, через которого приходят диегетические подсказки.
+	// Briefing — авторское введение в дело. Домен его не читает: печатает
+	// его слой над ядром, и лежит оно здесь по той же причине, что и Setting —
+	// другого места, где дело собрано целиком, нет.
+	Briefing string
+
 	// Hints — авторские реплики, по одной на факт: подсказка указывает на
-	// цель, а не на ответ, и придумать её движок не может.
-	Companion store.EntityID
-	Hints     map[store.FactID]string
+	// цель, а не на ответ, и придумать её движок не может. Говорящего у неё
+	// нет: чутьё принадлежит игроку, а не персонажу (см. hunch.go).
+	Hints map[store.FactID]string
 
 	// CaseID — какое это дело. Ключ канона мира.
 	CaseID store.CaseID
@@ -99,6 +104,9 @@ type Game struct {
 	solved   bool
 	dry      int
 	hinted   map[store.FactID]bool
+	// visited — узлы, где игрок УЖЕ БЫЛ. Не смежные: «туда можно дойти» и
+	// «ты там был» — разные вещи, и чутьё вправе опираться только на второе.
+	visited map[store.NodeID]bool
 
 	// tool — инструмент, взятый в руки ходом, и узел, где это случилось.
 	// Инструмент не уезжает: фонарь со склада не светит в конторе гильдии.
@@ -116,12 +124,26 @@ func NewGame(cfg Config) *Game {
 		Debts: map[store.EntityID]int{},
 		truth: cfg.Truth, tokens: cfg.Tokens, flavour: cfg.Flavour,
 		aftermath: cfg.Aftermath, coldCase: cfg.ColdCase,
-		Setting:   cfg.Setting,
-		CaseID:    cfg.CaseID,
-		unlocked:  map[string]bool{},
-		hinted:    map[store.FactID]bool{},
-		Companion: cfg.Companion, Hints: cfg.Hints,
+		Setting:  cfg.Setting,
+		CaseID:   cfg.CaseID,
+		unlocked: map[string]bool{},
+		hinted:   map[store.FactID]bool{},
+		Briefing: cfg.Briefing, Hints: cfg.Hints,
+		// Стартовый узел посещён с самого начала: игрок в нём стоит, и
+		// подсказка про его держателей законна с первого хода.
+		visited: map[store.NodeID]bool{cfg.Start: true},
 	}
+}
+
+// MoveTo переставляет игрока в узел и запоминает, что он там был.
+//
+// Ядро само не перемещает: узел меняет слой над ним, когда бросок это
+// разрешил. Но ЗАПОМНИТЬ посещение обязано ядро — на посещённое опирается
+// чутьё, и оставить эту память вызывающему значило бы иметь два места правды
+// о том, где игрок побывал.
+func (g *Game) MoveTo(n store.NodeID) {
+	g.Node = n
+	g.visited[n] = true
 }
 
 // Aftermath — последствия верного обвинения. ColdCase — текст висяка.
