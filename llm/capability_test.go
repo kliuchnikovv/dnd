@@ -152,3 +152,36 @@ func parsePackageFile(t *testing.T, file string) *ast.File {
 	}
 	return f
 }
+
+// Роль озвучки вариантов ничего не предлагает ядру, и из этого выводится, что
+// строгий провайдер ей не нужен: её выход не доходит до состояния, и плохой
+// разбор стоит бледной строки, а не канона.
+func TestOptionsRoleProposesNothing(t *testing.T) {
+	cap, ok := Capabilities[RoleOptions]
+	if !ok {
+		t.Fatal("у роли озвучки вариантов нет капабилити")
+	}
+	if len(cap.Proposes) != 0 {
+		t.Errorf("роль озвучки что-то предлагает ядру: %v", cap.Proposes)
+	}
+	if RequiresStrictOutput(RoleOptions) {
+		t.Error("роли озвучки навязан строгий провайдер")
+	}
+}
+
+// Скоуп ровно тот, из чего строится набор: сцена, знание парти, носимое.
+// Правды дела в наборе ReadScope нет и быть не может по конструкции.
+func TestOptionsRoleReadsOnlyWhatTheSetIsBuiltFrom(t *testing.T) {
+	want := map[ReadScope]bool{
+		ReadScenePublic: true, ReadPartyKnowledge: true, ReadCarriedItems: true,
+	}
+	for _, r := range Capabilities[RoleOptions].Reads {
+		if !want[r] {
+			t.Errorf("роль озвучки читает лишнее: %q", r)
+		}
+		delete(want, r)
+	}
+	for r := range want {
+		t.Errorf("роль озвучки не читает %q — набор без этого не назвать словами", r)
+	}
+}

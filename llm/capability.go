@@ -118,6 +118,15 @@ var Capabilities = map[Role]Capability{
 	RoleModeration: {
 		Reads: []ReadScope{ReadPlayerInput, ReadCandidateLine},
 	},
+	// RoleOptions даёт словам набора вариантов форму реплики. Предлагает
+	// ПУСТО, и это несущее: её выход не доходит до состояния, поэтому строгий
+	// провайдер ей не нужен, а плохой разбор стоит бледной строки, а не канона.
+	//
+	// Скоуп ровно тот, из чего набор и построен. Шире не нужно: назвать словами
+	// можно только то, что уже выбрано кодом.
+	RoleOptions: {
+		Reads: []ReadScope{ReadScenePublic, ReadPartyKnowledge, ReadCarriedItems},
+	},
 	// RoleWorldsmith — куратор окружения из ADR-0001: решает не-каноничный
 	// слой мира и предлагает его ядру.
 	RoleWorldsmith: {

@@ -28,6 +28,10 @@ const (
 	// потому что роутинг и тиринг идут по роли: разбор со речью стоит
 	// иначе, чем разбор молча, и выбирать модель для них надо отдельно.
 	RoleChatMaster Role = "chat_master"
+	// RoleOptions — слова для набора вариантов. Роль своя, потому что роутинг
+	// и тиринг идут по роли: назвать четыре строки словами игрока стоит иначе,
+	// чем описать сцену, и выбирать модель для этого надо отдельно.
+	RoleOptions Role = "options"
 )
 
 // AllRoles — все объявленные роли в стабильном порядке. Нужен, чтобы
@@ -39,6 +43,7 @@ func AllRoles() []Role {
 		RoleIntentParser,
 		RoleChatMaster,
 		RoleNarrator,
+		RoleOptions,
 		RoleActor,
 		RoleCanonGuard,
 		RoleModeration,

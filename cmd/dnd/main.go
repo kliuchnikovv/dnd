@@ -420,6 +420,9 @@ var appRoles = []struct {
 	{llm.RoleActor, llm.TierCheap},    // приветствие, прощание, ремонт реплики
 	{llm.RoleNarrator, llm.TierMain},  // проза сцены и исхода
 	{llm.RoleNarrator, llm.TierCheap}, // решение ambient-детали по запросу
+	// Дешёвый тир и только он: формулировка четырёх строк — не та работа, за
+	// которую платят основной моделью.
+	{llm.RoleOptions, llm.TierCheap},
 	{llm.RoleCanonGuard, llm.TierMain},
 }
 
@@ -448,12 +451,14 @@ func buildRouter(target, cheap llm.Target) *llm.Router {
 		Route(llm.RoleChatMaster, target).
 		Route(llm.RoleActor, target).
 		Route(llm.RoleNarrator, target).
+		Route(llm.RoleOptions, target).
 		Route(llm.RoleCanonGuard, target)
 	if cheap.Provider != nil && cheap.Model != "" {
 		// Проверка реплики дешёвого тира не просит и потому по тирам не
 		// разводится: дешёвый судья пропускает утечки.
 		router.RouteCheap(llm.RoleActor, cheap).
-			RouteCheap(llm.RoleNarrator, cheap)
+			RouteCheap(llm.RoleNarrator, cheap).
+			RouteCheap(llm.RoleOptions, cheap)
 	}
 	return router
 }
