@@ -62,19 +62,15 @@ func (g *Game) Affordances() []Affordance {
 		out = append(out, a)
 	}
 
-	npc, hasNPC := g.firstNPC()
-	add(Affordance{Intent: Intent{Verb: "talk_to",
-		Args: Args{Target: npc}}}, hasNPC)
-
-	// Вопрос ОТКРЫТЫЙ, без темы, и это отступление от первой редакции дизайна.
-	// Тема в вопросе принимается ядром только тогда, когда цель этот факт
-	// держит: вариант «спросить Берна про шнур» появлялся бы ровно там, где
-	// Берн про шнур знает, — и само его появление выдавало бы авторский
-	// контент. Альтернатива — предлагать ход, который ядро отклонит, то есть
-	// врать меню. Открытый вопрос законен всегда, и человек расскажет то, что
-	// готов рассказать.
-	add(Affordance{Intent: Intent{Verb: "question",
-		Args: Args{Target: npc}}}, hasNPC)
+	// По одному варианту на человека, а не два на первого. «Заговорить с
+	// Берном» и «расспросить Берна» рядом читаются как один ход, написанный
+	// дважды: живой прогон получил их первыми двумя строками и не увидел
+	// разницы, а второй присутствующий в набор не попал вовсе.
+	npcs := g.npcsHere()
+	for _, id := range npcs {
+		add(Affordance{Intent: Intent{Verb: g.socialVerb(id),
+			Args: Args{Target: id}}}, true)
+	}
 
 	prop, hasProp := g.firstProp()
 	add(Affordance{Intent: Intent{Verb: "examine",
@@ -86,9 +82,46 @@ func (g *Game) Affordances() []Affordance {
 
 	item, hasItem := g.firstCarried()
 	add(Affordance{Intent: Intent{Verb: "present",
-		Args: Args{Item: item, Target: npc}}}, hasItem && hasNPC)
+		Args: Args{Item: item, Target: first(npcs)}}}, hasItem && len(npcs) > 0)
 
 	return out
+}
+
+// socialVerb — с чего начать с этим человеком.
+//
+// Глагол идёт за разговором: предлагать «заговорить» тому, с кем беседа уже
+// идёт, значит начинать её заново, а «расспросить» до знакомства — допрос с
+// порога. Признак — собственная память разговора парти, то есть то, при чём
+// игрок присутствовал.
+//
+// Вопрос ОТКРЫТЫЙ, без темы, и это отступление от первой редакции дизайна.
+// Тема в вопросе принимается ядром только тогда, когда цель этот факт держит:
+// вариант «спросить Берна про шнур» появлялся бы ровно там, где Берн про шнур
+// знает, — и само его появление выдавало бы авторский контент. Альтернатива —
+// предлагать ход, который ядро отклонит, то есть врать меню.
+func (g *Game) socialVerb(id store.EntityID) Verb {
+	if len(g.D.Recent(id)) > 0 {
+		return "question"
+	}
+	return "talk_to"
+}
+
+// npcsHere — люди этого узла в стабильном порядке.
+func (g *Game) npcsHere() []store.EntityID {
+	var out []store.EntityID
+	for _, e := range g.DB.EntitiesAt(g.Node) {
+		if e.Kind == store.EntityNPC {
+			out = append(out, e.ID)
+		}
+	}
+	return out
+}
+
+func first(ids []store.EntityID) store.EntityID {
+	if len(ids) == 0 {
+		return ""
+	}
+	return ids[0]
 }
 
 // rollDecidedElsewhere — глаголы, у которых Rolls реестра последнего слова не
@@ -110,18 +143,6 @@ func checkOf(v Verb) VerbClass {
 		return ""
 	}
 	return def.Class
-}
-
-// firstNPC — первый по идентификатору человек в узле. EntitiesAt уже отдаёт
-// стабильный порядок; выбор «первого» — способ не заводить второго источника
-// правды о том, кто здесь главный.
-func (g *Game) firstNPC() (store.EntityID, bool) {
-	for _, e := range g.DB.EntitiesAt(g.Node) {
-		if e.Kind == store.EntityNPC {
-			return e.ID, true
-		}
-	}
-	return "", false
 }
 
 // firstProp — первая деталь узла. Держатели здесь НЕ смотрятся: отбор по ним

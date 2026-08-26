@@ -152,3 +152,56 @@ func TestPoorNodeGivesFewerAffordances(t *testing.T) {
 		t.Errorf("на пустом узле набор непуст: %+v", got)
 	}
 }
+
+// Один человек — один вариант. «Заговорить с Берном» и «расспросить Берна»
+// рядом читаются как один и тот же ход, написанный дважды: живой прогон получил
+// их первыми двумя строками и не увидел разницы. Место в наборе дороже: четыре
+// строки на двух присутствующих должны показывать обоих.
+func TestOnePersonGivesOneOption(t *testing.T) {
+	g := affordGame()
+	g.DB.Entities["e_nils"] = store.Entity{ID: "e_nils", Name: "Нильс, посыльный",
+		Kind: store.EntityNPC, Node: "n_quay"}
+
+	seen := map[store.EntityID]int{}
+	for _, a := range g.Affordances() {
+		if conversational(a.Intent.Verb) {
+			seen[a.Intent.Args.Target]++
+		}
+	}
+	for id, n := range seen {
+		if n > 1 {
+			t.Errorf("на %s предложено %d социальных вариантов", id, n)
+		}
+	}
+	if len(seen) < 2 {
+		t.Errorf("присутствующих двое, а в наборе %d из них: %+v", len(seen), seen)
+	}
+}
+
+// Незнакомому предлагают заговорить, знакомого — расспросить. Глагол идёт за
+// разговором: предлагать «заговорить» тому, с кем идёт беседа, значит начинать
+// её заново, а «расспросить» до знакомства — допрос с порога.
+func TestSocialVerbFollowsTheConversation(t *testing.T) {
+	g := affordGame()
+	if got := socialVerbFor(g, "e_bern"); got != "talk_to" {
+		t.Errorf("незнакомому предложено %q", got)
+	}
+	g.D.Remember("e_bern", "добрый день", "и вам", 1)
+	if got := socialVerbFor(g, "e_bern"); got != "question" {
+		t.Errorf("после разговора предложено %q", got)
+	}
+}
+
+// conversational — вариант, который заводит или продолжает разговор.
+// Предъявление сюда не входит: показать бумагу — отдельный ход с отдельным
+// смыслом, и рядом с «заговорить» он не дубль.
+func conversational(v Verb) bool { return v == "talk_to" || v == "question" }
+
+func socialVerbFor(g *Game, id store.EntityID) Verb {
+	for _, a := range g.Affordances() {
+		if a.Intent.Args.Target == id && conversational(a.Intent.Verb) {
+			return a.Intent.Verb
+		}
+	}
+	return ""
+}
