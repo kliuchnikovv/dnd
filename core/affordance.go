@@ -57,10 +57,7 @@ func (g *Game) Affordances() []Affordance {
 		if !ok || len(out) >= affordanceLimit {
 			return
 		}
-		def := Verbs[a.Intent.Verb]
-		if def.Rolls {
-			a.Check = def.Class
-		}
+		a.Check = checkOf(a.Intent.Verb)
 		a.Intent.Actor = g.Actor
 		out = append(out, a)
 	}
@@ -92,6 +89,27 @@ func (g *Game) Affordances() []Affordance {
 		Args: Args{Item: item, Target: npc}}}, hasItem && hasNPC)
 
 	return out
+}
+
+// rollDecidedElsewhere — глаголы, у которых Rolls реестра последнего слова не
+// говорит. use_ability и use_item перекрываются данными дела; move_zone не
+// бросается вообще — система правил считает недошедший переход не ценой, а
+// сбоем. Тег на таком варианте обещал бы проверку, которой не будет, а обещание
+// в меню хуже отсутствия пометки.
+//
+// Расхождение реестра с системой правил по move_zone — известное и своё; здесь
+// оно только не выносится игроку.
+var rollDecidedElsewhere = map[Verb]bool{
+	"move_zone": true, "use_ability": true, "use_item": true,
+}
+
+// checkOf — класс проверки варианта; пусто, если броска не будет.
+func checkOf(v Verb) VerbClass {
+	def, ok := Verbs[v]
+	if !ok || !def.Rolls || rollDecidedElsewhere[v] {
+		return ""
+	}
+	return def.Class
 }
 
 // firstNPC — первый по идентификатору человек в узле. EntitiesAt уже отдаёт

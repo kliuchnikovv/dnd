@@ -88,12 +88,23 @@ func affordanceAction(g *core.Game, a core.Affordance) string {
 // там, где список целей печатает «Берн, стражник».
 func entityName(g *core.Game, id store.EntityID) string {
 	if e, ok := g.DB.Entities[id]; ok {
-		return e.Name
+		return shortName(e.Name)
 	}
 	if p, ok := g.DB.PropAt(g.Node, store.PropID(id)); ok {
-		return p.Name
+		return shortName(p.Name)
 	}
 	return string(id)
+}
+
+// shortName — имя без пояснения после запятой. В списке целей «Берн, стражник»
+// читается как надо, но во фразе получается «заговорить с Берн, стражник»:
+// пояснение стоит в именительном и с фразой не согласуется. Отрезается именно
+// оно, а не любая запятая, — и только здесь: в перечне пояснение полезно.
+func shortName(name string) string {
+	if i := strings.Index(name, ","); i > 0 {
+		return strings.TrimSpace(name[:i])
+	}
+	return name
 }
 
 func itemName(g *core.Game, id string) string {

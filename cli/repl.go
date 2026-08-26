@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
@@ -55,6 +56,15 @@ type Session struct {
 	// стал честнее, помощь молчит: подсказка не вовремя хуже её отсутствия,
 	// потому что читает решение вслух.
 	hunch bool
+	// affordances — печатать ли набор вариантов и разворачивать ли номера.
+	// По умолчанию НЕТ: скриптовые прогоны и тесты сверяют вывод дословно, и
+	// список, появившийся в них сам, менял бы правду каждого из них разом.
+	// Включает его проводка в cmd/dnd — там, где играет человек.
+	affordances bool
+	// offered — набор, показанный игроку последним. Номер разворачивается по
+	// нему, а не пересчитывается: между печатью и вводом состояние не менялось,
+	// но пересчёт сделал бы это допущение невидимым.
+	offered []core.Affordance
 	// chatShown, chatEaten — сколько реплик Мастера игрок увидел и сколько
 	// съел отказ ядра. Эксперимент надо мерить: высокая доля съеденных значит,
 	// что модель уверенно отвечает на ходы, которых мир не допускает, — и
@@ -216,6 +226,13 @@ func (s *Session) WithHunch() *Session {
 
 // ChatStats — сколько реплик чат-режима показано и сколько съедено отказом
 // ядра. Нули означают, что чат-режим не работал.
+// WithAffordances включает набор вариантов: печать списка каждый ход и ввод
+// номером наравне со словами.
+func (s *Session) WithAffordances() *Session {
+	s.affordances = true
+	return s
+}
+
 func (s *Session) ChatStats() (shown, eaten int) { return s.chatShown, s.chatEaten }
 
 // Start печатает стартовую сцену. Отдельно от Run, потому что драйверов два:
@@ -232,6 +249,36 @@ func (s *Session) Start() {
 		s.emitText(EventSystem, known)
 	}
 	s.emitText(EventScene, s.r.Scene(s.Game))
+	s.offerAffordances()
+}
+
+// offerAffordances печатает набор вариантов и запоминает его для разбора
+// номера. Одно место на все ветки хода — действие, проба, уточнение, отказ:
+// список, появляющийся не после каждого исхода, читался бы как признак того,
+// что ход «не тот».
+func (s *Session) offerAffordances() {
+	if !s.affordances {
+		return
+	}
+	s.offered = s.Game.Affordances()
+	if text := s.r.Affordances(s.Game, s.offered); text != "" {
+		s.emitText(EventSystem, text)
+	}
+}
+
+// chosen разворачивает номер варианта. Разбирается он ДО структурированного
+// парсера: «3» тот отдаёт как неизвестное действие, а перевод свободного текста
+// отбивает как бессмыслицу — одна цифра не дотягивает до двух букв.
+func (s *Session) chosen(line string) (core.Intent, bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil || !s.affordances || len(s.offered) == 0 {
+		return core.Intent{}, false
+	}
+	if n < 1 || n > len(s.offered) {
+		s.emit(EventRefusal, "такого варианта нет — их %d\n", len(s.offered))
+		return core.Intent{}, false
+	}
+	return s.offered[n-1].Intent, true
 }
 
 // Feed исполняет ОДИН ввод и сообщает, пора ли заканчивать. Здесь живёт всё,
@@ -250,13 +297,43 @@ func (s *Session) Feed(line string) bool {
 	if s.resumeHeld(line) {
 		return s.ended()
 	}
+	// Номер и слова — один путь применения: интент, развёрнутый из варианта,
+	// идёт тем же applyIntent, что разобранная фраза. Правда реплея от способа
+	// ввода не зависит — в журнал ложится ход, а «3» остаётся в аудите.
+	if in, ok := s.chosen(line); ok {
+		s.applyIntent(in)
+		return s.afterFeed()
+	}
+	if numeric(line) {
+		// Номер вне диапазона: ход не состоялся, и разбирать строку дальше
+		// нечего. Отправить «9» в модель значило бы платить за опечатку.
+		return s.afterFeed()
+	}
 	cmd, err := Parse(line)
 	if err != nil {
 		s.interpret(line, err)
 	} else if done := s.dispatch(cmd); done {
 		return true
 	}
-	return s.ended()
+	return s.afterFeed()
+}
+
+// afterFeed закрывает ход: сначала развязка, потом набор вариантов. Печатать
+// список после раскрытого дела значило бы предлагать ходы в законченной игре.
+func (s *Session) afterFeed() bool {
+	if s.ended() {
+		return true
+	}
+	s.offerAffordances()
+	return false
+}
+
+// numeric — строка целиком число. Отдельно от chosen, потому что вопросы
+// разные: chosen отвечает «какой это вариант», а этот — «стоит ли вообще
+// искать здесь слова».
+func numeric(line string) bool {
+	_, err := strconv.Atoi(strings.TrimSpace(line))
+	return err == nil
 }
 
 // resumeHeld договаривает ход, отложенный вопросом «к кому?». Отложенный ход

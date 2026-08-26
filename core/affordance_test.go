@@ -111,10 +111,15 @@ func TestCheckTagComesFromTheVerbRegistry(t *testing.T) {
 		if !ok {
 			t.Fatalf("вариант несёт глагол вне реестра: %q", a.Intent.Verb)
 		}
-		if def.Rolls && a.Check != def.Class {
+		switch {
+		case rollDecidedElsewhere[a.Intent.Verb]:
+			if a.Check != "" {
+				t.Errorf("%s: бросок решает не реестр, а тег обещан: %q",
+					a.Intent.Verb, a.Check)
+			}
+		case def.Rolls && a.Check != def.Class:
 			t.Errorf("%s: тег %q, класс реестра %q", a.Intent.Verb, a.Check, def.Class)
-		}
-		if !def.Rolls && a.Check != "" {
+		case !def.Rolls && a.Check != "":
 			t.Errorf("%s броска не требует, а тег есть: %q", a.Intent.Verb, a.Check)
 		}
 	}

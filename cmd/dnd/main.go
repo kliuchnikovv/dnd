@@ -61,6 +61,8 @@ func main() {
 	guardLines := flag.Bool("guard-lines", true,
 		"проверять реплики NPC на утечку дела вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
+	options := flag.Bool("options", true,
+		"печатать список вариантов каждый ход; выбор номером наравне со словами")
 	hunch := flag.Bool("hunch", false,
 		"показывать подсказки чутья застрявшему игроку; пока выключено — "+
 			"признак «застрял» считает холостым любой ход без находки, включая "+
@@ -116,6 +118,12 @@ func main() {
 	session := cli.NewSession(game, in, os.Stdout)
 	if *hunch {
 		session.WithHunch()
+	}
+	// Реплей набор не печатает: он переигрывает журнал, а список вариантов —
+	// приглашение живому игроку. Лишние строки реплей бы не сломали, но
+	// приглашать некого.
+	if *options && *replayPath == "" {
+		session.WithAffordances()
 	}
 
 	var journal *cli.Journal

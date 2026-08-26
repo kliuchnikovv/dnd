@@ -112,3 +112,58 @@ func TestJournalIsThinnerThanTheScript(t *testing.T) {
 			cmds, lines)
 	}
 }
+
+// Смешанный прогон — числа и слова вперемешку — воспроизводится журналом.
+//
+// Способ ввода в журнал не попадает намеренно: правда реплея это интент, а «3»
+// живёт в аудите. Иначе номер пришлось бы разворачивать заново, по набору,
+// который на реплее собирается из другого состояния, — и второй прогон разошёлся
+// бы с первым молча.
+func TestMixedNumberAndWordRunReplays(t *testing.T) {
+	script := "1\nsurvey\n3\nexamine e_body\n2\nfacts\n1\nquit\n"
+
+	live := newGame(t, 3)
+	var liveOut bytes.Buffer
+	err := cli.NewSession(live, strings.NewReader(script), &liveOut).
+		WithJournal(cli.NewJournal(live.DB, "mixed", snapshotID, 3)).
+		WithAffordances().
+		Run()
+	if err != nil {
+		t.Fatalf("живой прогон: %v", err)
+	}
+	entries := live.DB.Commands("mixed")
+	if len(entries) == 0 {
+		t.Fatal("смешанный прогон не оставил команд — реплеить нечего")
+	}
+
+	replayed := newGame(t, 3)
+	s := cli.NewSession(replayed, strings.NewReader(""), &bytes.Buffer{}).
+		WithJournal(cli.NewJournal(replayed.DB, "mixed", snapshotID, 3))
+	if err := s.Replay(entries); err != nil {
+		t.Fatalf("реплей: %v", err)
+	}
+	if got, want := fingerprint(replayed), fingerprint(live); got != want {
+		t.Errorf("состояние разошлось:\nреплей %s\nпрогон %s", got, want)
+	}
+}
+
+// Сырой номер — правда аудита, но не правда реплея: в журнале команд его нет
+// вовсе, там лежит развёрнутый ход.
+func TestNumberLivesInAuditNotInTheCommandLog(t *testing.T) {
+	g := newGame(t, 3)
+	err := cli.NewSession(g, strings.NewReader("1\nquit\n"), &bytes.Buffer{}).
+		WithJournal(cli.NewJournal(g.DB, "numbered", snapshotID, 3)).
+		WithAffordances().
+		Run()
+	if err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	for _, e := range g.DB.Commands("numbered") {
+		if strings.TrimSpace(string(e.Intent)) == "1" {
+			t.Error("в журнал команд попал номер вместо хода")
+		}
+		if !strings.Contains(string(e.Intent), "verb") {
+			t.Errorf("команда не похожа на интент: %s", e.Intent)
+		}
+	}
+}
