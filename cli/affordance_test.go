@@ -15,7 +15,7 @@ import (
 // где сцена печатает «Токе».
 func TestAffordancesReadAsWords(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Affordances(g, g.Affordances())
+	out := Render{}.Affordances(g, g.Affordances(""))
 	if strings.Contains(out, "e_toke") || strings.Contains(out, "p_crates") {
 		t.Errorf("в списке идентификаторы вместо имён:\n%s", out)
 	}
@@ -31,7 +31,7 @@ func TestAffordancesReadAsWords(t *testing.T) {
 // читается как закрытое меню — ровно тот тупик, из которого ветка выбиралась.
 func TestAffordanceListOffersFreeText(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Affordances(g, g.Affordances())
+	out := Render{}.Affordances(g, g.Affordances(""))
 	if !strings.Contains(out, "своими словами") {
 		t.Errorf("список выглядит закрытым меню:\n%s", out)
 	}
@@ -41,7 +41,7 @@ func TestAffordanceListOffersFreeText(t *testing.T) {
 // прямая речь, и перепечатанный игроком вариант ушёл бы в say.
 func TestAffordanceLinesAreNotMistakenForSpeech(t *testing.T) {
 	g := renderGame(t)
-	for _, line := range strings.Split(Render{}.Affordances(g, g.Affordances()), "\n") {
+	for _, line := range strings.Split(Render{}.Affordances(g, g.Affordances("")), "\n") {
 		if _, _, ok := Speech(line); ok {
 			t.Errorf("строка списка разбирается как речь: %q", line)
 		}
@@ -52,7 +52,7 @@ func TestAffordanceLinesAreNotMistakenForSpeech(t *testing.T) {
 // есть в данных дела: напечатать его значило бы разметить авторские цели.
 func TestCheckTagCarriesClassNotThreshold(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Affordances(g, g.Affordances())
+	out := Render{}.Affordances(g, g.Affordances(""))
 	for _, n := range []string{"10", "14", "18"} {
 		if strings.Contains(out, n) {
 			t.Errorf("в списке порог %s:\n%s", n, out)
@@ -90,7 +90,7 @@ func TestNumberExpandsIntoTheSameIntent(t *testing.T) {
 	// приоритет категорий — дело ядра, и тест не обязан его повторять.
 	g := renderGame(t)
 	want, index := core.Intent{}, 0
-	for i, a := range g.Affordances() {
+	for i, a := range g.Affordances("") {
 		if a.Intent.Verb == "examine" {
 			want, index = a.Intent, i+1
 		}
@@ -193,7 +193,7 @@ func TestNameInPhraseDropsTheApposition(t *testing.T) {
 // бросается вовсе, и «[перемещение]» читалось бы игроком как заявка на риск.
 func TestMoveOptionPromisesNoCheck(t *testing.T) {
 	g := renderGame(t)
-	for _, a := range g.Affordances() {
+	for _, a := range g.Affordances("") {
 		if a.Intent.Verb != "move_zone" {
 			continue
 		}
@@ -214,9 +214,9 @@ func TestOfferedIsReadableBySink(t *testing.T) {
 	if len(offered) == 0 {
 		t.Fatal("после старта набор не виден приёмнику")
 	}
-	if !reflect.DeepEqual(offered, g.Affordances()) {
+	if !reflect.DeepEqual(offered, g.Affordances("")) {
 		t.Errorf("приёмнику виден не тот набор, что показан:\n%+v\n%+v",
-			offered, g.Affordances())
+			offered, g.Affordances(""))
 	}
 }
 
@@ -247,7 +247,7 @@ func TestAffordancesHaveTheirOwnEventKind(t *testing.T) {
 // строки сама, потому что подсвечивает одну из них.
 func TestSingleLabelIsAvailableToRenderers(t *testing.T) {
 	g := renderGame(t)
-	list := g.Affordances()
+	list := g.Affordances("")
 	if len(list) == 0 {
 		t.Fatal("набор пуст")
 	}

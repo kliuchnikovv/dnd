@@ -260,7 +260,7 @@ func (s *Session) offerAffordances() {
 	if !s.affordances {
 		return
 	}
-	s.offered = s.Game.Affordances()
+	s.offered = s.Game.Affordances(s.spokenTo)
 	if text := s.r.Affordances(s.Game, s.offered); text != "" {
 		s.emitText(EventOptions, text)
 	}

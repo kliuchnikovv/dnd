@@ -47,8 +47,8 @@ func affordGame() *Game {
 // перетасовывается само.
 func TestAffordancesAreDeterministic(t *testing.T) {
 	g := affordGame()
-	first := g.Affordances()
-	second := g.Affordances()
+	first := g.Affordances("")
+	second := g.Affordances("")
 	if !reflect.DeepEqual(first, second) {
 		t.Errorf("два вызова разошлись:\n%+v\n%+v", first, second)
 	}
@@ -62,7 +62,7 @@ func TestAffordancesAreDeterministic(t *testing.T) {
 // спойлерит безупречными словами (ADR-0003, T2).
 func TestAffordancesNameNothingUnknown(t *testing.T) {
 	g := affordGame()
-	for _, a := range g.Affordances() {
+	for _, a := range g.Affordances("") {
 		if topic := a.Intent.Args.Topic; topic != "" && !g.K.Knows(topic) {
 			t.Errorf("в набор попала неизвестная тема %q", topic)
 		}
@@ -80,14 +80,14 @@ func TestAffordancesNameNothingUnknown(t *testing.T) {
 // карта решения, которую запрещает камуфляжный инвариант.
 func TestExamineTargetsIgnoreHolders(t *testing.T) {
 	g := affordGame()
-	plain := examineTargetsOf(g.Affordances())
+	plain := examineTargetsOf(g.Affordances(""))
 
 	// У сетей появляется держатель — набор от этого меняться не должен.
 	g.DB.Holders["f_secret"] = append(g.DB.Holders["f_secret"], store.FactHolder{
 		FactID: "f_secret", HolderID: "p_nets", Mandatory: true,
 		Gate: store.Gate{Verbs: []string{"search"}, Threshold: "easy"},
 	})
-	if got := examineTargetsOf(g.Affordances()); !reflect.DeepEqual(plain, got) {
+	if got := examineTargetsOf(g.Affordances("")); !reflect.DeepEqual(plain, got) {
 		t.Errorf("набор пошёл за держателями: %v → %v", plain, got)
 	}
 }
@@ -106,7 +106,7 @@ func examineTargetsOf(list []Affordance) []store.EntityID {
 // Порога в теге нет намеренно: число живёт в гейте держателя, то есть в данных
 // дела, и напечатать его значит разметить авторские цели.
 func TestCheckTagComesFromTheVerbRegistry(t *testing.T) {
-	for _, a := range affordGame().Affordances() {
+	for _, a := range affordGame().Affordances("") {
 		def, ok := Verbs[a.Intent.Verb]
 		if !ok {
 			t.Fatalf("вариант несёт глагол вне реестра: %q", a.Intent.Verb)
@@ -129,7 +129,7 @@ func TestCheckTagComesFromTheVerbRegistry(t *testing.T) {
 // значит соврать игроку меню.
 func TestEveryAffordanceIsAccepted(t *testing.T) {
 	g := affordGame()
-	for _, a := range g.Affordances() {
+	for _, a := range g.Affordances("") {
 		if r := g.Check(a.Intent); r.Refused {
 			t.Errorf("%s → %q отклонён ядром: %s",
 				a.Intent.Verb, a.Intent.Args.Target, r.Refusal)
@@ -148,7 +148,7 @@ func TestPoorNodeGivesFewerAffordances(t *testing.T) {
 		Truth:   accusation.NewTruth("a", "b", "c", "d"),
 		Flavour: map[string]string{}, Start: "n_empty", Actor: "pc",
 	})
-	if got := g.Affordances(); len(got) != 0 {
+	if got := g.Affordances(""); len(got) != 0 {
 		t.Errorf("на пустом узле набор непуст: %+v", got)
 	}
 }
@@ -163,7 +163,7 @@ func TestOnePersonGivesOneOption(t *testing.T) {
 		Kind: store.EntityNPC, Node: "n_quay"}
 
 	seen := map[store.EntityID]int{}
-	for _, a := range g.Affordances() {
+	for _, a := range g.Affordances("") {
 		if conversational(a.Intent.Verb) {
 			seen[a.Intent.Args.Target]++
 		}
@@ -198,10 +198,146 @@ func TestSocialVerbFollowsTheConversation(t *testing.T) {
 func conversational(v Verb) bool { return v == "talk_to" || v == "question" }
 
 func socialVerbFor(g *Game, id store.EntityID) Verb {
-	for _, a := range g.Affordances() {
+	for _, a := range g.Affordances("") {
 		if a.Intent.Args.Target == id && conversational(a.Intent.Verb) {
 			return a.Intent.Verb
 		}
 	}
 	return ""
+}
+
+// В разговоре набор — реплики: три того, что можно сказать, и один выход.
+// Разговор половина детектива, и до этой ветки его в списке не было вовсе.
+func TestConversationGivesRepliesAndOneExit(t *testing.T) {
+	g := affordGame()
+	got := g.Affordances("e_bern")
+	if len(got) == 0 {
+		t.Fatal("в разговоре набор пуст")
+	}
+	var replies, exits int
+	for _, a := range got {
+		if a.Reply {
+			replies++
+			continue
+		}
+		exits++
+	}
+	if replies == 0 {
+		t.Errorf("в разговоре нет ни одной реплики: %+v", got)
+	}
+	if replies > 3 {
+		t.Errorf("реплик %d — выходу не осталось места", replies)
+	}
+	if exits != 1 {
+		t.Errorf("выходов из разговора %d, ожидался ровно один: %+v", exits, got)
+	}
+	if last := got[len(got)-1]; last.Reply {
+		t.Error("выход не последний — реплики его вытеснили")
+	}
+}
+
+// Тема реплики — факт с наименьшей подтверждённостью: детектив обходит
+// свидетелей ради второго источника шаткой улики. Правило вращается само —
+// подтвердил, слабейшим стал другой.
+func TestReplyAsksAboutTheLeastCorroboratedFact(t *testing.T) {
+	g := affordGame()
+	g.K.Learn("f_secret", "e_bern") // второй известный факт, один источник
+	g.K.Learn("f_known", "e_nils")  // у f_known теперь два источника
+
+	if got := replyTopic(g.Affordances("e_bern")); got != "f_secret" {
+		t.Errorf("реплика спрашивает про %q, а слабее подтверждён f_secret", got)
+	}
+}
+
+// Тем известно ноль — вопрос открытый, а не выдуманный.
+func TestReplyFallsBackToTheOpenQuestion(t *testing.T) {
+	g := affordGame()
+	// Банк тем пуст: affordGame выдаёт f_known на старте, снимаем его.
+	g.DB.Knowledge = nil
+	g.K = NewKnowledge(g.DB)
+
+	for _, a := range g.Affordances("e_bern") {
+		if a.Intent.Verb == "question" && a.Intent.Args.Topic != "" {
+			t.Errorf("без известных тем реплика назвала тему %q", a.Intent.Args.Topic)
+		}
+	}
+}
+
+// Вариант с темой появляется НЕЗАВИСИМО от того, держит ли собеседник факт.
+// Это и есть leak-безопасность набора: до снятия отказа в ядре присутствие
+// варианта было бы ответом на вопрос, кто что знает.
+//
+// Два человека в одном узле: один держит факт, другой не держит ничего. Набор
+// обязан совпасть.
+func TestTopicReplyDoesNotDependOnWhoHoldsIt(t *testing.T) {
+	g := affordGame()
+	g.DB.Entities["e_knower"] = store.Entity{ID: "e_knower", Name: "Токе, писарь",
+		Kind: store.EntityNPC, Node: "n_quay"}
+	g.DB.Holders["f_known"] = []store.FactHolder{{
+		FactID: "f_known", HolderID: "e_knower", Mandatory: true,
+		Gate: store.Gate{Verbs: []string{"question"}, Threshold: "normal"},
+	}}
+
+	knower := replyTopic(g.Affordances("e_knower"))
+	stranger := replyTopic(g.Affordances("e_bern"))
+	if knower == "" {
+		t.Fatal("реплика знающему не назвала темы — сравнивать не с чем")
+	}
+	if knower != stranger {
+		t.Errorf("тема реплики зависит от держателя: у знающего %q, у незнающего %q",
+			knower, stranger)
+	}
+}
+
+// Предъявление предлагается один раз на человека: показать ту же бумагу
+// второй раз — не ход, а повтор, и сдвига расположения он всё равно не даёт.
+func TestPresentIsOfferedUntilShown(t *testing.T) {
+	g := affordGame()
+	if !offers(g.Affordances("e_bern"), "present") {
+		t.Fatal("носимое не предложено к предъявлению")
+	}
+	g.D.MarkPresented("e_bern", "i_writ")
+	if offers(g.Affordances("e_bern"), "present") {
+		t.Error("предъявление предложено повторно тому же человеку")
+	}
+}
+
+// Вне разговора набор прежний: реплик в нём нет.
+func TestOutsideConversationThereAreNoReplies(t *testing.T) {
+	for _, a := range affordGame().Affordances("") {
+		if a.Reply {
+			t.Errorf("вне разговора предложена реплика: %+v", a.Intent)
+		}
+	}
+}
+
+// Собеседник, которого нет в этом узле, разговором не считается: он ушёл, и
+// говорить с ним не о чем.
+func TestAbsentInterlocutorIsNotAConversation(t *testing.T) {
+	g := affordGame()
+	g.DB.Entities["e_toke"] = store.Entity{ID: "e_toke", Name: "Токе",
+		Kind: store.EntityNPC, Node: "n_forge"}
+	for _, a := range g.Affordances("e_toke") {
+		if a.Reply {
+			t.Errorf("предложена реплика ушедшему: %+v", a.Intent)
+		}
+	}
+}
+
+func replyTopic(list []Affordance) store.FactID {
+	for _, a := range list {
+		if a.Reply && a.Intent.Verb == "question" {
+			return a.Intent.Args.Topic
+		}
+	}
+	return ""
+}
+
+func offers(list []Affordance, v Verb) bool {
+	for _, a := range list {
+		if a.Intent.Verb == v {
+			return true
+		}
+	}
+	return false
 }

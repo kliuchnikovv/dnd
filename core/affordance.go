@@ -32,6 +32,11 @@ type Affordance struct {
 	// напечатать число значило бы разметить, у каких целей есть авторский
 	// контент. Класс выводится из реестра глаголов и о деле не знает ничего.
 	Check VerbClass
+	// Reply — это реплика, а не действие: то, что игрок СКАЖЕТ. Отдельным
+	// полем, а не по классу глагола: question — класс расследования, а
+	// осмотр детали на выходе из разговора социальным не станет никогда.
+	// Презентация по этому полю решает, брать ли строку в кавычки.
+	Reply bool
 }
 
 // affordanceLimit — сколько вариантов показывается. Четыре, потому что список
@@ -39,19 +44,121 @@ type Affordance struct {
 // том, что можно написать своими словами.
 const affordanceLimit = 4
 
-// Affordances — набор вариантов из read scope: присутствующие, детали места,
-// известные места, носимое.
+// Affordances — набор вариантов из read scope.
 //
-// Тем среди источников нет — см. комментарий у открытого вопроса ниже.
+// with — собеседник, если разговор идёт. Параметром, а не выведенным изнутри:
+// память разговора пишет актёр, и без моделей она пуста — набор реплик не
+// появлялся бы в прогоне без моделей вовсе. Детерминизм цел: собеседник
+// восстанавливается реплеем, потому что реплей идёт тем же путём применения.
+func (g *Game) Affordances(with store.EntityID) []Affordance {
+	if g.talkingTo(with) {
+		return g.replies(with)
+	}
+	return g.actions()
+}
+
+// talkingTo — идёт ли разговор. Ушедший собеседник разговором не считается:
+// говорить с тем, кого здесь нет, не о чем.
+func (g *Game) talkingTo(with store.EntityID) bool {
+	if with == "" {
+		return false
+	}
+	e, ok := g.DB.Entities[with]
+	return ok && e.Kind == store.EntityNPC && e.Node == g.Node
+}
+
+// replyLimit — сколько реплик показывается. Три, потому что четвёртая строка
+// отдана выходу: из разговора должен быть выход одним нажатием, а не только
+// словами.
+const replyLimit = 3
+
+// replies — что можно сказать этому человеку.
 //
-// Категории идут в фиксированном приоритете и дают по одному варианту каждая.
-// Приоритет — не суждение о ценности хода, а способ получить устойчивый и
-// разнообразный набор: четыре осмотра подряд не показали бы игроку, что здесь
-// вообще можно разговаривать.
+// Кандидаты в фиксированном приоритете; берутся первые подходящие. Подходящих
+// меньше трёх — строк меньше трёх: вариант, придуманный ради ровного счёта,
+// врёт так же, как отклонённый ядром.
+func (g *Game) replies(with store.EntityID) []Affordance {
+	var out []Affordance
+	add := func(in Intent, ok bool) {
+		if !ok || len(out) >= replyLimit {
+			return
+		}
+		in.Actor = g.Actor
+		out = append(out, Affordance{Intent: in, Check: checkOf(in.Verb), Reply: true})
+	}
+
+	// Расспросить про тему. Какую — см. weakestTopic. Тем известно ноль —
+	// открытый вопрос: человек расскажет то, что готов рассказать.
+	topic, hasTopic := g.weakestTopic()
+	add(Intent{Verb: "question", Args: Args{Target: with, Topic: topic}}, hasTopic)
+	add(Intent{Verb: "question", Args: Args{Target: with}}, !hasTopic)
+
+	// Предъявить — один раз на человека. Показать ту же бумагу второй раз не
+	// ход, а повтор: сдвиг расположения ядро всё равно даёт однократно.
+	item, hasItem := g.unshownItem(with)
+	add(Intent{Verb: "present", Args: Args{Item: item, Target: with}}, hasItem)
+
+	// Спросить о мире. Законен всегда, о деле не выдаёт ничего — это та
+	// реплика, которой держат разговор, когда по делу спросить нечего.
+	add(Intent{Verb: "ask_about", Args: Args{Target: with}}, true)
+
+	// Надавить — если первые три не набрали трёх.
+	add(Intent{Verb: "threaten_verbally", Args: Args{Target: with}}, true)
+
+	if exit, ok := g.exit(); ok {
+		out = append(out, exit)
+	}
+	return out
+}
+
+// exit — вариант, которым выходят из разговора.
 //
-// Ротации нет намеренно. Она потребовала бы счётчика в состоянии, а всё, что
-// участвует в наборе, участвует и в воспроизводимости прогона.
-func (g *Game) Affordances() []Affordance {
+// Осмотр вперёд перехода: он оставляет игрока на месте, а выход из разговора
+// не обязан быть уходом из сцены.
+func (g *Game) exit() (Affordance, bool) {
+	if prop, ok := g.firstProp(); ok {
+		return Affordance{Intent: Intent{Verb: "examine", Actor: g.Actor,
+			Args: Args{Target: prop}}, Check: checkOf("examine")}, true
+	}
+	if node, ok := g.firstKnownPlace(); ok {
+		return Affordance{Intent: Intent{Verb: "move_zone", Actor: g.Actor,
+			Args: Args{Node: node}}, Check: checkOf("move_zone")}, true
+	}
+	return Affordance{}, false
+}
+
+// weakestTopic — известный факт с наименьшей подтверждённостью.
+//
+// Правило не произвольное: детектив, обходящий свидетелей ради второго
+// источника шаткой улики, занят ровно этим. Считается целиком из
+// party_knowledge, без графа держателей, и вращается само — подтвердил,
+// слабейшим стал другой. Ничьи решает порядок банка, то есть идентификатор.
+func (g *Game) weakestTopic() (store.FactID, bool) {
+	bank := g.K.TopicBank()
+	if len(bank) == 0 {
+		return "", false
+	}
+	weakest := bank[0]
+	for _, f := range bank[1:] {
+		if g.K.Confidence(f) < g.K.Confidence(weakest) {
+			weakest = f
+		}
+	}
+	return weakest, true
+}
+
+// unshownItem — первое носимое, которого этому человеку ещё не показывали.
+func (g *Game) unshownItem(to store.EntityID) (string, bool) {
+	for _, item := range g.Carried() {
+		if !g.D.Presented(to, item.ID) {
+			return string(item.ID), true
+		}
+	}
+	return "", false
+}
+
+// actions — что можно сделать, когда разговор не идёт.
+func (g *Game) actions() []Affordance {
 	var out []Affordance
 	add := func(a Affordance, ok bool) {
 		if !ok || len(out) >= affordanceLimit {

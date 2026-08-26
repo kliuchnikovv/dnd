@@ -36,10 +36,10 @@ func TestAffordancesNeverLeak(t *testing.T) {
 
 func checkAffordances(t *testing.T, path string, g *core.Game) {
 	t.Helper()
-	if n := len(g.Affordances()); n > 4 {
+	if n := len(g.Affordances("")); n > 4 {
 		t.Fatalf("%s: в наборе %d вариантов — это уже меню", path, n)
 	}
-	for _, a := range g.Affordances() {
+	for _, a := range g.Affordances("") {
 		if topic := a.Intent.Args.Topic; topic != "" && !g.K.Knows(topic) {
 			t.Fatalf("%s: в набор попала неизвестная тема %q", path, topic)
 		}
@@ -78,7 +78,7 @@ func TestAffordanceExamineFollowsPropsNotHolders(t *testing.T) {
 					first = p.ID
 				}
 			}
-			for _, a := range g.Affordances() {
+			for _, a := range g.Affordances("") {
 				if a.Intent.Verb != "examine" {
 					continue
 				}
@@ -105,7 +105,7 @@ func TestAffordancesNameOnlyWhatThePlayerSees(t *testing.T) {
 		r := rand.New(rand.NewSource(11))
 		for turn := 0; turn < 100; turn++ {
 			visible := readScopeOf(g)
-			for _, a := range g.Affordances() {
+			for _, a := range g.Affordances("") {
 				for _, name := range []string{
 					string(a.Intent.Args.Target), string(a.Intent.Args.Topic),
 					string(a.Intent.Args.Node), a.Intent.Args.Item,
