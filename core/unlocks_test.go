@@ -32,12 +32,19 @@ func unlockGame() *Game {
 	})
 }
 
+// Latent-держатель до разблокировки для holderFor не существует — то же
+// самое "нет держателя", что и для незнающего собеседника, и по новому
+// правилу это больше не отказ: вопрос уходит в бросок вхолостую, факт не
+// выдаётся.
 func TestLatentHolderIsInvisibleUntilUnlocked(t *testing.T) {
 	g := unlockGame()
 	g.K.Learn("f_deep", "e_bern") // тема формально в банке
 	got := g.Apply(Intent{Verb: "question", Args: Args{Target: "e_toke", Topic: "f_deep"}})
-	if !got.Refused {
-		t.Error("спящий держатель отдал факт до разблокировки")
+	if got.Refused {
+		t.Fatalf("спящий держатель отказал вместо молчания: %s", got.Refusal)
+	}
+	if len(got.Learned) != 0 {
+		t.Errorf("спящий держатель отдал факт до разблокировки: %+v", got.Learned)
 	}
 }
 
