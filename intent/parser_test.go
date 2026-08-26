@@ -1482,3 +1482,19 @@ func TestSchemaOffersFreeProbe(t *testing.T) {
 		t.Error("в схеме нет поля probe")
 	}
 }
+
+// Прогон из одних проб — это разобранный свободный текст, а не тишина.
+// Observations считает вводы, прошедшие через словарь, и проба туда входит:
+// иначе отчёт говорит «свободный текст ни разу не разбирался» о прогоне, где
+// он разбирался каждый ход.
+func TestProbesCountAsObservations(t *testing.T) {
+	m := NewMetrics()
+	m.Observe("", ObservedProbe)
+	m.Observe("", ObservedProbe)
+	if n := m.Observations(); n != 2 {
+		t.Errorf("наблюдений %d, а проб было две", n)
+	}
+	if rate := m.Overall(); rate != 0 {
+		t.Errorf("проба посчитана отказом: Overall=%v", rate)
+	}
+}

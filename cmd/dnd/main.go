@@ -423,6 +423,22 @@ var appRoles = []struct {
 	{llm.RoleCanonGuard, llm.TierMain},
 }
 
+// reportedRoles — роли для отчёта: те же, что зароучены, каждая по разу, в
+// порядке объявления. Тир в отчёте своя строка, поэтому дубли по тиру
+// сворачиваются.
+func reportedRoles() []llm.Role {
+	seen := map[llm.Role]bool{}
+	out := make([]llm.Role, 0, len(appRoles))
+	for _, r := range appRoles {
+		if seen[r.Role] {
+			continue
+		}
+		seen[r.Role] = true
+		out = append(out, r.Role)
+	}
+	return out
+}
+
 // buildRouter разводит роли по целям. Пустая дешёвая цель означает «всё
 // основной моделью»: тир тогда не разводится, и фолбэк шлюза сам отдаёт
 // основную цель.
@@ -504,7 +520,11 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser, sess *cli.Session) {
 	s := gw.Stats()
 	fmt.Fprintf(os.Stderr, "\nрасход: %.4f $  битов: %d\n",
 		float64(s.SpentMicro)/1e6, s.Bits)
-	for _, role := range []llm.Role{llm.RoleIntentParser, llm.RoleActor, llm.RoleNarrator} {
+	// Роли берутся из appRoles, а не из своего списка. Свой список уже разошёлся
+	// с проводкой: RoleChatMaster в нём не было, и прогон под -chat выглядел
+	// бесплатным — вызовы шли, а в отчёте их не было. Разойтись с приведённым
+	// списком негде: он тот же, по которому роли и зароучены.
+	for _, role := range reportedRoles() {
 		if n := s.CallsByRole[role]; n > 0 {
 			fmt.Fprintf(os.Stderr, "вызовов %s: %d (%.4f $)\n",
 				role, n, float64(s.ByRole[role])/1e6)
@@ -520,6 +540,13 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser, sess *cli.Session) {
 		fmt.Fprintln(os.Stderr, "свободный текст ни разу не разбирался")
 	} else {
 		fmt.Fprintf(os.Stderr, "непонятого ввода: %.0f%% из %d\n", m.Overall()*100, n)
+	}
+	// Проб отдельной строкой. Их доля — не поломка, а заявка на новые глаголы:
+	// высокая означает, что игрок исследует мимо словаря. Без этой строки
+	// «непонятого 0%» читалось бы как «словарь покрывает всё», хотя половина
+	// ходов могла уйти в приземление.
+	if n := m.Probes(); n > 0 {
+		fmt.Fprintf(os.Stderr, "свободных проб: %d\n", n)
 	}
 	if breached := m.Breaches(0.25); len(breached) > 0 {
 		fmt.Fprintf(os.Stderr, "словарь узок в классах: %v\n", breached)
