@@ -16,29 +16,32 @@ import (
 // подключается только там, где структурированный парсер отбил ввод, —
 // то есть договаривается на границе словаря вместо отказа.
 type Interpreter interface {
-	// Interpret возвращает либо интент, либо вопрос игроку. Ошибка означает
-	// сбой канала, а не непонятый ввод: непонятое — это вопрос.
+	// Interpret возвращает интент, свободную пробу либо вопрос игроку. Ошибка
+	// означает сбой канала, а не непонятый ввод: непонятое — это вопрос, а
+	// невыразимое словарём — проба (ADR-0003, T1). Исхода-тупика нет.
 	//
 	// with — с кем игрок разговаривает, pending — вопрос, который игра задала
 	// ему на прошлом ходу. Без них разбор не понимает ответа на собственный
 	// вопрос: «рукой» после «чем именно?» читается как новое действие, и игра
 	// спрашивает то же самое по кругу.
 	Interpret(ctx context.Context, text string, with store.EntityID,
-		pending string) (*core.Intent, string, error)
+		pending string) (in *core.Intent, probe, clarify string, err error)
 }
 
 // ChatInterpreter — переводчик чат-режима: тем же вызовом, которым разобрал
 // фразу, он отвечает игроку репликой Мастера. Реплика безоценочная — об исходе
 // она не знает, потому что бросок ещё не сделан, и решает его ядро.
 //
-// Метод возвращает четыре значения, а не структуру, ровно затем, зачем
-// Interpreter возвращает три: чтобы intent реализовал интерфейс структурно, не
-// импортируя презентацию. Порядок слоёв важнее краткости подписи.
+// Метод возвращает пять значений, а не структуру, ровно затем, зачем
+// Interpreter возвращает четыре: чтобы intent реализовал интерфейс структурно,
+// не импортируя презентацию. Структура жила бы в intent — и тогда cli пришлось
+// бы его импортировать, развернув направление слоёв. Порядок слоёв важнее
+// краткости подписи, и это заявленная цена, а не недосмотр.
 type ChatInterpreter interface {
-	// InterpretChat возвращает интент, безоценочную реплику Мастера и вопрос
-	// игроку. Ошибка означает сбой канала, а не непонятый ввод.
+	// InterpretChat возвращает интент, безоценочную реплику Мастера, свободную
+	// пробу и вопрос игроку. Ошибка означает сбой канала, а не непонятый ввод.
 	InterpretChat(ctx context.Context, text string, with store.EntityID,
-		pending string) (in *core.Intent, reply, clarify string, err error)
+		pending string) (in *core.Intent, reply, probe, clarify string, err error)
 }
 
 // WithChat включает чат-режим. Он идёт ВМЕСТО перевода свободного текста, а не
@@ -108,7 +111,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		s.emit(EventRefusal, "нельзя: %v\n", parseErr)
 		return false
 	}
-	in, clarify, err := s.interp.Interpret(s.turnContext(), text, s.spokenTo, s.pending)
+	in, probe, clarify, err := s.interp.Interpret(s.turnContext(), text, s.spokenTo, s.pending)
 	// Вопрос задан один раз: ответ на него уже пришёл, и тащить его дальше
 	// значит навязывать модели старый контекст.
 	s.pending = ""
@@ -121,6 +124,9 @@ func (s *Session) interpret(text string, parseErr error) bool {
 	case in != nil:
 		s.noteProposal(llm.RoleIntentParser, llmProposal{Intent: in})
 		s.applyIntent(*in)
+		return true
+	case probe != "":
+		s.resolveProbe(probe)
 		return true
 	default:
 		question := fallbackClarify(clarify)
@@ -141,7 +147,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 // ядро разрешило. Показать подводку к действию, которого не будет, значит
 // соврать игроку — а ядро над Мастером, а не наоборот.
 func (s *Session) interpretChat(text string, parseErr error) bool {
-	in, reply, clarify, err := s.chat.InterpretChat(s.turnContext(), text, s.spokenTo, s.pending)
+	in, reply, probe, clarify, err := s.chat.InterpretChat(s.turnContext(), text, s.spokenTo, s.pending)
 	// Вопрос задан один раз: ответ на него уже пришёл.
 	s.pending = ""
 	switch {
@@ -150,6 +156,13 @@ func (s *Session) interpretChat(text string, parseErr error) bool {
 		// понимать, что дело в инструменте, а не в его замысле.
 		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
 		return false
+	case probe != "":
+		// Реплика чат-режима подводкой к пробе быть не может: подводка
+		// предваряет действие, а у пробы отклик и есть весь её текст. Показать
+		// оба значило бы описать одно событие дважды.
+		s.noteProposal(llm.RoleChatMaster, llmProposal{Probe: probe})
+		s.resolveProbe(probe)
+		return true
 	case in == nil:
 		question := fallbackClarify(clarify)
 		s.pending = question

@@ -16,9 +16,16 @@ import (
 
 // Outcome — что модель сделала со вводом.
 const (
-	OutcomeIntent      = "intent"      // распознано как действие
-	OutcomeClarify     = "clarify"     // непонятно, нужен вопрос в характере
-	OutcomeUnsupported = "unsupported" // словарь такого не покрывает
+	OutcomeIntent  = "intent"  // распознано как действие
+	OutcomeClarify = "clarify" // непонятно, нужен вопрос в характере
+	// OutcomeFreeProbe — игрок пробует то, чего словарь не выражает. Не
+	// отказ, а приземление: отклик описывает Мастер из сцены и канона, а если
+	// проба легла на авторскую цель — её резолвит ядро (ADR-0003, T1).
+	OutcomeFreeProbe = "free_probe"
+	// OutcomeUnsupported — словарь такого не покрывает. Остаётся внутренним
+	// сигналом узости словаря: на нём живёт метрика, и «кандидат в новый
+	// глагол» терять незачем. Тупиком быть перестаёт — игрок получает пробу.
+	OutcomeUnsupported = "unsupported"
 )
 
 // verbNames возвращает глаголы реестра в стабильном порядке. Схема обязана
@@ -107,7 +114,7 @@ func SchemaFor(hint SceneHint) map[string]any {
 		"properties": map[string]any{
 			"outcome": map[string]any{
 				"type": "string",
-				"enum": []string{OutcomeIntent, OutcomeClarify, OutcomeUnsupported},
+				"enum": []string{OutcomeIntent, OutcomeClarify, OutcomeFreeProbe, OutcomeUnsupported},
 			},
 			"verb": map[string]any{
 				"type": "string", "enum": verbNamesFor(hint),
@@ -132,6 +139,14 @@ func SchemaFor(hint SceneHint) map[string]any {
 			"text":    map[string]any{"type": "string", "description": "свободный текст для theorize, say, emote"},
 			"clarify": map[string]any{"type": "string", "description": "вопрос игроку в характере при outcome=clarify"},
 			"reason":  map[string]any{"type": "string", "description": "чего не хватило словарю при outcome=unsupported"},
+			// probe НЕ обязателен, в отличие от target, topic и item. У тех
+			// доводчика нет — незаполненное поле означает недоисполнимый ход.
+			// Здесь доводчик есть и он честный: пустое probe заменяется
+			// словами самого игрока. Платить обязательным выводом каждый ход
+			// за то, что и так есть в строке ввода, незачем.
+			"probe": map[string]any{"type": "string",
+				"description": "что игрок пробует, коротким описанием от третьего лица; " +
+					"при outcome=free_probe"},
 		},
 	}
 }
@@ -189,6 +204,7 @@ type reply struct {
 	Text    string   `json:"text"`
 	Clarify string   `json:"clarify"`
 	Reason  string   `json:"reason"`
+	Probe   string   `json:"probe"`
 	// Reply — реплика Мастера. Просится только в чат-режиме; в обычном
 	// разборе поля нет в схеме, и оно остаётся пустым.
 	Reply string `json:"reply"`

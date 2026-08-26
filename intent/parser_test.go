@@ -3,6 +3,7 @@ package intent
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -149,17 +150,10 @@ func TestRejectsVerbOutsideRegistry(t *testing.T) {
 	}
 }
 
-func TestClarifyAndUnsupportedAreNotErrors(t *testing.T) {
-	hint := harbourHint(t)
-
-	c := parse(t, `{"outcome":"clarify","clarify":"К кузнецу или к стражнику?"}`, hint)
+func TestClarifyIsNotAnError(t *testing.T) {
+	c := parse(t, `{"outcome":"clarify","clarify":"К кузнецу или к стражнику?"}`, harbourHint(t))
 	if c.Accepted() || c.Clarify != "К кузнецу или к стражнику?" {
 		t.Errorf("clarify разобран неверно: %+v", c)
-	}
-
-	u := parse(t, `{"outcome":"unsupported","reason":"нет глагола для подкупа"}`, hint)
-	if u.Accepted() || u.Candidate != "нет глагола для подкупа" {
-		t.Errorf("unsupported разобран неверно: %+v", u)
 	}
 }
 
@@ -255,13 +249,13 @@ func TestParserCannotUseNonStrictProvider(t *testing.T) {
 func TestRejectionRateIsPerVerbClass(t *testing.T) {
 	m := NewMetrics()
 	// investigate: 1 из 4 отклонён — 25%
-	m.Observe(core.ClassInvestigate, true)
-	m.Observe(core.ClassInvestigate, true)
-	m.Observe(core.ClassInvestigate, true)
-	m.Observe(core.ClassInvestigate, false)
+	m.Observe(core.ClassInvestigate, ObservedAccepted)
+	m.Observe(core.ClassInvestigate, ObservedAccepted)
+	m.Observe(core.ClassInvestigate, ObservedAccepted)
+	m.Observe(core.ClassInvestigate, ObservedRejected)
 	// social: 2 из 2 отклонены — 100%
-	m.Observe(core.ClassSocial, false)
-	m.Observe(core.ClassSocial, false)
+	m.Observe(core.ClassSocial, ObservedRejected)
+	m.Observe(core.ClassSocial, ObservedRejected)
 
 	if r := m.Rate(core.ClassInvestigate); r != 0.25 {
 		t.Errorf("investigate %.2f, ожидалось 0.25", r)
@@ -283,8 +277,8 @@ func TestRejectionRateIsPerVerbClass(t *testing.T) {
 
 func TestClasslessRejectionsCountInOverall(t *testing.T) {
 	m := NewMetrics()
-	m.Observe(core.ClassInvestigate, true)
-	m.Observe("", false) // непонятый ввод без глагола
+	m.Observe(core.ClassInvestigate, ObservedAccepted)
+	m.Observe("", ObservedRejected) // непонятый ввод без глагола
 	if got := m.Overall(); got != 0.5 {
 		t.Errorf("в целом %.2f, ожидалось 0.50 — игроку всё равно, почему его не поняли", got)
 	}
@@ -298,8 +292,8 @@ func TestObservationsCountsEveryInput(t *testing.T) {
 	if m.Observations() != 0 {
 		t.Fatal("на пустой метрике есть наблюдения")
 	}
-	m.Observe(core.ClassInvestigate, true)
-	m.Observe("", false)
+	m.Observe(core.ClassInvestigate, ObservedAccepted)
+	m.Observe("", ObservedRejected)
 	if got := m.Observations(); got != 2 {
 		t.Errorf("наблюдений %d, ожидалось 2", got)
 	}
@@ -563,7 +557,7 @@ func TestRepairCountsOnceInMetrics(t *testing.T) {
 func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"talk_to","target":"e_bern"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном", "", "")
+	in, _, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +574,7 @@ func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
 func TestParsedTextWinsWhereItIsTheContent(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"theorize","text":"Токе лжёт про ночь"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь", "", "")
+	in, _, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1042,7 +1036,7 @@ func TestBareNameTurnsToThatPerson(t *testing.T) {
 	p, f := parserWith(t, `{"outcome":"clarify"}`)
 	gi := &GameInterpreter{Parser: p, Game: g}
 
-	in, clarify, err := gi.Interpret(context.Background(), "Берн", "", "")
+	in, _, clarify, err := gi.Interpret(context.Background(), "Берн", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1064,7 +1058,7 @@ func TestNameWithWordsGoesToTheModel(t *testing.T) {
 	p, f := parserWith(t, `{"outcome":"intent","verb":"say","text":"что слышно?"}`)
 	gi := &GameInterpreter{Parser: p, Game: g}
 
-	if _, _, err := gi.Interpret(context.Background(), "Берн, что слышно?", "", ""); err != nil {
+	if _, _, _, err := gi.Interpret(context.Background(), "Берн, что слышно?", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Calls()) != 1 {
@@ -1078,7 +1072,7 @@ func TestBareWordThatNamesNobodyGoesToTheModel(t *testing.T) {
 	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
 	gi := &GameInterpreter{Parser: p, Game: g}
 
-	if _, _, err := gi.Interpret(context.Background(), "осмотреться", "", ""); err != nil {
+	if _, _, _, err := gi.Interpret(context.Background(), "осмотреться", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Calls()) != 1 {
@@ -1361,5 +1355,130 @@ func TestFreeTextExamineOfBodyFindsFactNotRefusal(t *testing.T) {
 	}
 	if len(out.Learned) == 0 {
 		t.Error("осмотр тела не выдал ни одного факта")
+	}
+}
+
+// Невокабулярный ввод перестаёт быть тупиком. Раньше он приходил игроку как
+// «так не получится: словарь такого не покрывает» — отказ служебным языком на
+// замысел, и ровно это рубило исследование на корню (ADR-0003, T1).
+func TestFreeProbeIsNotARefusal(t *testing.T) {
+	got := parse(t, `{"outcome":"free_probe","probe":"принюхивается к бочкам"}`, harbourHint(t))
+	if got.Accepted() {
+		t.Fatal("проба принята как действие")
+	}
+	if got.Probe != "принюхивается к бочкам" {
+		t.Errorf("проба не разобралась: %+v", got)
+	}
+	if got.Candidate != "" || got.Clarify != "" {
+		t.Errorf("проба пришла отказом: %+v", got)
+	}
+}
+
+// Пустое probe — законный ответ модели: поле необязательное, и слабая модель
+// его не заполняет. Доводчик берёт слова самого игрока: описывать пробу лучше
+// бледно, чем никак.
+func TestEmptyProbeFallsBackToPlayerWords(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"free_probe"}`)
+	got, err := p.Parse(context.Background(), "  ковыряю щель в настиле  ", harbourHint(t), llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Probe != "ковыряю щель в настиле" {
+		t.Errorf("доводчик не подставил слова игрока: %q", got.Probe)
+	}
+}
+
+// unsupported остаётся внутренним сигналом узости словаря — на нём живёт
+// метрика, — но тупиком быть перестаёт: игрок получает пробу, а «кандидат в
+// новый глагол» никуда не теряется.
+func TestUnsupportedLandsAsProbeAndKeepsTheSignal(t *testing.T) {
+	got := parse(t, `{"outcome":"unsupported","reason":"нет глагола для подкупа"}`, harbourHint(t))
+	if got.Accepted() {
+		t.Fatal("unsupported принят как действие")
+	}
+	if got.Probe == "" {
+		t.Error("unsupported не приземлился пробой")
+	}
+	if got.Candidate != "нет глагола для подкупа" {
+		t.Errorf("сигнал узости словаря потерян: %+v", got)
+	}
+}
+
+// Проба доезжает до презентации своим каналом. Уточнение — не проба: игра
+// спрашивает, а не описывает отклик, и путать их значит отвечать прозой на
+// собственный вопрос.
+func TestInterpretReturnsProbeSeparatelyFromClarify(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"free_probe","probe":"пробует расшатать доску"}`)
+	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
+	in, probe, clarify, err := gi.Interpret(context.Background(), "расшатываю доску", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != nil {
+		t.Fatalf("проба стала действием: %+v", in)
+	}
+	if probe != "пробует расшатать доску" {
+		t.Errorf("проба не доехала: %q", probe)
+	}
+	if clarify != "" {
+		t.Errorf("проба пришла уточнением: %q", clarify)
+	}
+}
+
+// Отказа словарём больше нет ни в одной строке пакета. Тест на текст, а не на
+// поведение, сознательно: строка «так не получится» — это и есть тупик, и
+// вернуть её проще всего случайно.
+func TestNoVocabularyRefusalRemains(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") ||
+			strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), "так не получится") {
+			t.Errorf("%s всё ещё отбивает ввод словарём", e.Name())
+		}
+	}
+}
+
+// Метрика меряет узость словаря, а не приземление. Проба — не отказ: считать
+// её непонятым вводом значит сломать единственный сигнал о том, где словарь
+// действительно узок.
+func TestProbeIsNotCountedAsRejection(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"free_probe","probe":"нюхает воздух"}`)
+	if _, err := p.Parse(context.Background(), "нюхаю воздух", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if rate := p.Metrics().Overall(); rate != 0 {
+		t.Errorf("проба посчитана отказом: Overall=%v", rate)
+	}
+	if n := p.Metrics().Probes(); n != 1 {
+		t.Errorf("проб посчитано %d, ожидалась одна", n)
+	}
+}
+
+// Схема обязана называть модели новый исход: инструкция в промпте без него
+// заставила бы её выбирать из трёх слов, которых уже недостаточно.
+func TestSchemaOffersFreeProbe(t *testing.T) {
+	props := SchemaFor(SceneHint{})["properties"].(map[string]any)
+	enum := props["outcome"].(map[string]any)["enum"].([]string)
+	found := false
+	for _, o := range enum {
+		if o == OutcomeFreeProbe {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("в перечислении исходов нет пробы: %v", enum)
+	}
+	if _, ok := props["probe"]; !ok {
+		t.Error("в схеме нет поля probe")
 	}
 }

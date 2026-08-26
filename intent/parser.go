@@ -11,8 +11,8 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 )
 
-// Result — исход разбора. Ровно одно из трёх: действие, уточняющий вопрос
-// или признание, что словарь такого не покрывает.
+// Result — исход разбора. Ровно одно из трёх: действие, свободная проба или
+// уточняющий вопрос. Исхода-тупика нет: приземляется всё (ADR-0003, T1).
 type Result struct {
 	Intent *core.Intent
 	// Clarify — вопрос игроку. Парсер договаривается на границе словаря,
@@ -20,7 +20,12 @@ type Result struct {
 	// боятся в закрытом словаре.
 	Clarify string
 	// Candidate — ввод, не покрытый словарём. Кандидат в новый глагол.
+	// Игроку не показывается: это сигнал метрике о том, где словарь узок.
 	Candidate string
+	// Probe — свободная проба: что игрок пробует, когда словарь такого не
+	// выражает. Не отказ, а приземление (ADR-0003, T1): отклик описывает
+	// Мастер, а если проба легла на авторскую цель — её резолвит ядро.
+	Probe string
 	// Class — класс предложенного глагола, пуст если глагол не предлагался.
 	Class core.VerbClass
 	// Reply — безоценочная реплика Мастера, пришедшая тем же вызовом. Только
@@ -77,11 +82,15 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
    в say: словарь тут ни при чём.
    - examine и search тему тоже принимают: «осмотреть шнур на теле» — это
      examine с темой. Тема только из списка известных; не знаешь — общий осмотр.
-4. Если фраза не ложится ни на один глагол, верни unsupported и опиши в reason,
-   чего не хватило. Не подгоняй фразу под неподходящий глагол.
+4. Если фраза не ложится ни на один глагол, верни free_probe и опиши в probe,
+   что игрок пробует. Отказа не бывает: игрок пробует поисследовать, и мир
+   отвечает откликом, а не сообщением о том, что так нельзя. Не подгоняй фразу
+   под неподходящий глагол — но и не отбивай её.
 5. Если фраза ложится, но непонятно на что именно, верни clarify с коротким
-   вопросом — в характере мира, не служебным языком.
-6. clarify и reason читает ИГРОК между репликами: одна короткая фраза, без
+   вопросом — в характере мира, не служебным языком. Уточнение — это вопрос
+   игроку, а не отказ, и второй раз одно и то же не спрашивают: если тот же
+   вопрос напрашивается снова, это free_probe.
+6. clarify и probe читает ИГРОК между репликами: одна короткая фраза, без
    спора с ним и без объяснений, почему он неправ. Пиши языком мира, а не
    языком словаря:
    «бумаг при себе не оказалось», а не «в доступных действиях нет глагола для
@@ -136,7 +145,13 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 
 При себе: i_writ — Предписание магистрата; сцена: e_bern — Берн, стражник
 Игрок: «показать предписание Берну»
-Ответ: {"outcome":"intent","verb":"present","item":"i_writ","target":"e_bern"}`
+Ответ: {"outcome":"intent","verb":"present","item":"i_writ","target":"e_bern"}
+
+Детали места: p_barrels — Штабель бочек
+Игрок: «принюхиваюсь, чем тут пахнет за бочками»
+Ответ: {"outcome":"free_probe","probe":"принюхивается к воздуху за штабелем бочек"}
+Ни один глагол этого не выражает — и это не повод отказывать. Игрок пробует,
+мир отвечает.`
 
 // chatAddendum — то, чем чат-режим отличается от разбора: разобрав фразу,
 // модель тем же ответом отвечает игроку. Добавка, а не свой промпт: правила
@@ -220,7 +235,28 @@ func (p *Parser) attempt(ctx context.Context, text string, hint SceneHint,
 // observe записывает метрику один раз по окончательному результату: иначе
 // раунд починки считался бы отказом дважды.
 func (p *Parser) observe(res Result) {
-	p.metrics.Observe(res.Class, res.Accepted())
+	p.metrics.Observe(res.Class, outcomeOf(res))
+}
+
+// outcomeOf переводит результат в исход для метрики. Три значения, а не два:
+// проба — не отказ и не принятие. Считать её непонятым вводом значило бы
+// сломать единственный сигнал о том, где словарь действительно узок, — а
+// приземляется теперь всё, и доля «непонятого» иначе поехала бы в единицу.
+func outcomeOf(res Result) Observed {
+	switch {
+	case res.Accepted():
+		return ObservedAccepted
+	case res.Probe != "":
+		return ObservedProbe
+	default:
+		return ObservedRejected
+	}
+}
+
+// probeText — что игрок пробует. Доводчик берёт его собственные слова: модель
+// поле не обязана заполнять, а описывать пробу бледно лучше, чем никак.
+func probeText(raw reply, text string) string {
+	return fallback(strings.TrimSpace(raw.Probe), strings.TrimSpace(text))
 }
 
 // validate — вторая половина гарантии. Схема отвечает за форму ответа, эта
@@ -232,8 +268,13 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 	switch raw.Outcome {
 	case OutcomeClarify:
 		return Result{Clarify: fallback(raw.Clarify, "уточни, что именно ты делаешь")}, ""
+	case OutcomeFreeProbe:
+		return Result{Probe: probeText(raw, text)}, ""
 	case OutcomeUnsupported:
-		return Result{Candidate: fallback(raw.Reason, "словарь такого не покрывает")}, ""
+		// Приземляется пробой, но сигнал о узости словаря сохраняется: метрика
+		// меряет именно его, и без него не видно, ГДЕ словарь узок.
+		return Result{Probe: probeText(raw, text),
+			Candidate: fallback(raw.Reason, "словарь такого не покрывает")}, ""
 	case OutcomeIntent:
 	default:
 		return Result{Clarify: "не разобрал, повтори иначе"}, ""
@@ -448,21 +489,21 @@ type GameInterpreter struct {
 // и платить за него вызовом незачем. Реплики у такого хода нет — её заменяет
 // ответ самого человека, который сейчас и заговорит.
 func (gi *GameInterpreter) InterpretChat(ctx context.Context, text string,
-	with store.EntityID, pending string) (*core.Intent, string, string, error) {
+	with store.EntityID, pending string) (*core.Intent, string, string, string, error) {
 	return gi.interpret(ctx, text, with, pending)
 }
 
 func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with store.EntityID,
-	pending string) (*core.Intent, string, error) {
-	in, _, clarify, err := gi.interpret(ctx, text, with, pending)
-	return in, clarify, err
+	pending string) (*core.Intent, string, string, error) {
+	in, _, probe, clarify, err := gi.interpret(ctx, text, with, pending)
+	return in, probe, clarify, err
 }
 
 // interpret — общее тело обоих путей. Реплика возвращается всегда, а
 // показывает её только чат-режим: одно место разбора вместо двух, которые
 // разъехались бы молча.
 func (gi *GameInterpreter) interpret(ctx context.Context, text string, with store.EntityID,
-	pending string) (in *core.Intent, reply, clarify string, err error) {
+	pending string) (in *core.Intent, reply, probe, clarify string, err error) {
 	hint := BuildHint(gi.Game)
 	// Одно слово — имя того, к кому игрок повернулся. Самый дешёвый ход в
 	// разговоре, и вызов модели ему не нужен: имя в сцене это подстрока, а не
@@ -472,7 +513,7 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 		// Реплики у такого хода нет, и придумывать её незачем: сейчас
 		// заговорит сам человек, к которому повернулись.
 		return &core.Intent{Verb: "talk_to", Actor: gi.Game.Actor,
-			Args: core.Args{Target: store.EntityID(id), Text: text}}, "", "", nil
+			Args: core.Args{Target: store.EntityID(id), Text: text}}, "", "", "", nil
 	}
 	// Разговор — часть сцены. Транскрипт лежит в дневнике собеседника: его
 	// ведёт озвучка, а разбор им пользуется, и второго места правды не
@@ -483,7 +524,7 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 	}
 	res, err := gi.Parser.Parse(ctx, text, hint, gi.Req)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", "", err
 	}
 	switch {
 	case res.Accepted():
@@ -498,12 +539,13 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 		if res.Intent.Args.Text == "" {
 			res.Intent.Args.Text = text
 		}
-		return res.Intent, res.Reply, "", nil
-	case res.Candidate != "":
-		// Ввод вне словаря — это не ошибка, а сигнал о его узости. Игроку
-		// говорим честно, метрика уже записана.
-		return nil, "", "так не получится: " + res.Candidate, nil
+		return res.Intent, res.Reply, "", "", nil
+	case res.Probe != "":
+		// Приземление вместо тупика. Раньше здесь стоял отказ словарём, и
+		// именно он рубил исследование: игрок пробовал, а мир отвечал
+		// служебным языком, что так нельзя.
+		return nil, res.Reply, res.Probe, "", nil
 	default:
-		return nil, "", res.Clarify, nil
+		return nil, "", "", res.Clarify, nil
 	}
 }

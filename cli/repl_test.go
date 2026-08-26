@@ -130,6 +130,7 @@ func TestFailedMoveDoesNotArrive(t *testing.T) {
 
 type fakeInterp struct {
 	intent  *core.Intent
+	probe   string
 	clarify string
 	err     error
 	seen    []string
@@ -139,11 +140,11 @@ type fakeInterp struct {
 }
 
 func (f *fakeInterp) Interpret(_ context.Context, text string, with store.EntityID,
-	pending string) (*core.Intent, string, error) {
+	pending string) (*core.Intent, string, string, error) {
 	f.seen = append(f.seen, text)
 	f.with = append(f.with, with)
 	f.pending = append(f.pending, pending)
-	return f.intent, f.clarify, f.err
+	return f.intent, f.probe, f.clarify, f.err
 }
 
 func runWith(t *testing.T, interp Interpreter, script string) (string, *core.Game) {
@@ -628,15 +629,16 @@ func TestUnanswerableOpenQuestionDoesNotRefuse(t *testing.T) {
 type fakeChat struct {
 	intent  *core.Intent
 	reply   string
+	probe   string
 	clarify string
 	err     error
 	calls   int
 }
 
 func (f *fakeChat) InterpretChat(_ context.Context, text string, with store.EntityID,
-	pending string) (*core.Intent, string, string, error) {
+	pending string) (*core.Intent, string, string, string, error) {
 	f.calls++
-	return f.intent, f.reply, f.clarify, f.err
+	return f.intent, f.reply, f.probe, f.clarify, f.err
 }
 
 func runChat(t *testing.T, fc *fakeChat, script string) (string, *core.Game) {
