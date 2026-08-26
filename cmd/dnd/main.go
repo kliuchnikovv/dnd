@@ -452,11 +452,19 @@ type narrator struct {
 
 func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 	what := master.KindOutcome
+	outcome := p.Outcome
 	switch {
 	case p.Kind == cli.ProseBriefing:
 		what = master.KindBriefing
 	case p.Kind == cli.ProsePlace:
 		what = master.KindPlace
+	case p.Kind == cli.ProseProbe:
+		// Проба едет тем же слотом, что исход: «что только что произошло» —
+		// это ровно она, словами и без механики. Своего параметра ей не
+		// завели сознательно: восьмое позиционное поле в подписи стоило бы
+		// дороже, чем одна строка здесь. Чат-режим пробу не съедает: реплики
+		// про неё он не давал, съедать нечего.
+		what, outcome = master.KindProbe, []string{"Игрок пробует: " + p.Probe}
 	case n.chat:
 		// Пустой ответ означает откат на авторскую рамку — ровно то, что
 		// нужно: исход печатает ядро. Брифинга это не касается: он не исход, и
@@ -464,7 +472,7 @@ func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 		return "", nil
 	}
 	return n.master.Narrate(ctx, what, p.Frame,
-		master.World{Setting: n.game.Setting, Scene: p.Scene}, p.Outcome, p.Speaking, llm.Request{})
+		master.World{Setting: n.game.Setting, Scene: p.Scene}, outcome, p.Speaking, llm.Request{})
 }
 
 // Refuse произносит отказ мира. Тот же Мастер и тот же мир, что у прозы:
