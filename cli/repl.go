@@ -262,9 +262,16 @@ func (s *Session) offerAffordances() {
 	}
 	s.offered = s.Game.Affordances()
 	if text := s.r.Affordances(s.Game, s.offered); text != "" {
-		s.emitText(EventSystem, text)
+		s.emitText(EventOptions, text)
 	}
 }
+
+// Offered — набор, показанный игроку последним.
+//
+// Структурой, а не текстом: полноэкранный режим рисует его своей панелью и
+// подсвечивает выбранный вариант, а разбирать для этого напечатанные строки
+// значило бы парсить собственный вывод.
+func (s *Session) Offered() []core.Affordance { return s.offered }
 
 // chosen разворачивает номер варианта. Разбирается он ДО структурированного
 // парсера: «3» тот отдаёт как неизвестное действие, а перевод свободного текста

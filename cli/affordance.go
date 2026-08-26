@@ -45,15 +45,19 @@ func (r Render) Affordances(g *core.Game, list []core.Affordance) string {
 	var b strings.Builder
 	b.WriteString("Что можно:\n")
 	for i, a := range list {
-		fmt.Fprintf(&b, "  %d. %s\n", i+1, affordanceLabel(g, a))
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, AffordanceLabel(g, a))
 	}
 	b.WriteString(affordancePrompt)
 	return b.String()
 }
 
-// affordanceLabel — вариант словами. Имена берутся из тех же таблиц, что у
+// AffordanceLabel — вариант словами. Имена берутся из тех же таблиц, что у
 // списка целей: разойдись они, игрок читал бы про «e_bern».
-func affordanceLabel(g *core.Game, a core.Affordance) string {
+//
+// Экспортирован для полноэкранного режима: он рисует строки сам, потому что
+// подсвечивает выбранную. Нумерацию и рамку списка при этом даёт Affordances —
+// два места печати одного и того же разошлись бы.
+func AffordanceLabel(g *core.Game, a core.Affordance) string {
 	label := affordanceAction(g, a)
 	if word, ok := classWords[a.Check]; ok {
 		label += " [" + word + "]"

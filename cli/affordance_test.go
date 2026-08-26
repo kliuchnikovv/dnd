@@ -197,8 +197,65 @@ func TestMoveOptionPromisesNoCheck(t *testing.T) {
 		if a.Intent.Verb != "move_zone" {
 			continue
 		}
-		if label := affordanceLabel(g, a); strings.Contains(label, "[") {
+		if label := AffordanceLabel(g, a); strings.Contains(label, "[") {
 			t.Errorf("переход обещает проверку: %q", label)
 		}
 	}
 }
+
+// Набор доступен приёмнику структурой, а не только текстом. Полноэкранный
+// режим рисует его своей панелью и подсвечивает выбранный вариант: разбирать
+// для этого напечатанные строки значило бы парсить собственный вывод.
+func TestOfferedIsReadableBySink(t *testing.T) {
+	g := renderGame(t)
+	s := NewSession(g, strings.NewReader("quit\n"), &strings.Builder{}).WithAffordances()
+	s.Start()
+	offered := s.Offered()
+	if len(offered) == 0 {
+		t.Fatal("после старта набор не виден приёмнику")
+	}
+	if !reflect.DeepEqual(offered, g.Affordances()) {
+		t.Errorf("приёмнику виден не тот набор, что показан:\n%+v\n%+v",
+			offered, g.Affordances())
+	}
+}
+
+// Набор идёт своим видом события, а не системным. Приглашение уже отделено
+// так же: полноэкранному режиму надо знать, что это не строка транскрипта, а
+// панель, которая себя заменяет.
+func TestAffordancesHaveTheirOwnEventKind(t *testing.T) {
+	g := renderGame(t)
+	rec := &recordingSink{}
+	s := NewSession(g, strings.NewReader("quit\n"), &strings.Builder{}).
+		WithSink(rec).WithAffordances()
+	s.Start()
+	var found bool
+	for _, e := range rec.events {
+		if strings.Contains(e.Text, "Что можно:") {
+			found = true
+			if e.Kind != EventOptions {
+				t.Errorf("набор пришёл видом %q", e.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("набор не дошёл до приёмника: %+v", rec.events)
+	}
+}
+
+// Ярлык одного варианта нужен снаружи: панель полноэкранного режима рисует
+// строки сама, потому что подсвечивает одну из них.
+func TestSingleLabelIsAvailableToRenderers(t *testing.T) {
+	g := renderGame(t)
+	list := g.Affordances()
+	if len(list) == 0 {
+		t.Fatal("набор пуст")
+	}
+	if label := AffordanceLabel(g, list[0]); label == "" || strings.Contains(label, "e_") {
+		t.Errorf("ярлык варианта негоден: %q", label)
+	}
+}
+
+type recordingSink struct{ events []Event }
+
+func (r *recordingSink) Emit(e Event) { r.events = append(r.events, e) }
