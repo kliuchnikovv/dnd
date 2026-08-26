@@ -448,10 +448,7 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 // он единственный в сцене. Без адресата реплика уходит в воздух — и это
 // худший исход, потому что игрок не понимает, сработало ли что-нибудь.
 func (s *Session) addressee(in *core.Intent, hint string) {
-	if in.Args.Target != "" {
-		return
-	}
-	if def, ok := core.Verbs[in.Verb]; !ok || def.Class != core.ClassNone {
+	if in.Args.Target != "" || !utterance(in.Verb) {
 		return
 	}
 	npcs := s.npcsHere()
@@ -478,12 +475,26 @@ func (s *Session) addressee(in *core.Intent, hint string) {
 // needsAddressee сообщает, что сказанное некому услышать. Тогда надо спросить,
 // а не промолчать.
 func (s *Session) needsAddressee(in core.Intent) bool {
-	if in.Args.Target != "" || in.Args.Text == "" {
+	if in.Args.Target != "" || in.Args.Text == "" || !utterance(in.Verb) {
 		return false
 	}
-	def, ok := core.Verbs[in.Verb]
-	return ok && def.Class == core.ClassNone && len(s.npcsHere()) > 0
+	return len(s.npcsHere()) > 0
 }
+
+// utterance — несёт ли ход слова игрока КОМУ-ТО. Раньше здесь стоял класс
+// ClassNone, и это было неверно: в него входит look, а осмотреться — не
+// обращение.
+//
+// Признаком речи нельзя считать и непустой Args.Text: переводчик заполняет его
+// у любого глагола, потому что слова игрока нужны актёру и при осмотре, и при
+// вопросе. Живой прогон под -chat получал на «Осмотреться» вопрос «к кому ты
+// обращаешься?» — и ход при этом придерживался, то есть осмотр не происходил
+// вовсе.
+//
+// Набор закрыт и мал сознательно. emote сюда не входит: жест показывают, а не
+// произносят, и подставлять ему единственного присутствующего — отдельное
+// решение, которого этот список не принимает.
+func utterance(v core.Verb) bool { return v == "say" }
 
 func (s *Session) npcsHere() []naming.Candidate {
 	var out []naming.Candidate

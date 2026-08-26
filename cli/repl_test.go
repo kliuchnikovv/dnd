@@ -819,3 +819,75 @@ func TestUnansweredWhomIsDroppedNotHeldForever(t *testing.T) {
 		t.Error("отпущенная реплика уехала в движок вместе с другой командой")
 	}
 }
+
+// addressGame — «Гавань» на старте: на пристани ДВА человека. Один
+// подставляется автоматически, и на одном NPC баг адресата не виден.
+func addressGame(t *testing.T) *core.Game {
+	t.Helper()
+	cfg, err := cases.Load("../cases/harbour/case.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Rules = threshold.New()
+	cfg.Dice = dice.NewSource(1).Stream("resolve")
+	return core.NewGame(*cfg)
+}
+
+// Осмотреться — не обращение. Живой прогон под -chat получал на «Осмотреться»
+// вопрос «к кому ты обращаешься?», и ход при этом придерживался: осмотр не
+// происходил вовсе.
+//
+// Причина была в двух подменах разом. Признаком обращения считался класс
+// ClassNone, а в него входит look; вторым признаком — непустой Args.Text,
+// который переводчик заполняет у ЛЮБОГО глагола, потому что слова игрока нужны
+// актёру и при осмотре тоже.
+func TestLookIsNotAnAddress(t *testing.T) {
+	g := addressGame(t)
+	fc := &fakeChat{intent: &core.Intent{Verb: "look", Args: core.Args{Text: "Осмотреться"}}}
+	out, _ := runChatOn(t, g, fc, "Осмотреться\nquit\n")
+	if strings.Contains(out, "к кому ты обращаешься") {
+		t.Errorf("осмотр спросил адресата:\n%s", out)
+	}
+	if !strings.Contains(out, "Пристань") {
+		t.Errorf("осмотр не состоялся — ход придержан вопросом:\n%s", out)
+	}
+}
+
+// Осмотр не получает адресата и там, где присутствующий один: подставленная
+// цель у безадресного хода уезжает в актёра, и человек отвечает на осмотр.
+func TestLookGetsNoTargetEvenWithOneNPC(t *testing.T) {
+	g := renderGame(t)
+	fc := &fakeChat{intent: &core.Intent{Verb: "look", Args: core.Args{Text: "Осмотреться"}}}
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("Осмотреться\nquit\n"), &out).WithChat(fc)
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	for _, e := range g.DB.CommandLog {
+		if strings.Contains(string(e.Intent), "target") {
+			t.Errorf("осмотру подставлен адресат: %s", e.Intent)
+		}
+	}
+}
+
+// Сказанное по-прежнему требует адресата: правило сузилось до речи, а не
+// отменилось. Молчание игрок читает как поломку.
+func TestSpeechStillAsksWhom(t *testing.T) {
+	g := addressGame(t)
+	fc := &fakeChat{intent: &core.Intent{Verb: "say", Args: core.Args{Text: "добрый день"}}}
+	out, _ := runChatOn(t, g, fc, "«добрый день»\nquit\n")
+	if !strings.Contains(out, "к кому ты обращаешься") {
+		t.Errorf("речь без адресата ушла в пустоту:\n%s", out)
+	}
+}
+
+func runChatOn(t *testing.T, g *core.Game, fc *fakeChat, script string) (string, *core.Game) {
+	t.Helper()
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader(script), &out).
+		WithChat(fc).WithJournal(NewJournal(g.DB, "s-addr", "snap", 1))
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	return out.String(), g
+}
