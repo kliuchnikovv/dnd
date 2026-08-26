@@ -163,3 +163,62 @@ func TestProbeProseNamesNoUnknownFact(t *testing.T) {
 		}
 	}
 }
+
+// В чат-режиме проба идёт тем же маршрутом: сначала авторское, потом
+// повествование. Отдельной ветки у чата быть не должно — два разбора одной
+// фразы разошлись бы молча.
+func TestChatProbeRoutesLikeTheOtherMode(t *testing.T) {
+	g := probeGame(t)
+	fc := &fakeChat{probe: "щупает шею у тела"}
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("щупаю шею у тела\nquit\n"), &out).WithChat(fc)
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	if !g.K.Knows("f_ligature") {
+		t.Errorf("проба чат-режима не доехала до авторского факта:\n%s", out.String())
+	}
+}
+
+// Реплика Мастера пробу не предваряет. Подводка предваряет ДЕЙСТВИЕ, а у пробы
+// отклик и есть весь её текст: показать оба значило бы описать одно событие
+// дважды, причём вторым — тем же голосом.
+func TestChatReplyDoesNotPrecedeAProbe(t *testing.T) {
+	g := probeGame(t)
+	fc := &fakeChat{probe: "ковыряет ворох сетей", reply: "Вы тянетесь к сетям."}
+	var out bytes.Buffer
+	s := NewSession(g, strings.NewReader("ковыряю сети\nquit\n"), &out).WithChat(fc)
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	if strings.Contains(out.String(), "Вы тянетесь к сетям") {
+		t.Errorf("реплика предварила пробу — одно событие описано дважды:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), probeFallback) {
+		t.Errorf("отклика на пробу нет:\n%s", out.String())
+	}
+}
+
+// Проба чат-режима оставляет строку аудита: модель по недоверенному вводу
+// высказалась, и инъекция живёт ровно здесь (ADR-0002, ADR-0003 T4).
+func TestChatProbeLeavesAnAuditTrail(t *testing.T) {
+	g := probeGame(t)
+	fc := &fakeChat{probe: "ковыряет ворох сетей"}
+	s := NewSession(g, strings.NewReader("ковыряю сети\nquit\n"), &bytes.Buffer{}).
+		WithChat(fc).WithJournal(NewJournal(g.DB, "s-chat-probe", "snap", 1))
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	var found bool
+	for _, e := range g.DB.Audit {
+		if strings.Contains(e.LLMProposal, "ковыряет ворох сетей") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("проба чат-режима не оставила следа в аудите: %+v", g.DB.Audit)
+	}
+	if len(g.DB.CommandLog) != 0 {
+		t.Errorf("чистая проба попала в журнал команд: %+v", g.DB.CommandLog)
+	}
+}
