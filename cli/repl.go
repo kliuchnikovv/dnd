@@ -168,14 +168,22 @@ func (s *Session) noteProposal(role llm.Role, p llmProposal) {
 	s.llmRole, s.llmProposal = string(role), p.encode()
 }
 
+// emitEvent — единственная точка, где событие уходит наружу. Одна воронка, а
+// не пять вызовов приёмника: запись игры обязана видеть ВСЁ, что видел игрок, а
+// вывод, испущенный мимо неё, выпадает из записи молча — и заметить это можно
+// только по тому, чего в записи нет.
+func (s *Session) emitEvent(e Event) {
+	s.sink.Emit(e)
+}
+
 // emit — форматированное событие. Обёртка нужна, чтобы места печати меняли
 // только вид события, а не способ вывода.
 func (s *Session) emit(kind EventKind, format string, args ...any) {
-	s.sink.Emit(Event{Kind: kind, Text: fmt.Sprintf(format, args...)})
+	s.emitEvent(Event{Kind: kind, Text: fmt.Sprintf(format, args...)})
 }
 
 func (s *Session) emitText(kind EventKind, text string) {
-	s.sink.Emit(Event{Kind: kind, Text: text})
+	s.emitEvent(Event{Kind: kind, Text: text})
 }
 
 // emitSpeech — прямая речь с автором. Точек, где кто-то говорит, несколько
@@ -183,7 +191,7 @@ func (s *Session) emitText(kind EventKind, text string) {
 // формат события, иначе полноэкранный режим научится узнавать говорящего
 // по месту вызова, а не по данным.
 func (s *Session) emitSpeech(speaker, format string, args ...any) {
-	s.sink.Emit(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
+	s.emitEvent(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
 }
 
 // WithRefusalVoice отдаёт отказ мира Мастеру. Формулировку решает не он:
@@ -216,7 +224,7 @@ func (s *Session) emitTurn(in core.Intent, res core.TurnResult) {
 func (s *Session) emitRefusal(refusal string) {
 	if s.refuse != nil {
 		if said := strings.TrimSpace(s.refuse(refusal)); said != "" {
-			s.sink.Emit(Event{Kind: EventRefusal, Speaker: MasterName,
+			s.emitEvent(Event{Kind: EventRefusal, Speaker: MasterName,
 				Text: said + "\n" + turnNotSpent})
 			return
 		}
@@ -498,7 +506,7 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	// то, что гвард обязан рубить как выдумку персонажа.
 	if s.hunch {
 		if line, ok := s.Game.Hint(); ok {
-			s.sink.Emit(Event{Kind: EventHunch, Speaker: HunchName,
+			s.emitEvent(Event{Kind: EventHunch, Speaker: HunchName,
 				Text: HunchMark + line + "\n"})
 		}
 	}
