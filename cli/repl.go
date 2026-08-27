@@ -93,6 +93,8 @@ type Session struct {
 	// проводка флага живёт в cmd/dnd, а игра без журнала обязана работать
 	// как работала.
 	journal *Journal
+	// log — запись игры: читаемый транскрипт прогона. nil означает «не пишем».
+	log *GameLog
 	// accusing — открытый набор слотов обвинения. Не nil, пока сессия ждёт
 	// очередной токен: полноэкранный режим отдаёт ввод по одной строке и
 	// не может сам дождаться следующей внутри одного хода.
@@ -113,6 +115,16 @@ func (s *Session) WithSink(k Sink) *Session {
 // отмечается применённой после. Без него сессия не пишет ничего.
 func (s *Session) WithJournal(j *Journal) *Session {
 	s.journal = j
+	return s
+}
+
+// WithLog включает запись игры. Без неё сессия не пишет ничего, и вывод на
+// экран от неё не меняется ни на байт.
+func (s *Session) WithLog(l *GameLog) *Session {
+	s.log = l
+	if l != nil {
+		l.note = s.noteOnce
+	}
 	return s
 }
 
@@ -174,6 +186,7 @@ func (s *Session) noteProposal(role llm.Role, p llmProposal) {
 // только по тому, чего в записи нет.
 func (s *Session) emitEvent(e Event) {
 	s.sink.Emit(e)
+	s.log.event(e)
 }
 
 // emit — форматированное событие. Обёртка нужна, чтобы места печати меняли
@@ -363,6 +376,8 @@ func (s *Session) Feed(line string) bool {
 	// через модель нельзя, второй прогон даст другой интент. Реплей берёт
 	// интент из журнала команд, разбор инцидента — эту строку.
 	s.raw, s.llmRole, s.llmProposal, s.auditSeq = line, "", "", 0
+	s.log.turn(s.turn)
+	s.log.input(line)
 	if s.awaitingAccusation() {
 		s.feedAccusation(line)
 		return s.ended()
