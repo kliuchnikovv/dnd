@@ -120,6 +120,78 @@ func TestAffordancesNameOnlyWhatThePlayerSees(t *testing.T) {
 	}
 }
 
+// Меню не врёт: ни один вариант, включая реплики, ядро не отклоняет.
+//
+// Оговорка, без которой тест был бы ложно-зелёным: Check покрывает не все
+// отказы. Отказы предъявления живут в Apply — present проверяет предмет и
+// адресата уже внутри хода. Исполнить ход здесь нельзя, он сбил бы прогон,
+// поэтому его условия проверяются напрямую.
+func TestNoAffordanceIsRefused(t *testing.T) {
+	for _, path := range affordanceCases {
+		g := affordanceGame(t, path)
+		r := rand.New(rand.NewSource(3))
+		for turn := 0; turn < 100; turn++ {
+			for _, npc := range append(npcsAt(g), "") {
+				for _, a := range g.Affordances(npc) {
+					if res := g.Check(a.Intent); res.Refused {
+						t.Fatalf("%s: вариант %s → %q отклонён: %s",
+							path, a.Intent.Verb, a.Intent.Args.Target, res.Refusal)
+					}
+					if a.Intent.Verb != "present" {
+						continue
+					}
+					if !g.Carries(store.ItemID(a.Intent.Args.Item)) {
+						t.Fatalf("%s: предложено предъявить ненесомое %q",
+							path, a.Intent.Args.Item)
+					}
+					if a.Intent.Args.Target == "" {
+						t.Fatalf("%s: предъявление предложено без адресата", path)
+					}
+				}
+			}
+			playRandomly(g, r, 1)
+		}
+	}
+}
+
+// Реплика называет только то, что игрок и так видит либо знает.
+func TestRepliesNameOnlyWhatThePlayerKnows(t *testing.T) {
+	for _, path := range affordanceCases {
+		g := affordanceGame(t, path)
+		r := rand.New(rand.NewSource(5))
+		for turn := 0; turn < 100; turn++ {
+			visible := readScopeOf(g)
+			for _, npc := range npcsAt(g) {
+				for _, a := range g.Affordances(npc) {
+					if !a.Reply {
+						continue
+					}
+					for _, name := range []string{
+						string(a.Intent.Args.Target), string(a.Intent.Args.Topic),
+						a.Intent.Args.Item,
+					} {
+						if name != "" && !visible[name] {
+							t.Fatalf("%s: реплика назвала %q, которого игрок не видит",
+								path, name)
+						}
+					}
+				}
+			}
+			playRandomly(g, r, 1)
+		}
+	}
+}
+
+func npcsAt(g *core.Game) []store.EntityID {
+	var out []store.EntityID
+	for _, e := range g.DB.EntitiesAt(g.Node) {
+		if e.Kind == store.EntityNPC {
+			out = append(out, e.ID)
+		}
+	}
+	return out
+}
+
 // readScopeOf — всё, что игрок видит своими глазами: read scope и ничего кроме.
 // Граф держателей, факты дела и правда сюда не входят — их тут физически нет.
 func readScopeOf(g *core.Game) map[string]bool {
