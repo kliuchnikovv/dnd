@@ -75,6 +75,9 @@ func (m model) optionsView() string {
 		if len(words) == len(m.offered) {
 			label = words[i]
 		}
+		if a.Reply {
+			label = cli.Quoted(label)
+		}
 		line := "  " + strconv.Itoa(i+1) + ". " + label
 		if i == m.selected {
 			b.WriteString(sel.Render(line) + "\n")
@@ -106,10 +109,14 @@ func (m model) chosenEcho() string {
 		return ""
 	}
 	words := m.session.OfferedWords()
+	label := cli.AffordanceLabel(m.session.Game, m.offered[m.selected])
 	if len(words) == len(m.offered) {
-		return words[m.selected]
+		label = words[m.selected]
 	}
-	return cli.AffordanceLabel(m.session.Game, m.offered[m.selected])
+	if m.offered[m.selected].Reply {
+		label = cli.Quoted(label)
+	}
+	return label
 }
 
 // takeOptions забирает набор из сессии. Событие говорит «набор сменился», а

@@ -58,10 +58,28 @@ func (r Render) Affordances(g *core.Game, list []core.Affordance, words []string
 		if words != nil {
 			label = words[i]
 		}
+		if a.Reply {
+			label = Quoted(label)
+		}
 		fmt.Fprintf(&b, "  %d. %s\n", i+1, label)
 	}
 	b.WriteString(affordancePrompt)
 	return b.String()
+}
+
+// Quoted берёт реплику в кавычки. Уже закавыченную не удваивает: Мастера
+// просили писать без кавычек, но просьба — не гарантия, а две пары подряд
+// увидит игрок, а не тест.
+//
+// Экспортирован по той же причине, что и AffordanceLabel: полноэкранный режим
+// рисует набор своей панелью, и он обязан быть тем же выводом, а не вторым его
+// форматом — значит, кавычки ставятся здесь же, одной функцией на оба приёмника.
+func Quoted(line string) string {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "«") && strings.HasSuffix(line, "»") {
+		return line
+	}
+	return "«" + line + "»"
 }
 
 // AffordanceLabel — вариант словами. Имена берутся из тех же таблиц, что у

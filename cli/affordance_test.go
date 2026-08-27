@@ -40,14 +40,49 @@ func TestAffordanceListOffersFreeText(t *testing.T) {
 	}
 }
 
-// Ни одна строка списка не начинается с тире: такая строка разбирается как
-// прямая речь, и перепечатанный игроком вариант ушёл бы в say.
-func TestAffordanceLinesAreNotMistakenForSpeech(t *testing.T) {
+// Ни одна строка-ДЕЙСТВИЕ не начинается с тире и не берётся в кавычки: такая
+// строка разбирается как прямая речь, и перепечатанный игроком вариант ушёл бы
+// в say вместо осмотра.
+//
+// К репликам это не относится намеренно. Для реплики слова И ЕСТЬ то, что
+// игрок сказал бы, и фраза, ушедшая в say, — связный исход, а не поломка.
+func TestActionLinesAreNotMistakenForSpeech(t *testing.T) {
 	g := renderGame(t)
-	for _, line := range strings.Split(Render{}.Affordances(g, g.Affordances(""), nil), "\n") {
+	list := g.Affordances("")
+	for i, line := range strings.Split(Render{}.Affordances(g, list, nil), "\n") {
 		if _, _, ok := Speech(line); ok {
-			t.Errorf("строка списка разбирается как речь: %q", line)
+			t.Errorf("строка %d разбирается как речь: %q", i, line)
 		}
+	}
+}
+
+// Реплики печатаются в кавычках, действия — нет: игрок должен видеть, где он
+// говорит, а где делает.
+func TestRepliesAreQuotedAndActionsAreNot(t *testing.T) {
+	g := renderGame(t)
+	list := []core.Affordance{
+		{Intent: core.Intent{Verb: "ask_about", Args: core.Args{Target: "e_toke"}}, Reply: true},
+		{Intent: core.Intent{Verb: "examine", Args: core.Args{Target: "p_crates"}}},
+	}
+	out := Render{}.Affordances(g, list, []string{"Как тут живут?", "осмотреть ящики"})
+	if !strings.Contains(out, "«Как тут живут?»") {
+		t.Errorf("реплика без кавычек:\n%s", out)
+	}
+	if strings.Contains(out, "«осмотреть ящики»") {
+		t.Errorf("действие взято в кавычки:\n%s", out)
+	}
+}
+
+// Кавычки ставит презентация, а не Мастер: две пары кавычек подряд — это
+// сломанная строка, и увидит её игрок, а не тест Мастера.
+func TestQuotesAreNotDoubled(t *testing.T) {
+	g := renderGame(t)
+	list := []core.Affordance{
+		{Intent: core.Intent{Verb: "ask_about", Args: core.Args{Target: "e_toke"}}, Reply: true},
+	}
+	out := Render{}.Affordances(g, list, []string{"«Как тут живут?»"})
+	if strings.Contains(out, "««") {
+		t.Errorf("кавычки удвоены:\n%s", out)
 	}
 }
 
