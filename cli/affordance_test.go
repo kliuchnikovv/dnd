@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -15,7 +17,7 @@ import (
 // где сцена печатает «Токе».
 func TestAffordancesReadAsWords(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Affordances(g, g.Affordances(""))
+	out := Render{}.Affordances(g, g.Affordances(""), nil)
 	if strings.Contains(out, "e_toke") || strings.Contains(out, "p_crates") {
 		t.Errorf("в списке идентификаторы вместо имён:\n%s", out)
 	}
@@ -31,7 +33,7 @@ func TestAffordancesReadAsWords(t *testing.T) {
 // читается как закрытое меню — ровно тот тупик, из которого ветка выбиралась.
 func TestAffordanceListOffersFreeText(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Affordances(g, g.Affordances(""))
+	out := Render{}.Affordances(g, g.Affordances(""), nil)
 	if !strings.Contains(out, "своими словами") {
 		t.Errorf("список выглядит закрытым меню:\n%s", out)
 	}
@@ -41,7 +43,7 @@ func TestAffordanceListOffersFreeText(t *testing.T) {
 // прямая речь, и перепечатанный игроком вариант ушёл бы в say.
 func TestAffordanceLinesAreNotMistakenForSpeech(t *testing.T) {
 	g := renderGame(t)
-	for _, line := range strings.Split(Render{}.Affordances(g, g.Affordances("")), "\n") {
+	for _, line := range strings.Split(Render{}.Affordances(g, g.Affordances(""), nil), "\n") {
 		if _, _, ok := Speech(line); ok {
 			t.Errorf("строка списка разбирается как речь: %q", line)
 		}
@@ -52,7 +54,7 @@ func TestAffordanceLinesAreNotMistakenForSpeech(t *testing.T) {
 // есть в данных дела: напечатать его значило бы разметить авторские цели.
 func TestCheckTagCarriesClassNotThreshold(t *testing.T) {
 	g := renderGame(t)
-	out := Render{}.Affordances(g, g.Affordances(""))
+	out := Render{}.Affordances(g, g.Affordances(""), nil)
 	for _, n := range []string{"10", "14", "18"} {
 		if strings.Contains(out, n) {
 			t.Errorf("в списке порог %s:\n%s", n, out)
@@ -65,7 +67,7 @@ func TestCheckTagCarriesClassNotThreshold(t *testing.T) {
 
 // Пустой набор печатается пустой строкой, а не заголовком без списка.
 func TestEmptyAffordancesPrintNothing(t *testing.T) {
-	if out := (Render{}).Affordances(renderGame(t), nil); out != "" {
+	if out := (Render{}).Affordances(renderGame(t), nil, nil); out != "" {
 		t.Errorf("пустой набор напечатал %q", out)
 	}
 }
@@ -259,3 +261,98 @@ func TestSingleLabelIsAvailableToRenderers(t *testing.T) {
 type recordingSink struct{ events []Event }
 
 func (r *recordingSink) Emit(e Event) { r.events = append(r.events, e) }
+
+type fakeOptionVoicer struct {
+	lines []string
+	err   error
+	calls int
+	seen  [][]Option
+}
+
+func (f *fakeOptionVoicer) VoiceOptions(_ context.Context, opts []Option) ([]string, error) {
+	f.calls++
+	f.seen = append(f.seen, opts)
+	return f.lines, f.err
+}
+
+// Слова Мастера заменяют кодовые. Без них список читается как перечень команд,
+// а не как разговор.
+func TestVoicedWordsReplaceTheCodeOnes(t *testing.T) {
+	g := renderGame(t)
+	// renderGame даёт ровно два варианта (заговорить, осмотреть) — свой набор
+	// на этот фикстур, а не выдумка теста: fakeOptionVoicer обязан вернуть
+	// столько же строк, иначе применится правило «всё или ничего».
+	v := &fakeOptionVoicer{lines: []string{"раз", "два"}}
+	var out strings.Builder
+	s := NewSession(g, strings.NewReader("quit\n"), &out).
+		WithAffordances().WithOptionVoicer(v)
+	s.Start()
+	if got := out.String(); !strings.Contains(got, "раз") {
+		t.Errorf("слова Мастера не напечатаны:\n%s", got)
+	}
+}
+
+// Число не совпало — печатаются кодовые слова, все до одной. Приложить что
+// пришло к первым вариантам значило бы подписать строку под чужой интент.
+func TestMismatchedVoicingFallsBackWholesale(t *testing.T) {
+	g := renderGame(t)
+	// Набор renderGame даёт два варианта — здесь строка одна, то есть заведомо
+	// мимо.
+	v := &fakeOptionVoicer{lines: []string{"раз"}}
+	var out strings.Builder
+	s := NewSession(g, strings.NewReader("quit\n"), &out).
+		WithAffordances().WithOptionVoicer(v)
+	s.Start()
+	got := out.String()
+	if strings.Contains(got, "раз") {
+		t.Errorf("частичная озвучка применена:\n%s", got)
+	}
+	if !strings.Contains(got, "заговорить") {
+		t.Errorf("откат на кодовые слова не сработал:\n%s", got)
+	}
+}
+
+// Сбой озвучки ход не рушит: надстройка не должна быть условием работы.
+func TestVoicingFailureKeepsTheGameRunning(t *testing.T) {
+	g := renderGame(t)
+	v := &fakeOptionVoicer{err: errors.New("шлюз закрыт")}
+	var out strings.Builder
+	s := NewSession(g, strings.NewReader("quit\n"), &out).
+		WithAffordances().WithOptionVoicer(v)
+	s.Start()
+	if !strings.Contains(out.String(), "заговорить") {
+		t.Errorf("сбой озвучки съел список:\n%s", out.String())
+	}
+}
+
+// Набор часто повторяется от хода к ходу, и повтор платить не должен.
+func TestUnchangedSetIsNotVoicedTwice(t *testing.T) {
+	g := renderGame(t)
+	v := &fakeOptionVoicer{lines: []string{"раз", "два"}}
+	s := NewSession(g, strings.NewReader("survey\nsurvey\nquit\n"), &strings.Builder{}).
+		WithAffordances().WithOptionVoicer(v)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if v.calls != 1 {
+		t.Errorf("вызовов озвучки %d на неизменившийся набор", v.calls)
+	}
+}
+
+// Мастеру видно, где реплика: без этого он напишет действие от первого лица
+// или реплику в неопределённой форме.
+func TestVoicerIsToldWhichOptionsAreReplies(t *testing.T) {
+	g := renderGame(t)
+	v := &fakeOptionVoicer{lines: []string{"раз", "два"}}
+	s := NewSession(g, strings.NewReader("quit\n"), &strings.Builder{}).
+		WithAffordances().WithOptionVoicer(v)
+	s.Start()
+	if len(v.seen) == 0 {
+		t.Fatal("озвучка не вызвана")
+	}
+	for i, o := range v.seen[0] {
+		if o.Text == "" {
+			t.Errorf("вариант %d ушёл на озвучку без кодовых слов", i)
+		}
+	}
+}

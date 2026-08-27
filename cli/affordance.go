@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -35,17 +36,29 @@ const affordancePrompt = "  или напиши своими словами\n"
 
 // Affordances печатает набор вариантов нумерованным списком.
 //
+// words — слова Мастера; пусто либо не той длины означает кодовые. Длина
+// сверяется и здесь, хотя её уже сверила сессия: печать — последнее место,
+// где строка может съехать на соседний интент, и второй раз это дешевле, чем
+// один раз не проверить.
+//
 // Номера — способ ввода, а не разметка: под номером и под словами игрока лежит
 // один и тот же путь применения. Ведущего тире здесь нет намеренно — строка,
 // начинающаяся с тире, разбирается как прямая речь.
-func (r Render) Affordances(g *core.Game, list []core.Affordance) string {
+func (r Render) Affordances(g *core.Game, list []core.Affordance, words []string) string {
 	if len(list) == 0 {
 		return ""
+	}
+	if len(words) != len(list) {
+		words = nil
 	}
 	var b strings.Builder
 	b.WriteString("Что можно:\n")
 	for i, a := range list {
-		fmt.Fprintf(&b, "  %d. %s\n", i+1, AffordanceLabel(g, a))
+		label := AffordanceLabel(g, a)
+		if words != nil {
+			label = words[i]
+		}
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, label)
 	}
 	b.WriteString(affordancePrompt)
 	return b.String()
@@ -116,4 +129,37 @@ func itemName(g *core.Game, id string) string {
 		return item.Name
 	}
 	return id
+}
+
+// Option — вариант, которому нужны слова. Копия формы, а не структура master:
+// cli не импортирует надстройки, иначе направление слоёв развернулось бы.
+type Option struct {
+	Text  string
+	Reply bool
+}
+
+// OptionVoicer — необязательные слова для набора. Без него печатаются кодовые:
+// игра без моделей обязана работать как работала.
+type OptionVoicer interface {
+	VoiceOptions(ctx context.Context, opts []Option) ([]string, error)
+}
+
+// optionsFor — набор в форме заказа на слова.
+func optionsFor(g *core.Game, list []core.Affordance) []Option {
+	out := make([]Option, 0, len(list))
+	for _, a := range list {
+		out = append(out, Option{Text: AffordanceLabel(g, a), Reply: a.Reply})
+	}
+	return out
+}
+
+// optionsKey — отпечаток набора. Слова просятся только когда набор сменился:
+// он часто повторяется от хода к ходу, и повтор платить не должен.
+func optionsKey(list []core.Affordance) string {
+	var b strings.Builder
+	for _, a := range list {
+		fmt.Fprintf(&b, "%s|%s|%s|%s|%s;", a.Intent.Verb, a.Intent.Args.Target,
+			a.Intent.Args.Topic, a.Intent.Args.Node, a.Intent.Args.Item)
+	}
+	return b.String()
 }

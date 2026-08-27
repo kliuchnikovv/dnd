@@ -238,7 +238,7 @@ func main() {
 			// отвергнутая деталь мира не оставляет следа нигде.
 			OnPropose: session.AuditMutation})
 		voice := &narrator{master: gm, game: game, chat: *chat}
-		session.WithNarrator(voice).WithRefuser(voice)
+		session.WithNarrator(voice).WithRefuser(voice).WithOptionVoicer(voice)
 		defer func() { reportMetrics(gw, parser, session) }()
 	}
 	noDebugReason = noDebugReasonFor(usesModels(*nl, *chat), *debugLLM, debugRing)
@@ -517,6 +517,18 @@ func (n *narrator) Refuse(ctx context.Context, refusal string) (string, error) {
 // конторе гильдии.
 func sceneFor(g *core.Game) []string {
 	return []string{"Место: " + g.DB.Locations[g.Node].Name}
+}
+
+// VoiceOptions называет варианты словами. Тот же Мастер, что ведёт прозу:
+// делить список и сцену между двумя голосами значило бы говорить с игроком
+// двумя разными людьми.
+func (n *narrator) VoiceOptions(ctx context.Context, opts []cli.Option) ([]string, error) {
+	out := make([]master.Option, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, master.Option{Text: o.Text, Reply: o.Reply})
+	}
+	return n.master.Options(ctx,
+		master.World{Setting: n.game.Setting, Scene: sceneFor(n.game)}, out, llm.Request{})
 }
 
 // reportMetrics печатает то, без чего слой моделей нельзя вести: расход,

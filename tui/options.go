@@ -67,10 +67,15 @@ func (m model) optionsView() string {
 	sel := lipgloss.NewStyle().Bold(true).Reverse(true)
 	faint := lipgloss.NewStyle().Faint(true)
 
+	words := m.session.OfferedWords()
 	var b strings.Builder
 	b.WriteString(faint.Render("Что можно:") + "\n")
 	for i, a := range m.offered {
-		line := "  " + strconv.Itoa(i+1) + ". " + cli.AffordanceLabel(m.session.Game, a)
+		label := cli.AffordanceLabel(m.session.Game, a)
+		if len(words) == len(m.offered) {
+			label = words[i]
+		}
+		line := "  " + strconv.Itoa(i+1) + ". " + label
 		if i == m.selected {
 			b.WriteString(sel.Render(line) + "\n")
 			continue
@@ -99,6 +104,10 @@ func (m model) chosenLine() (string, bool) {
 func (m model) chosenEcho() string {
 	if m.selected < 0 || m.selected >= len(m.offered) || m.session == nil {
 		return ""
+	}
+	words := m.session.OfferedWords()
+	if len(words) == len(m.offered) {
+		return words[m.selected]
 	}
 	return cli.AffordanceLabel(m.session.Game, m.offered[m.selected])
 }

@@ -65,6 +65,12 @@ type Session struct {
 	// нему, а не пересчитывается: между печатью и вводом состояние не менялось,
 	// но пересчёт сделал бы это допущение невидимым.
 	offered []core.Affordance
+	// optionVoicer — необязательные слова Мастера для набора.
+	optionVoicer OptionVoicer
+	// offeredWords — слова показанного набора; пусто означает кодовые.
+	// voicedKey — отпечаток набора, для которого слова уже спрошены.
+	offeredWords []string
+	voicedKey    string
 	// chatShown, chatEaten — сколько реплик Мастера игрок увидел и сколько
 	// съел отказ ядра. Эксперимент надо мерить: высокая доля съеденных значит,
 	// что модель уверенно отвечает на ходы, которых мир не допускает, — и
@@ -233,6 +239,19 @@ func (s *Session) WithAffordances() *Session {
 	return s
 }
 
+// WithOptionVoicer отдаёт слова набора Мастеру. Сбой и потолок расхода
+// откатывают на кодовые слова: список без слов хуже кодового списка, а
+// список без модели обязан работать как работал.
+func (s *Session) WithOptionVoicer(v OptionVoicer) *Session {
+	s.optionVoicer = v
+	return s
+}
+
+// OfferedWords — слова показанного набора. Пусто означает, что печатаются
+// кодовые: полноэкранная панель обязана видеть ровно то, что напечатал
+// построчный режим.
+func (s *Session) OfferedWords() []string { return s.offeredWords }
+
 func (s *Session) ChatStats() (shown, eaten int) { return s.chatShown, s.chatEaten }
 
 // Start печатает стартовую сцену. Отдельно от Run, потому что драйверов два:
@@ -261,9 +280,39 @@ func (s *Session) offerAffordances() {
 		return
 	}
 	s.offered = s.Game.Affordances(s.spokenTo)
-	if text := s.r.Affordances(s.Game, s.offered); text != "" {
+	s.offeredWords = s.voiceOptions(s.offered)
+	if text := s.r.Affordances(s.Game, s.offered, s.offeredWords); text != "" {
 		s.emitText(EventOptions, text)
 	}
+}
+
+// voiceOptions просит слова у Мастера. Пустой ответ означает кодовые слова —
+// и это законный исход: сбой надстройки не рушит ход.
+//
+// Слова применяются целиком либо не применяются вовсе. Частичное применение
+// подписало бы строку под соседний интент, и игрок, выбравший «поблагодарить»,
+// угрожал бы.
+func (s *Session) voiceOptions(list []core.Affordance) []string {
+	if s.optionVoicer == nil || len(list) == 0 {
+		return nil
+	}
+	key := optionsKey(list)
+	if key == s.voicedKey {
+		return s.offeredWords
+	}
+	s.voicedKey = key
+	words, err := s.optionVoicer.VoiceOptions(s.turnContext(), optionsFor(s.Game, list))
+	if err != nil {
+		s.noteOnce("Мастер не назвал варианты: " + err.Error())
+		return nil
+	}
+	if len(words) != len(list) {
+		return nil
+	}
+	// Слова — вывод модели по недоверенному вводу, и отвечают они за себя
+	// отдельно от разбора: своя строка аудита при той же команде.
+	s.noteProposal(llm.RoleOptions, llmProposal{Options: words})
+	return words
 }
 
 // Offered — набор, показанный игроку последним.
