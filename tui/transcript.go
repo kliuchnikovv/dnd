@@ -72,7 +72,7 @@ func (t *Transcript) Render(width int) string {
 	var b strings.Builder
 	prev := ""
 	for _, e := range t.events {
-		who := speakerOf(e)
+		who := cli.SpeakerOf(e)
 		if who != "" && who != prev {
 			if b.Len() > 0 {
 				b.WriteString(separator(width) + "\n")
@@ -87,32 +87,6 @@ func (t *Transcript) Render(width int) string {
 		prev = who
 	}
 	return b.String()
-}
-
-// speakerOf — кто автор события. Пусто у служебного вывода: подписывать
-// список команд чьим-то именем значит врать об авторстве.
-func speakerOf(e cli.Event) string {
-	switch e.Kind {
-	case cli.EventSpeech:
-		return e.Speaker
-	case cli.EventProse, cli.EventScene:
-		return MasterName
-	case cli.EventHunch:
-		// Автор у чутья есть (в Speaker), но метка блока не ставится: пометка
-		// уже стоит в самой строке, потому что построчный режим меток автора
-		// не печатает и там мысль иначе слилась бы с прозой. Вторая метка
-		// сверху была бы тем же удвоением имени, каким страдала подсказка
-		// напарника.
-		return ""
-	case cli.EventRefusal:
-		// Отказ мира произносит Мастер и подписан им в данных. Служебный
-		// отказ — «не понял», «переводчик недоступен» — автора не несёт: это
-		// про инструмент, а не про мир, и подписывать его Мастером значит
-		// врать игроку о причине.
-		return e.Speaker
-	default:
-		return ""
-	}
 }
 
 func separator(width int) string {
