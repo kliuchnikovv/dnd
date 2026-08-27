@@ -42,6 +42,8 @@ func main() {
 	journalPath := flag.String("journal", "",
 		"писать журнал действий сессии в файл: команды до обработки, отметки о "+
 			"применении, аудит недоверенного ввода")
+	logPath := flag.String("log", "",
+		"файл записи игры: читаемый транскрипт прогона — что игрок писал и что ему отвечали")
 	replayPath := flag.String("replay", "",
 		"прогнать записанный журнал вместо ввода игрока; -case и -seed обязаны "+
 			"совпадать с теми, на которых он снят")
@@ -139,6 +141,16 @@ func main() {
 		}
 		defer f.Close()
 		journal.WithWriter(f)
+	}
+	if *logPath != "" {
+		f, err := os.Create(*logPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		session.WithLog(cli.NewGameLog(f, fmt.Sprintf("== %s · seed %d ==",
+			filepath.Base(filepath.Dir(*casePath)), *seed)))
 	}
 	if *replayPath != "" {
 		if err := replaySession(session, *replayPath); err != nil {
