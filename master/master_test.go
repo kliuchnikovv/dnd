@@ -13,7 +13,9 @@ func masterWith(t *testing.T, reply string) (*Master, *llm.Fake) {
 	t.Helper()
 	f := llm.NewFake("fake", true).ReplyWith(func(llm.Request) string { return reply })
 	gw := llm.NewGateway(
-		llm.NewRouter().Route(llm.RoleNarrator, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewRouter().
+			Route(llm.RoleNarrator, llm.Target{Provider: f, Model: "claude-haiku-4-5"}).
+			Route(llm.RoleOptions, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
 		llm.NewLedger(llm.Caps{}))
 	return New(gw), f
 }
