@@ -341,3 +341,38 @@ func offers(list []Affordance, v Verb) bool {
 	}
 	return false
 }
+
+// Меню не врёт и в разговоре: каждая реплика доходит до ядра и не отклоняется.
+//
+// Проверяется ИСПОЛНЕНИЕМ, а не Check, и это не перестраховка. Отказы
+// предъявления живут внутри Apply — present проверяет предмет и адресата уже
+// в ходе, — поэтому тест на одном Check был бы зелёным ровно там, где меню
+// врёт. Каждый вариант исполняется на своей свежей игре: применённый ход
+// изменил бы состояние и сбил следующий.
+func TestEveryReplyIsAcceptedWhenApplied(t *testing.T) {
+	for i, a := range affordGame().Affordances("e_bern") {
+		fresh := affordGame()
+		if res := fresh.Apply(a.Intent); res.Refused {
+			t.Errorf("вариант %d (%s → %q) отклонён ядром: %s",
+				i+1, a.Intent.Verb, a.Intent.Args.Target, res.Refusal)
+		}
+	}
+}
+
+// Реплик ровно три, и четвёртой строкой стоит выход. Комментарий к replies
+// утверждает именно это — тест держит утверждение, чтобы оно не разошлось с
+// кодом молча.
+func TestConversationAlwaysGivesThreeRepliesAndTheExit(t *testing.T) {
+	got := affordGame().Affordances("e_bern")
+	if len(got) != 4 {
+		t.Fatalf("вариантов %d, ожидались три реплики и выход: %+v", len(got), got)
+	}
+	for i, a := range got[:3] {
+		if !a.Reply {
+			t.Errorf("вариант %d не реплика: %+v", i+1, a.Intent)
+		}
+	}
+	if got[3].Reply {
+		t.Error("четвёртой строкой стоит реплика, а не выход")
+	}
+}
