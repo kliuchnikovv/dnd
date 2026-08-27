@@ -321,15 +321,19 @@ func (s *Session) voiceOptions(list []core.Affordance) []string {
 	if key == s.voicedKey {
 		return s.offeredWords
 	}
-	s.voicedKey = key
 	words, err := s.optionVoicer.VoiceOptions(s.turnContext(), optionsFor(s.Game, list))
 	if err != nil {
+		// Ключ запоминаем только при успехе: пометь его раньше — и разовый
+		// сбой сети или потолок расхода залип бы до смены набора, а набор в
+		// разговоре меняется редко. Следующий ход с тем же набором обязан
+		// попытаться снова.
 		s.noteOnce("Мастер не назвал варианты: " + err.Error())
 		return nil
 	}
 	if len(words) != len(list) {
 		return nil
 	}
+	s.voicedKey = key
 	// Слова — вывод модели по недоверенному вводу, и отвечают они за себя
 	// отдельно от разбора: своя строка аудита при той же команде. noteProposal
 	// тут не годится: набор предлагается из afterFeed/Start, уже ПОСЛЕ того,

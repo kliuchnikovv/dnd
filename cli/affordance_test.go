@@ -301,14 +301,23 @@ func (r *recordingSink) Emit(e Event) { r.events = append(r.events, e) }
 type fakeOptionVoicer struct {
 	lines []string
 	err   error
+	// errs — ошибки по вызовам подряд: первый вызов берёт errs[0], второй —
+	// errs[1] и так далее. Пустой — используется единый err на все вызовы.
+	// Нужно проверить «сбой на одном ходу — успех на следующем» без выдумки
+	// второго типа подделки.
+	errs  []error
 	calls int
 	seen  [][]Option
 }
 
 func (f *fakeOptionVoicer) VoiceOptions(_ context.Context, opts []Option) ([]string, error) {
+	err := f.err
+	if f.calls < len(f.errs) {
+		err = f.errs[f.calls]
+	}
 	f.calls++
 	f.seen = append(f.seen, opts)
-	return f.lines, f.err
+	return f.lines, err
 }
 
 // Слова Мастера заменяют кодовые. Без них список читается как перечень команд,
@@ -372,6 +381,28 @@ func TestUnchangedSetIsNotVoicedTwice(t *testing.T) {
 	}
 	if v.calls != 1 {
 		t.Errorf("вызовов озвучки %d на неизменившийся набор", v.calls)
+	}
+}
+
+// Разовый сбой озвучки не должен залипать до смены набора: набор в разговоре
+// меняется редко, и без повторной попытки игрок просидит десяток ходов с
+// кодовыми словами из-за одной секундной ошибки сети.
+func TestVoicingRetriesAfterFailureOnUnchangedSet(t *testing.T) {
+	g := renderGame(t)
+	v := &fakeOptionVoicer{
+		lines: []string{"раз", "два"},
+		errs:  []error{errors.New("шлюз закрыт"), nil},
+	}
+	s := NewSession(g, strings.NewReader("survey\nsurvey\nquit\n"), &strings.Builder{}).
+		WithAffordances().WithOptionVoicer(v)
+	if err := s.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if v.calls != 2 {
+		t.Errorf("после сбоя на неизменившемся наборе вызовов %d, хотим 2", v.calls)
+	}
+	if got := s.offeredWords; len(got) != 2 || got[0] != "раз" {
+		t.Errorf("второй ход не получил слова после сбоя на первом: %v", got)
 	}
 }
 
