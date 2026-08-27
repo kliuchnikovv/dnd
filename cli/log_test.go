@@ -98,9 +98,15 @@ func TestLogSignsOnlyOnSpeakerChange(t *testing.T) {
 }
 
 // Служебный вывод между двумя репликами Мастера не должен унаследовать его
-// подпись: SpeakerOf у EventSystem пуст, и это означает СБРОС атрибуции, а
-// не «тот же автор, что и раньше». Ошибочная подпись хуже отсутствующей —
-// она не теряет сведения, а подделывает источник.
+// подпись: SpeakerOf у EventSystem пуст, и это означает СБРОС атрибуции, а не
+// «тот же автор, что и раньше». Ошибочная подпись хуже отсутствующей — она не
+// теряет сведения, а подделывает источник.
+//
+// Одного сброса атрибуции ПОСЛЕ блока недостаточно: он не отменяет того, что
+// уже напечатано ПОД подписью на предыдущем шаге. Формат обязан разметить сам
+// служебный блок как ничей — отступом (точнее, его отсутствием) и пустыми
+// строками-разделителями с обеих сторон, а не только пометкой в состоянии,
+// которая повлияет лишь на следующее событие.
 func TestLogResetsAttributionAfterSystemOutput(t *testing.T) {
 	var file strings.Builder
 	l := NewGameLog(&file, "")
@@ -108,16 +114,34 @@ func TestLogResetsAttributionAfterSystemOutput(t *testing.T) {
 	l.event(Event{Kind: EventSystem, Text: "Что известно:\n  · факт\n"})
 	l.event(Event{Kind: EventProse, Text: "вторая\n"})
 
-	got := file.String()
-	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
-
-	for i, line := range lines {
-		if strings.Contains(line, "Что известно") && i > 0 && lines[i-1] == MasterName+":" {
-			t.Errorf("служебный блок подписан Мастером:\n%s", got)
-		}
+	want := MasterName + ":\n" +
+		"  первая\n" +
+		"\n" +
+		"Что известно:\n" +
+		"  · факт\n" +
+		"\n" +
+		MasterName + ":\n" +
+		"  вторая\n"
+	if got := file.String(); got != want {
+		t.Errorf("запись служебного блока построена неверно:\nхочу:\n%s\nимею:\n%s", want, got)
 	}
-	if n := strings.Count(got, MasterName+":"); n != 2 {
-		t.Errorf("подпись Мастера должна встретиться дважды (до и после служебного блока), встретилась %d раз:\n%s", n, got)
+}
+
+// Два служебных события подряд (например «Что известно» и «При себе») — один
+// смысловой блок, не два. Разделитель между ними не нужен: он появляется
+// только на стыке со строкой, которая говорит от чьего-то имени.
+func TestLogDoesNotSplitConsecutiveSystemBlocks(t *testing.T) {
+	var file strings.Builder
+	l := NewGameLog(&file, "")
+	l.event(Event{Kind: EventSystem, Text: "Что известно:\n  · факт\n"})
+	l.event(Event{Kind: EventSystem, Text: "При себе:\n  · вещь\n"})
+
+	want := "Что известно:\n" +
+		"  · факт\n" +
+		"При себе:\n" +
+		"  · вещь\n"
+	if got := file.String(); got != want {
+		t.Errorf("два служебных блока подряд разъехались лишней пустой строкой:\nхочу:\n%s\nимею:\n%s", want, got)
 	}
 }
 
