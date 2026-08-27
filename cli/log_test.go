@@ -97,6 +97,30 @@ func TestLogSignsOnlyOnSpeakerChange(t *testing.T) {
 	}
 }
 
+// Служебный вывод между двумя репликами Мастера не должен унаследовать его
+// подпись: SpeakerOf у EventSystem пуст, и это означает СБРОС атрибуции, а
+// не «тот же автор, что и раньше». Ошибочная подпись хуже отсутствующей —
+// она не теряет сведения, а подделывает источник.
+func TestLogResetsAttributionAfterSystemOutput(t *testing.T) {
+	var file strings.Builder
+	l := NewGameLog(&file, "")
+	l.event(Event{Kind: EventProse, Text: "первая\n"})
+	l.event(Event{Kind: EventSystem, Text: "Что известно:\n  · факт\n"})
+	l.event(Event{Kind: EventProse, Text: "вторая\n"})
+
+	got := file.String()
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+
+	for i, line := range lines {
+		if strings.Contains(line, "Что известно") && i > 0 && lines[i-1] == MasterName+":" {
+			t.Errorf("служебный блок подписан Мастером:\n%s", got)
+		}
+	}
+	if n := strings.Count(got, MasterName+":"); n != 2 {
+		t.Errorf("подпись Мастера должна встретиться дважды (до и после служебного блока), встретилась %d раз:\n%s", n, got)
+	}
+}
+
 // Набор вариантов в запись не идёт: это панель, которая себя заменяет каждый
 // ход, и в потоке она копилась бы дюжинами устаревших копий.
 func TestLogSkipsTheOptionsPanel(t *testing.T) {
