@@ -159,6 +159,26 @@ func TestFooterNamesTheNewBindings(t *testing.T) {
 	}
 }
 
+// Панель вариантов берёт реплики в кавычки, а действия — нет: cli.Quoted
+// экспортирована ровно затем, чтобы tui не завёл свою копию правила, и это
+// обязано быть проверено здесь, а не только в cli — иначе локальная копия в
+// tui молча разошлась бы с ней и тест бы этого не заметил.
+func TestOptionsPaneQuotesReplies(t *testing.T) {
+	m := optionsModel(t)
+	m.offered = []core.Affordance{
+		{Intent: core.Intent{Verb: "ask_about", Args: core.Args{Target: "e_toke"}}, Reply: true},
+		{Intent: core.Intent{Verb: "examine", Args: core.Args{Target: "p_crates"}}},
+	}
+	m.selected = noSelection
+	view := m.optionsView()
+	if !strings.Contains(view, cli.Quoted(cli.AffordanceLabel(m.session.Game, m.offered[0]))) {
+		t.Errorf("реплика не в кавычках:\n%s", view)
+	}
+	if strings.Contains(view, "«"+cli.AffordanceLabel(m.session.Game, m.offered[1])+"»") {
+		t.Errorf("действие взято в кавычки:\n%s", view)
+	}
+}
+
 // Транскрипт не уезжает под панель: высота считается по тому, что реально
 // напечатано, а не по константе.
 func TestPaneDoesNotPushTheTranscriptOffScreen(t *testing.T) {
