@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/llm"
 )
 
 // Вариант читается словами игрока, а не идентификаторами. Имена берутся из тех
@@ -355,4 +356,25 @@ func TestVoicerIsToldWhichOptionsAreReplies(t *testing.T) {
 			t.Errorf("вариант %d ушёл на озвучку без кодовых слов", i)
 		}
 	}
+}
+
+// Слова набора обязаны лечь в аудит: следующий Feed стирает поля предложения
+// до того, как офер вызовет журнал через обычный noteProposal, так что строка
+// нужна собственная — вне очереди разбора, как у реплики персонажа.
+func TestVoicedOptionsReachTheAuditLog(t *testing.T) {
+	g := renderGame(t)
+	v := &fakeOptionVoicer{lines: []string{"раз", "два"}}
+	s := NewSession(g, strings.NewReader("quit\n"), &strings.Builder{}).
+		WithJournal(NewJournal(g.DB, "s-afford-audit", "snap", 1)).
+		WithAffordances().WithOptionVoicer(v)
+	s.Start()
+	for _, e := range g.DB.Audit {
+		if e.LLMRole != string(llm.RoleOptions) {
+			continue
+		}
+		if strings.Contains(e.LLMProposal, "раз") && strings.Contains(e.LLMProposal, "два") {
+			return
+		}
+	}
+	t.Errorf("слова набора не попали в аудит:\n%+v", g.DB.Audit)
 }

@@ -310,8 +310,17 @@ func (s *Session) voiceOptions(list []core.Affordance) []string {
 		return nil
 	}
 	// Слова — вывод модели по недоверенному вводу, и отвечают они за себя
-	// отдельно от разбора: своя строка аудита при той же команде.
-	s.noteProposal(llm.RoleOptions, llmProposal{Options: words})
+	// отдельно от разбора: своя строка аудита при той же команде. noteProposal
+	// тут не годится: набор предлагается из afterFeed/Start, уже ПОСЛЕ того,
+	// как journalAudit отработал за этот ход, а следующий Feed стирает поля
+	// предложения в первой же строке. Как и реплика персонажа в speak, пишем
+	// в журнал напрямую, минуя очередь разбора.
+	s.journal.audit(store.AuditEntry{
+		Seq:         s.auditSeq,
+		RawInput:    s.raw,
+		LLMRole:     string(llm.RoleOptions),
+		LLMProposal: llmProposal{Options: words}.encode(),
+	})
 	return words
 }
 
