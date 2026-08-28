@@ -128,11 +128,25 @@ func optionsOf(g *core.Game, with store.EntityID) []Option {
 	for _, a := range list {
 		out = append(out, Option{
 			Label: affordanceLabel(g, a),
+			Token: OptionToken(a),
 			Check: classWords[a.Check],
 			Reply: a.Reply,
 		})
 	}
 	return out
+}
+
+// OptionToken — стабильный токен аффорданса. Детерминирован и привязан к
+// интенту: клиент шлёт токен обратно, сервер разворачивает его в тот самый ход
+// и ВСЁ РАВНО валидирует — авторитет применения на ядре, не на клиенте. Тот же
+// набор полей, что у отпечатка набора, чтобы один ход всегда давал один токен,
+// а позиция в списке на токен не влияла.
+func OptionToken(a core.Affordance) string {
+	in := a.Intent
+	return strings.Join([]string{
+		string(in.Verb), string(in.Args.Target), string(in.Args.Topic),
+		string(in.Args.Node), in.Args.Item,
+	}, "|")
 }
 
 // classWords — класс проверки словами игрока. Печатается класс, а НЕ порог:
