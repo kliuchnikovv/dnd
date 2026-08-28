@@ -222,3 +222,57 @@ func TestChatProbeLeavesAnAuditTrail(t *testing.T) {
 		t.Errorf("чистая проба попала в журнал команд: %+v", g.DB.CommandLog)
 	}
 }
+
+// Подсказка класса доезжает от парсера до ядра — иначе канал есть только на
+// бумаге. Проверяется именно доставка: у тела два авторских гейта на разные
+// глаголы, и без подсказки проба легла бы на первый из них.
+func TestProbeClassHintReachesTheCore(t *testing.T) {
+	newGame := func() *core.Game {
+		g := probeGame(t)
+		g.DB.Facts["f_wound"] = store.Fact{ID: "f_wound", Key: "Рана от удара"}
+		g.DB.Holders["f_wound"] = []store.FactHolder{{
+			FactID: "f_wound", HolderID: "e_body", Mandatory: true,
+			Gate: store.Gate{Verbs: []string{"grapple"}, Threshold: "hard"},
+		}}
+		return g
+	}
+	run := func(g *core.Game, class core.VerbClass) string {
+		var out bytes.Buffer
+		fi := &fakeInterp{probe: "берётся за тело", probeClass: class}
+		s := NewSession(g, strings.NewReader("берусь за тело\nquit\n"), &out).WithInterpreter(fi)
+		if err := s.Run(); err != nil {
+			t.Fatalf("прогон: %v", err)
+		}
+		return out.String()
+	}
+
+	plain := newGame()
+	out := run(plain, "")
+	if !plain.K.Knows("f_ligature") || plain.K.Knows("f_wound") {
+		t.Errorf("без подсказки проба легла не на осмотр:\n%s", out)
+	}
+
+	hinted := newGame()
+	out = run(hinted, core.ClassAttack)
+	if !hinted.K.Knows("f_wound") {
+		t.Errorf("подсказка attack не доехала до ядра:\n%s", out)
+	}
+}
+
+// Подсказка не даёт хода там, где автор ничего не написал. Иначе класс от
+// модели становился бы способом открывать действия, которых в деле нет.
+func TestProbeClassHintCreatesNoTurnOfItsOwn(t *testing.T) {
+	g := probeGame(t)
+	var out bytes.Buffer
+	fi := &fakeInterp{probe: "бьёт по вороху сетей", probeClass: core.ClassAttack}
+	s := NewSession(g, strings.NewReader("бью по сетям\nquit\n"), &out).WithInterpreter(fi)
+	if err := s.Run(); err != nil {
+		t.Fatalf("прогон: %v", err)
+	}
+	if g.K.Knows("f_ligature") {
+		t.Error("подсказка открыла факт на цели, за которой автор ничего не положил")
+	}
+	if !strings.Contains(out.String(), probeFallback) {
+		t.Errorf("проба с подсказкой не приземлилась прозой:\n%s", out.String())
+	}
+}
