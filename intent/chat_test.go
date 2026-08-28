@@ -132,3 +132,44 @@ func TestChatRoleMutatesState(t *testing.T) {
 		t.Error("роль чат-режима не объявлена мутирующей состояние")
 	}
 }
+
+// Проба приземляется и в чат-режиме, тем же одним вызовом. Второй разбор для
+// неё не заводится: правила у режимов одни, и разойтись им негде.
+func TestChatLandsAProbe(t *testing.T) {
+	p, f := chatParserWith(t, `{"outcome":"free_probe","probe":"принюхивается к бочкам",`+
+		`"target":"","topic":"","item":"","reply":"Вы наклоняетесь к сырой клёпке."}`)
+	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
+
+	in, reply, probe, clarify, err := gi.InterpretChat(context.Background(),
+		"чем тут пахнет за бочками", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != nil {
+		t.Fatalf("проба стала действием: %+v", in)
+	}
+	if probe != "принюхивается к бочкам" {
+		t.Errorf("проба не доехала: %q", probe)
+	}
+	if clarify != "" {
+		t.Errorf("проба пришла уточнением: %q", clarify)
+	}
+	if reply == "" {
+		t.Error("реплика чат-режима потерялась на пробе")
+	}
+	if len(f.Calls()) != 1 {
+		t.Errorf("вызовов %d, ждали один", len(f.Calls()))
+	}
+}
+
+// Схема чат-режима обязана называть пробу так же, как обычная: разойдись
+// перечисления, один режим приземлял бы ввод, а другой отбивал.
+func TestChatSchemaOffersFreeProbeToo(t *testing.T) {
+	p, f := chatParserWith(t, `{"outcome":"intent","verb":"look","target":"","topic":"","item":"","reply":"x"}`)
+	if _, err := p.Parse(context.Background(), "осмотреться", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if schema := f.Calls()[0].Schema; !strings.Contains(schema, OutcomeFreeProbe) {
+		t.Errorf("в схеме чат-режима нет пробы:\n%s", schema)
+	}
+}

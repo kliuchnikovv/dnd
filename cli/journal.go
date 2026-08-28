@@ -108,10 +108,17 @@ type llmProposal struct {
 	Reply   string       `json:"reply,omitempty"`
 	Clarify string       `json:"clarify,omitempty"`
 	Line    string       `json:"line,omitempty"`
+	// Probe — свободная проба: ввод, который словарь не выразил и который
+	// приземлился в фикшен. Своё поле, а не Clarify: спор о пробе идёт о том,
+	// что модель поняла из фразы, а не о том, что игра спросила у игрока.
+	Probe string `json:"probe,omitempty"`
 	// Mutation — предложенное изменение мира: не команда игрока, а расширение
 	// канона. Своё поле, потому что разбирают их по-разному: у команды спорят
 	// о разборе фразы, у мутации — о том, что модель решила про мир.
 	Mutation *proposedMutation `json:"mutation,omitempty"`
+	// Options — слова, которыми Мастер назвал набор вариантов. В журнал команд
+	// они не идут: правда реплея — интент, а слова живут ровно один показ.
+	Options []string `json:"options,omitempty"`
 }
 
 // proposedMutation — предложение мутации в форме аудита. Копия трёх полей

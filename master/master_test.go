@@ -13,7 +13,9 @@ func masterWith(t *testing.T, reply string) (*Master, *llm.Fake) {
 	t.Helper()
 	f := llm.NewFake("fake", true).ReplyWith(func(llm.Request) string { return reply })
 	gw := llm.NewGateway(
-		llm.NewRouter().Route(llm.RoleNarrator, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewRouter().
+			Route(llm.RoleNarrator, llm.Target{Provider: f, Model: "claude-haiku-4-5"}).
+			Route(llm.RoleOptions, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
 		llm.NewLedger(llm.Caps{}))
 	return New(gw), f
 }
@@ -306,5 +308,26 @@ func TestBriefingWithoutFrameIsSkipped(t *testing.T) {
 	}
 	if out != "" || len(f.Calls()) != 0 {
 		t.Errorf("пустой брифинг дошёл до модели: %q, вызовов %d", out, len(f.Calls()))
+	}
+}
+
+// Проба — не исход, и инструкция обязана быть обратной. У исхода Мастер
+// показывает, чем кончилось; у пробы — что ничем не кончилось: ни находки, ни
+// намёка на то, где искать (ADR-0003, T2).
+func TestProbeProseIsForbiddenToConclude(t *testing.T) {
+	m, f := masterWith(t, "Сети пахнут тиной.")
+	if _, err := m.Narrate(context.Background(), KindProbe, "рамка", World{},
+		[]string{"Игрок пробует: ковыряет ворох сетей"}, "", llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	in := f.Calls()[0].Input
+	if !strings.Contains(in, "СВОБОДНАЯ ПРОБА") {
+		t.Errorf("проба подана Мастеру не как проба:\n%s", in)
+	}
+	if !strings.Contains(in, "Ничем НЕ кончай") {
+		t.Errorf("Мастеру не запрещено доводить пробу до исхода:\n%s", in)
+	}
+	if !strings.Contains(in, "ковыряет ворох сетей") {
+		t.Errorf("сама проба до Мастера не доехала:\n%s", in)
 	}
 }

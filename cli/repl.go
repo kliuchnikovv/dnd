@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
@@ -55,6 +56,21 @@ type Session struct {
 	// стал честнее, помощь молчит: подсказка не вовремя хуже её отсутствия,
 	// потому что читает решение вслух.
 	hunch bool
+	// affordances — печатать ли набор вариантов и разворачивать ли номера.
+	// По умолчанию НЕТ: скриптовые прогоны и тесты сверяют вывод дословно, и
+	// список, появившийся в них сам, менял бы правду каждого из них разом.
+	// Включает его проводка в cmd/dnd — там, где играет человек.
+	affordances bool
+	// offered — набор, показанный игроку последним. Номер разворачивается по
+	// нему, а не пересчитывается: между печатью и вводом состояние не менялось,
+	// но пересчёт сделал бы это допущение невидимым.
+	offered []core.Affordance
+	// optionVoicer — необязательные слова Мастера для набора.
+	optionVoicer OptionVoicer
+	// offeredWords — слова показанного набора; пусто означает кодовые.
+	// voicedKey — отпечаток набора, для которого слова уже спрошены.
+	offeredWords []string
+	voicedKey    string
 	// chatShown, chatEaten — сколько реплик Мастера игрок увидел и сколько
 	// съел отказ ядра. Эксперимент надо мерить: высокая доля съеденных значит,
 	// что модель уверенно отвечает на ходы, которых мир не допускает, — и
@@ -77,6 +93,8 @@ type Session struct {
 	// проводка флага живёт в cmd/dnd, а игра без журнала обязана работать
 	// как работала.
 	journal *Journal
+	// log — запись игры: читаемый транскрипт прогона. nil означает «не пишем».
+	log *GameLog
 	// accusing — открытый набор слотов обвинения. Не nil, пока сессия ждёт
 	// очередной токен: полноэкранный режим отдаёт ввод по одной строке и
 	// не может сам дождаться следующей внутри одного хода.
@@ -97,6 +115,16 @@ func (s *Session) WithSink(k Sink) *Session {
 // отмечается применённой после. Без него сессия не пишет ничего.
 func (s *Session) WithJournal(j *Journal) *Session {
 	s.journal = j
+	return s
+}
+
+// WithLog включает запись игры. Без неё сессия не пишет ничего, и вывод на
+// экран от неё не меняется ни на байт.
+func (s *Session) WithLog(l *GameLog) *Session {
+	s.log = l
+	if l != nil {
+		l.note = s.noteOnce
+	}
 	return s
 }
 
@@ -152,14 +180,23 @@ func (s *Session) noteProposal(role llm.Role, p llmProposal) {
 	s.llmRole, s.llmProposal = string(role), p.encode()
 }
 
+// emitEvent — единственная точка, где событие уходит наружу. Одна воронка, а
+// не пять вызовов приёмника: запись игры обязана видеть ВСЁ, что видел игрок, а
+// вывод, испущенный мимо неё, выпадает из записи молча — и заметить это можно
+// только по тому, чего в записи нет.
+func (s *Session) emitEvent(e Event) {
+	s.sink.Emit(e)
+	s.log.event(e)
+}
+
 // emit — форматированное событие. Обёртка нужна, чтобы места печати меняли
 // только вид события, а не способ вывода.
 func (s *Session) emit(kind EventKind, format string, args ...any) {
-	s.sink.Emit(Event{Kind: kind, Text: fmt.Sprintf(format, args...)})
+	s.emitEvent(Event{Kind: kind, Text: fmt.Sprintf(format, args...)})
 }
 
 func (s *Session) emitText(kind EventKind, text string) {
-	s.sink.Emit(Event{Kind: kind, Text: text})
+	s.emitEvent(Event{Kind: kind, Text: text})
 }
 
 // emitSpeech — прямая речь с автором. Точек, где кто-то говорит, несколько
@@ -167,7 +204,7 @@ func (s *Session) emitText(kind EventKind, text string) {
 // формат события, иначе полноэкранный режим научится узнавать говорящего
 // по месту вызова, а не по данным.
 func (s *Session) emitSpeech(speaker, format string, args ...any) {
-	s.sink.Emit(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
+	s.emitEvent(Event{Kind: EventSpeech, Speaker: speaker, Text: fmt.Sprintf(format, args...)})
 }
 
 // WithRefusalVoice отдаёт отказ мира Мастеру. Формулировку решает не он:
@@ -200,7 +237,7 @@ func (s *Session) emitTurn(in core.Intent, res core.TurnResult) {
 func (s *Session) emitRefusal(refusal string) {
 	if s.refuse != nil {
 		if said := strings.TrimSpace(s.refuse(refusal)); said != "" {
-			s.sink.Emit(Event{Kind: EventRefusal, Speaker: MasterName,
+			s.emitEvent(Event{Kind: EventRefusal, Speaker: MasterName,
 				Text: said + "\n" + turnNotSpent})
 			return
 		}
@@ -216,6 +253,26 @@ func (s *Session) WithHunch() *Session {
 
 // ChatStats — сколько реплик чат-режима показано и сколько съедено отказом
 // ядра. Нули означают, что чат-режим не работал.
+// WithAffordances включает набор вариантов: печать списка каждый ход и ввод
+// номером наравне со словами.
+func (s *Session) WithAffordances() *Session {
+	s.affordances = true
+	return s
+}
+
+// WithOptionVoicer отдаёт слова набора Мастеру. Сбой и потолок расхода
+// откатывают на кодовые слова: список без слов хуже кодового списка, а
+// список без модели обязан работать как работал.
+func (s *Session) WithOptionVoicer(v OptionVoicer) *Session {
+	s.optionVoicer = v
+	return s
+}
+
+// OfferedWords — слова показанного набора. Пусто означает, что печатаются
+// кодовые: полноэкранная панель обязана видеть ровно то, что напечатал
+// построчный режим.
+func (s *Session) OfferedWords() []string { return s.offeredWords }
+
 func (s *Session) ChatStats() (shown, eaten int) { return s.chatShown, s.chatEaten }
 
 // Start печатает стартовую сцену. Отдельно от Run, потому что драйверов два:
@@ -232,6 +289,86 @@ func (s *Session) Start() {
 		s.emitText(EventSystem, known)
 	}
 	s.emitText(EventScene, s.r.Scene(s.Game))
+	s.offerAffordances()
+}
+
+// offerAffordances печатает набор вариантов и запоминает его для разбора
+// номера. Одно место на все ветки хода — действие, проба, уточнение, отказ:
+// список, появляющийся не после каждого исхода, читался бы как признак того,
+// что ход «не тот».
+func (s *Session) offerAffordances() {
+	if !s.affordances {
+		return
+	}
+	s.offered = s.Game.Affordances(s.spokenTo)
+	s.offeredWords = s.voiceOptions(s.offered)
+	if text := s.r.Affordances(s.Game, s.offered, s.offeredWords); text != "" {
+		s.emitText(EventOptions, text)
+	}
+}
+
+// voiceOptions просит слова у Мастера. Пустой ответ означает кодовые слова —
+// и это законный исход: сбой надстройки не рушит ход.
+//
+// Слова применяются целиком либо не применяются вовсе. Частичное применение
+// подписало бы строку под соседний интент, и игрок, выбравший «поблагодарить»,
+// угрожал бы.
+func (s *Session) voiceOptions(list []core.Affordance) []string {
+	if s.optionVoicer == nil || len(list) == 0 {
+		return nil
+	}
+	key := optionsKey(list)
+	if key == s.voicedKey {
+		return s.offeredWords
+	}
+	words, err := s.optionVoicer.VoiceOptions(s.turnContext(), optionsFor(s.Game, list))
+	if err != nil {
+		s.noteOnce("Мастер не назвал варианты: " + err.Error())
+		return nil
+	}
+	if len(words) != len(list) {
+		return nil
+	}
+	// Ключ запоминается только при успехе. Пометь его раньше — и разовый сбой
+	// сети или потолок расхода залип бы до смены набора, а набор в разговоре
+	// меняется редко: игрок просидел бы десяток ходов с кодовыми словами из-за
+	// одной секундной ошибки.
+	s.voicedKey = key
+	// Слова — вывод модели по недоверенному вводу, и отвечают они за себя
+	// отдельно от разбора: своя строка аудита при той же команде. noteProposal
+	// тут не годится: набор предлагается из afterFeed/Start, уже ПОСЛЕ того,
+	// как journalAudit отработал за этот ход, а следующий Feed стирает поля
+	// предложения в первой же строке. Как и реплика персонажа в speak, пишем
+	// в журнал напрямую, минуя очередь разбора.
+	s.journal.audit(store.AuditEntry{
+		Seq:         s.auditSeq,
+		RawInput:    s.raw,
+		LLMRole:     string(llm.RoleOptions),
+		LLMProposal: llmProposal{Options: words}.encode(),
+	})
+	return words
+}
+
+// Offered — набор, показанный игроку последним.
+//
+// Структурой, а не текстом: полноэкранный режим рисует его своей панелью и
+// подсвечивает выбранный вариант, а разбирать для этого напечатанные строки
+// значило бы парсить собственный вывод.
+func (s *Session) Offered() []core.Affordance { return s.offered }
+
+// chosen разворачивает номер варианта. Разбирается он ДО структурированного
+// парсера: «3» тот отдаёт как неизвестное действие, а перевод свободного текста
+// отбивает как бессмыслицу — одна цифра не дотягивает до двух букв.
+func (s *Session) chosen(line string) (core.Intent, bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil || !s.affordances || len(s.offered) == 0 {
+		return core.Intent{}, false
+	}
+	if n < 1 || n > len(s.offered) {
+		s.emit(EventRefusal, "такого варианта нет — их %d\n", len(s.offered))
+		return core.Intent{}, false
+	}
+	return s.offered[n-1].Intent, true
 }
 
 // Feed исполняет ОДИН ввод и сообщает, пора ли заканчивать. Здесь живёт всё,
@@ -243,6 +380,8 @@ func (s *Session) Feed(line string) bool {
 	// через модель нельзя, второй прогон даст другой интент. Реплей берёт
 	// интент из журнала команд, разбор инцидента — эту строку.
 	s.raw, s.llmRole, s.llmProposal, s.auditSeq = line, "", "", 0
+	s.log.turn(s.turn)
+	s.log.input(line)
 	if s.awaitingAccusation() {
 		s.feedAccusation(line)
 		return s.ended()
@@ -250,13 +389,43 @@ func (s *Session) Feed(line string) bool {
 	if s.resumeHeld(line) {
 		return s.ended()
 	}
+	// Номер и слова — один путь применения: интент, развёрнутый из варианта,
+	// идёт тем же applyIntent, что разобранная фраза. Правда реплея от способа
+	// ввода не зависит — в журнал ложится ход, а «3» остаётся в аудите.
+	if in, ok := s.chosen(line); ok {
+		s.applyIntent(in)
+		return s.afterFeed()
+	}
+	if numeric(line) {
+		// Номер вне диапазона: ход не состоялся, и разбирать строку дальше
+		// нечего. Отправить «9» в модель значило бы платить за опечатку.
+		return s.afterFeed()
+	}
 	cmd, err := Parse(line)
 	if err != nil {
 		s.interpret(line, err)
 	} else if done := s.dispatch(cmd); done {
 		return true
 	}
-	return s.ended()
+	return s.afterFeed()
+}
+
+// afterFeed закрывает ход: сначала развязка, потом набор вариантов. Печатать
+// список после раскрытого дела значило бы предлагать ходы в законченной игре.
+func (s *Session) afterFeed() bool {
+	if s.ended() {
+		return true
+	}
+	s.offerAffordances()
+	return false
+}
+
+// numeric — строка целиком число. Отдельно от chosen, потому что вопросы
+// разные: chosen отвечает «какой это вариант», а этот — «стоит ли вообще
+// искать здесь слова».
+func numeric(line string) bool {
+	_, err := strconv.Atoi(strings.TrimSpace(line))
+	return err == nil
 }
 
 // resumeHeld договаривает ход, отложенный вопросом «к кому?». Отложенный ход
@@ -356,7 +525,7 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 	// то, что гвард обязан рубить как выдумку персонажа.
 	if s.hunch {
 		if line, ok := s.Game.Hint(); ok {
-			s.sink.Emit(Event{Kind: EventHunch, Speaker: HunchName,
+			s.emitEvent(Event{Kind: EventHunch, Speaker: HunchName,
 				Text: HunchMark + line + "\n"})
 		}
 	}
@@ -371,10 +540,7 @@ func (s *Session) afterAction(in core.Intent, res core.TurnResult) {
 // он единственный в сцене. Без адресата реплика уходит в воздух — и это
 // худший исход, потому что игрок не понимает, сработало ли что-нибудь.
 func (s *Session) addressee(in *core.Intent, hint string) {
-	if in.Args.Target != "" {
-		return
-	}
-	if def, ok := core.Verbs[in.Verb]; !ok || def.Class != core.ClassNone {
+	if in.Args.Target != "" || !utterance(in.Verb) {
 		return
 	}
 	npcs := s.npcsHere()
@@ -401,12 +567,26 @@ func (s *Session) addressee(in *core.Intent, hint string) {
 // needsAddressee сообщает, что сказанное некому услышать. Тогда надо спросить,
 // а не промолчать.
 func (s *Session) needsAddressee(in core.Intent) bool {
-	if in.Args.Target != "" || in.Args.Text == "" {
+	if in.Args.Target != "" || in.Args.Text == "" || !utterance(in.Verb) {
 		return false
 	}
-	def, ok := core.Verbs[in.Verb]
-	return ok && def.Class == core.ClassNone && len(s.npcsHere()) > 0
+	return len(s.npcsHere()) > 0
 }
+
+// utterance — несёт ли ход слова игрока КОМУ-ТО. Раньше здесь стоял класс
+// ClassNone, и это было неверно: в него входит look, а осмотреться — не
+// обращение.
+//
+// Признаком речи нельзя считать и непустой Args.Text: переводчик заполняет его
+// у любого глагола, потому что слова игрока нужны актёру и при осмотре, и при
+// вопросе. Живой прогон под -chat получал на «Осмотреться» вопрос «к кому ты
+// обращаешься?» — и ход при этом придерживался, то есть осмотр не происходил
+// вовсе.
+//
+// Набор закрыт и мал сознательно. emote сюда не входит: жест показывают, а не
+// произносят, и подставлять ему единственного присутствующего — отдельное
+// решение, которого этот список не принимает.
+func utterance(v core.Verb) bool { return v == "say" }
 
 func (s *Session) npcsHere() []naming.Candidate {
 	var out []naming.Candidate

@@ -7,6 +7,19 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 )
 
+// Observed — чем кончился разбор с точки зрения метрики. Три значения, а не
+// два: с тех пор как приземляется всё (ADR-0003, T1), «не принято» перестало
+// означать «не понято». Проба — понятый ввод, которому словарь не нашёл
+// глагола; считать её отказом значит загнать долю отказов в единицу и потерять
+// единственный сигнал о том, где словарь узок.
+type Observed int
+
+const (
+	ObservedAccepted Observed = iota
+	ObservedRejected
+	ObservedProbe
+)
+
 // Metrics — intent rejection rate по классу глагола. Метрика продуктовая:
 // высокая доля в одном классе означает, что словарь узок именно там, а не
 // вообще. Без разбивки по классу сигнал бесполезен.
@@ -17,6 +30,10 @@ type Metrics struct {
 	// classless — ввод, для которого модель вообще не предложила глагола.
 	classlessTotal    int
 	classlessRejected int
+	// probes — сколько вводов приземлилось свободной пробой. Отдельным
+	// счётчиком, а не внутри classless: проба и непонятое — разные вещи, и
+	// сложенные вместе они не измеряют ни одну из них.
+	probes int
 }
 
 func NewMetrics() *Metrics {
@@ -27,20 +44,38 @@ func NewMetrics() *Metrics {
 }
 
 // Observe записывает исход разбора. class пуст, если глагол не предлагался.
-func (m *Metrics) Observe(class core.VerbClass, accepted bool) {
+//
+// Проба в знаменатель не идёт вовсе: доля отказов отвечает на вопрос «как часто
+// словарь не справился», а проба — это когда он не справился и это ни для кого
+// не стоило хода. Смешав их, метрика перестала бы отличать узкий словарь от
+// широкого исследования.
+func (m *Metrics) Observe(class core.VerbClass, out Observed) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if out == ObservedProbe {
+		m.probes++
+		return
+	}
 	if class == "" {
 		m.classlessTotal++
-		if !accepted {
+		if out == ObservedRejected {
 			m.classlessRejected++
 		}
 		return
 	}
 	m.proposed[class]++
-	if !accepted {
+	if out == ObservedRejected {
 		m.rejected[class]++
 	}
+}
+
+// Probes — сколько вводов приземлилось свободной пробой. Число само по себе
+// продуктовое: высокое означает, что игрок исследует мимо словаря, и это
+// заявка на новые глаголы, а не поломка.
+func (m *Metrics) Probes() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.probes
 }
 
 // Rate — доля отказов в классе. Ноль наблюдений даёт ноль, а не NaN:
@@ -56,6 +91,10 @@ func (m *Metrics) Rate(class core.VerbClass) float64 {
 
 // Overall — доля вводов, не ставших действием, включая те, где глагол не
 // предлагался вовсе: игроку всё равно, почему его не поняли.
+//
+// Пробы в знаменатель не идут: проба — это понятый ввод, которому словарь не
+// нашёл глагола, и она ни для кого не стоила хода. Их число читается отдельно,
+// через Probes.
 func (m *Metrics) Overall() float64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -72,10 +111,15 @@ func (m *Metrics) Overall() float64 {
 
 // Observations — сколько вводов наблюдалось. Метрика без числа наблюдений
 // вводит в заблуждение: «0% непонятого» на пустой выборке читается как успех.
+//
+// Пробы здесь СЧИТАЮТСЯ, хотя в знаменатель Overall и не идут. Это разные
+// вопросы: Overall спрашивает «как часто словарь не справился», Observations —
+// «разбирался ли свободный текст вообще». Прогон из одних проб — это разбор
+// каждый ход, и отчёт, объявивший его тишиной, врал бы о самом частом исходе.
 func (m *Metrics) Observations() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	total := m.classlessTotal
+	total := m.classlessTotal + m.probes
 	for _, n := range m.proposed {
 		total += n
 	}

@@ -88,9 +88,14 @@ func TestHintIsSaidOnce(t *testing.T) {
 // игрок решил, что механика ему недоступна.
 func TestRefusedProbesCountAsBeingStuck(t *testing.T) {
 	g := hunchGame(t)
-	// Тема не у этого держателя: мир отказывает, ход не тратится.
+	// Цель не в этой локации: мир отказывает, ход не тратится. Раньше здесь
+	// стоял вопрос человеку, который темы не держит, — но это перестало быть
+	// отказом: спросить незнающего теперь можно, и он отвечает, что не знает.
+	// Тему f_open намеренно не выдаём заранее (в отличие от инструкции черновика):
+	// проверка локации отказывает раньше проверки темы, а преждевременный Learn
+	// погасил бы f_open как цель для чутья — Hint() ниже её больше не увидит.
 	stuck := Intent{Verb: "question", Actor: g.Actor,
-		Args: Args{Target: "e_nils", Topic: "f_open"}}
+		Args: Args{Target: "e_ivar", Topic: "f_open"}}
 
 	for i := 0; i < HintAfter; i++ {
 		if res := g.Apply(stuck); !res.Refused {
@@ -106,9 +111,10 @@ func TestRefusedProbesCountAsBeingStuck(t *testing.T) {
 // счётчик холостых ходов на это не влияет.
 func TestRefusalStillCostsNoTurn(t *testing.T) {
 	g := hunchGame(t)
+	g.K.Learn("f_open", "e_briefing")
 	before := g.C.Snapshot()
 	g.Apply(Intent{Verb: "question", Actor: g.Actor,
-		Args: Args{Target: "e_nils", Topic: "f_open"}})
+		Args: Args{Target: "e_ivar", Topic: "f_open"}})
 	for i, c := range g.C.Snapshot() {
 		if c.Filled != before[i].Filled {
 			t.Errorf("отказ продвинул часы %s: было %d, стало %d",

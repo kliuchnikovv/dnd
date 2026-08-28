@@ -42,6 +42,8 @@ func main() {
 	journalPath := flag.String("journal", "",
 		"писать журнал действий сессии в файл: команды до обработки, отметки о "+
 			"применении, аудит недоверенного ввода")
+	logPath := flag.String("log", "",
+		"файл записи игры: читаемый транскрипт прогона — что игрок писал и что ему отвечали")
 	replayPath := flag.String("replay", "",
 		"прогнать записанный журнал вместо ввода игрока; -case и -seed обязаны "+
 			"совпадать с теми, на которых он снят")
@@ -61,6 +63,8 @@ func main() {
 	guardLines := flag.Bool("guard-lines", true,
 		"проверять реплики NPC на утечку дела вторым вызовом")
 	debugLLM := flag.Bool("debug-llm", false, "печатать обмен с моделью целиком")
+	options := flag.Bool("options", true,
+		"печатать список вариантов каждый ход; выбор номером наравне со словами")
 	hunch := flag.Bool("hunch", false,
 		"показывать подсказки чутья застрявшему игроку; пока выключено — "+
 			"признак «застрял» считает холостым любой ход без находки, включая "+
@@ -117,6 +121,12 @@ func main() {
 	if *hunch {
 		session.WithHunch()
 	}
+	// Реплей набор не печатает: он переигрывает журнал, а список вариантов —
+	// приглашение живому игроку. Лишние строки реплей бы не сломали, но
+	// приглашать некого.
+	if *options && *replayPath == "" {
+		session.WithAffordances()
+	}
 
 	var journal *cli.Journal
 	if *journalPath != "" || *replayPath != "" {
@@ -131,6 +141,16 @@ func main() {
 		}
 		defer f.Close()
 		journal.WithWriter(f)
+	}
+	if *logPath != "" {
+		f, err := os.Create(*logPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		session.WithLog(cli.NewGameLog(f, fmt.Sprintf("== %s · seed %d ==",
+			filepath.Base(filepath.Dir(*casePath)), *seed)))
 	}
 	if *replayPath != "" {
 		if err := replaySession(session, *replayPath); err != nil {
@@ -230,7 +250,7 @@ func main() {
 			// отвергнутая деталь мира не оставляет следа нигде.
 			OnPropose: session.AuditMutation})
 		voice := &narrator{master: gm, game: game, chat: *chat}
-		session.WithNarrator(voice).WithRefuser(voice)
+		session.WithNarrator(voice).WithRefuser(voice).WithOptionVoicer(voice)
 		defer func() { reportMetrics(gw, parser, session) }()
 	}
 	noDebugReason = noDebugReasonFor(usesModels(*nl, *chat), *debugLLM, debugRing)
@@ -412,7 +432,26 @@ var appRoles = []struct {
 	{llm.RoleActor, llm.TierCheap},    // приветствие, прощание, ремонт реплики
 	{llm.RoleNarrator, llm.TierMain},  // проза сцены и исхода
 	{llm.RoleNarrator, llm.TierCheap}, // решение ambient-детали по запросу
+	// Дешёвый тир и только он: формулировка четырёх строк — не та работа, за
+	// которую платят основной моделью.
+	{llm.RoleOptions, llm.TierCheap},
 	{llm.RoleCanonGuard, llm.TierMain},
+}
+
+// reportedRoles — роли для отчёта: те же, что зароучены, каждая по разу, в
+// порядке объявления. Тир в отчёте своя строка, поэтому дубли по тиру
+// сворачиваются.
+func reportedRoles() []llm.Role {
+	seen := map[llm.Role]bool{}
+	out := make([]llm.Role, 0, len(appRoles))
+	for _, r := range appRoles {
+		if seen[r.Role] {
+			continue
+		}
+		seen[r.Role] = true
+		out = append(out, r.Role)
+	}
+	return out
 }
 
 // buildRouter разводит роли по целям. Пустая дешёвая цель означает «всё
@@ -424,12 +463,14 @@ func buildRouter(target, cheap llm.Target) *llm.Router {
 		Route(llm.RoleChatMaster, target).
 		Route(llm.RoleActor, target).
 		Route(llm.RoleNarrator, target).
+		Route(llm.RoleOptions, target).
 		Route(llm.RoleCanonGuard, target)
 	if cheap.Provider != nil && cheap.Model != "" {
 		// Проверка реплики дешёвого тира не просит и потому по тирам не
 		// разводится: дешёвый судья пропускает утечки.
 		router.RouteCheap(llm.RoleActor, cheap).
-			RouteCheap(llm.RoleNarrator, cheap)
+			RouteCheap(llm.RoleNarrator, cheap).
+			RouteCheap(llm.RoleOptions, cheap)
 	}
 	return router
 }
@@ -452,11 +493,19 @@ type narrator struct {
 
 func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 	what := master.KindOutcome
+	outcome := p.Outcome
 	switch {
 	case p.Kind == cli.ProseBriefing:
 		what = master.KindBriefing
 	case p.Kind == cli.ProsePlace:
 		what = master.KindPlace
+	case p.Kind == cli.ProseProbe:
+		// Проба едет тем же слотом, что исход: «что только что произошло» —
+		// это ровно она, словами и без механики. Своего параметра ей не
+		// завели сознательно: восьмое позиционное поле в подписи стоило бы
+		// дороже, чем одна строка здесь. Чат-режим пробу не съедает: реплики
+		// про неё он не давал, съедать нечего.
+		what, outcome = master.KindProbe, []string{"Игрок пробует: " + p.Probe}
 	case n.chat:
 		// Пустой ответ означает откат на авторскую рамку — ровно то, что
 		// нужно: исход печатает ядро. Брифинга это не касается: он не исход, и
@@ -464,7 +513,7 @@ func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 		return "", nil
 	}
 	return n.master.Narrate(ctx, what, p.Frame,
-		master.World{Setting: n.game.Setting, Scene: p.Scene}, p.Outcome, p.Speaking, llm.Request{})
+		master.World{Setting: n.game.Setting, Scene: p.Scene}, outcome, p.Speaking, llm.Request{})
 }
 
 // Refuse произносит отказ мира. Тот же Мастер и тот же мир, что у прозы:
@@ -482,13 +531,29 @@ func sceneFor(g *core.Game) []string {
 	return []string{"Место: " + g.DB.Locations[g.Node].Name}
 }
 
+// VoiceOptions называет варианты словами. Тот же Мастер, что ведёт прозу:
+// делить список и сцену между двумя голосами значило бы говорить с игроком
+// двумя разными людьми.
+func (n *narrator) VoiceOptions(ctx context.Context, opts []cli.Option) ([]string, error) {
+	out := make([]master.Option, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, master.Option{Text: o.Text, Reply: o.Reply})
+	}
+	return n.master.Options(ctx,
+		master.World{Setting: n.game.Setting, Scene: sceneFor(n.game)}, out, llm.Request{})
+}
+
 // reportMetrics печатает то, без чего слой моделей нельзя вести: расход,
 // стоимость бита и долю непонятого ввода по классу глагола.
 func reportMetrics(gw *llm.Gateway, p *intent.Parser, sess *cli.Session) {
 	s := gw.Stats()
 	fmt.Fprintf(os.Stderr, "\nрасход: %.4f $  битов: %d\n",
 		float64(s.SpentMicro)/1e6, s.Bits)
-	for _, role := range []llm.Role{llm.RoleIntentParser, llm.RoleActor, llm.RoleNarrator} {
+	// Роли берутся из appRoles, а не из своего списка. Свой список уже разошёлся
+	// с проводкой: RoleChatMaster в нём не было, и прогон под -chat выглядел
+	// бесплатным — вызовы шли, а в отчёте их не было. Разойтись с приведённым
+	// списком негде: он тот же, по которому роли и зароучены.
+	for _, role := range reportedRoles() {
 		if n := s.CallsByRole[role]; n > 0 {
 			fmt.Fprintf(os.Stderr, "вызовов %s: %d (%.4f $)\n",
 				role, n, float64(s.ByRole[role])/1e6)
@@ -504,6 +569,13 @@ func reportMetrics(gw *llm.Gateway, p *intent.Parser, sess *cli.Session) {
 		fmt.Fprintln(os.Stderr, "свободный текст ни разу не разбирался")
 	} else {
 		fmt.Fprintf(os.Stderr, "непонятого ввода: %.0f%% из %d\n", m.Overall()*100, n)
+	}
+	// Проб отдельной строкой. Их доля — не поломка, а заявка на новые глаголы:
+	// высокая означает, что игрок исследует мимо словаря. Без этой строки
+	// «непонятого 0%» читалось бы как «словарь покрывает всё», хотя половина
+	// ходов могла уйти в приземление.
+	if n := m.Probes(); n > 0 {
+		fmt.Fprintf(os.Stderr, "свободных проб: %d\n", n)
 	}
 	if breached := m.Breaches(0.25); len(breached) > 0 {
 		fmt.Fprintf(os.Stderr, "словарь узок в классах: %v\n", breached)

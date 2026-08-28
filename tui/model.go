@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kliuchnikovv/dnd/cli"
+	"github.com/kliuchnikovv/dnd/core"
 )
 
 // debugTitle — шапка панели отладки.
@@ -77,7 +78,15 @@ type model struct {
 	// prompt — текст последнего EventPrompt, показанный подсказкой у строки
 	// ввода. В транскрипт приглашение не льётся: спека §2.1 требует его у
 	// поля ввода, а не построчным блоком вперемешку с речью.
-	prompt    string
+	prompt string
+	// offered — набор вариантов, показанный панелью у строки ввода, и selected
+	// — курсор по нему. Копия из сессии, а не ссылка: модель bubbletea
+	// копируется на каждое сообщение, и делить срез с горутиной хода нельзя.
+	offered  []core.Affordance
+	selected int
+	// history — курсор истории ввода. Стрелки заняты выбором варианта, и
+	// история переехала на Ctrl-P/Ctrl-N: варианты нужны каждый ход, история —
+	// изредка, а частый жест обязан быть проще.
 	debugOpen bool
 	quitting  bool
 	width     int
@@ -103,6 +112,14 @@ func newModel(s *cli.Session, opts Options) model {
 		// незачем: разделитель схлопнется в мусор. 80 — тот же дефолт, что
 		// у viewport.New ниже.
 		width: 80,
+		// Высота по той же причине, что ширина: события стартовой сцены могут
+		// прийти раньше первого tea.WindowSizeMsg, и расчёт раскладки по нулю
+		// оставил бы транскрипту одну строку.
+		height: 24,
+		// Ни один вариант не подсвечен: выбор делается осознанно, а
+		// подсвеченная сама собой первая строка означала бы, что Enter на
+		// пустой строке исполняет ход, которого игрок не выбирал.
+		selected: noSelection,
 	}
 }
 
@@ -136,7 +153,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.view.Width = msg.Width
-		m.view.Height = msg.Height - 4
 		m.input.Width = msg.Width - 4
 		m.refresh()
 		return m, nil
@@ -150,6 +166,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case eventMsg:
 		m.lastKind = msg.event.Kind
+		if msg.event.Kind == cli.EventOptions {
+			// Набор — панель у строки ввода, а не строка транскрипта: он себя
+			// заменяет каждый ход, и в потоке копился бы устаревшими копиями.
+			m.takeOptions()
+			m.refresh()
+			return m, waitEvent(m.events)
+		}
 		if msg.event.Kind == cli.EventPrompt {
 			// Приглашение — не строка транскрипта, а подсказка у ввода: у
 			// EventPrompt нет автора (speakerOf отдаёт пустую строку), и
@@ -223,12 +246,18 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view.HalfViewDown()
 		return m, nil
 	case tea.KeyUp:
+		m.selectionUp()
+		return m, nil
+	case tea.KeyDown:
+		m.selectionDown()
+		return m, nil
+	case tea.KeyCtrlP:
 		if line, ok := m.history.Prev(); ok {
 			m.input.SetValue(line)
 			m.input.CursorEnd()
 		}
 		return m, nil
-	case tea.KeyDown:
+	case tea.KeyCtrlN:
 		line, _ := m.history.Next()
 		m.input.SetValue(line)
 		m.input.CursorEnd()
@@ -238,6 +267,16 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		line := strings.TrimSpace(m.input.Value())
+		// Выбранный стрелками вариант исполняется Enter — но только на пустой
+		// строке. Набранная фраза старше выбора: игрок, начавший печатать,
+		// передумал, и исполнить вместо его слов подсвеченную строку значило бы
+		// проглотить набранное.
+		echo := ""
+		if line == "" {
+			if chosen, ok := m.chosenLine(); ok {
+				line, echo = chosen, m.chosenEcho()
+			}
+		}
 		// Пустая строка в построчном режиме — валидный токен слота
 		// обвинения (и валидный ответ на уточняющий вопрос): sc.Scan() там
 		// отдаёт пустые строки как есть. Полноэкранный режим обязан вести
@@ -247,13 +286,26 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if line == "" && m.lastKind != cli.EventPrompt {
 			return m, nil
 		}
-		m.history.Add(line)
+		// Выбранный вариант в историю не идёт: «3» прошлого хода на следующем
+		// означает другой ход, и подставленная стрелкой цифра исполнила бы не
+		// то, что игрок помнит.
+		if echo == "" {
+			m.history.Add(line)
+		}
 		if line != "" {
 			// Своя строка — часть разговора, и встать она обязана ДО того,
 			// как ход что-то ответит: иначе игрок не видит, на что отвечают.
 			// Пустая строка (валидный токен слота обвинения) эхом даёт
 			// подпись без слов, поэтому не печатается.
-			m.transcript.AppendInput(line)
+			//
+			// За выбранный вариант печатаются СЛОВА, а не номер: игрок выбрал
+			// ход, а не нажал «3». Сырой ввод для аудита при этом остаётся
+			// номером — это разные правды (ADR-0002).
+			shown := line
+			if echo != "" {
+				shown = echo
+			}
+			m.transcript.AppendInput(shown)
 		}
 		m.input.SetValue("")
 		m.busy = true
@@ -300,6 +352,7 @@ func (m model) quit() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) refresh() {
+	m.resize()
 	if m.debugOpen {
 		// Дамп обмена — самые длинные строки в игре: промпт уезжает за край
 		// без переноса так же, как проза.
@@ -310,6 +363,48 @@ func (m *model) refresh() {
 		return
 	}
 	m.view.SetContent(m.transcript.Render(m.width))
+}
+
+// resize отдаёт транскрипту то, что осталось от экрана после обвязки.
+//
+// Раньше высота была константой «минус четыре» — заголовок, ввод, подвал и
+// перевод строки. Приглашение уже нарушало этот счёт молча, а панель вариантов
+// нарушила бы его на четыре строки: транскрипт уезжал бы под ввод. Считается
+// по тому, что реально будет напечатано.
+func (m *model) resize() {
+	const chrome = 3 // заголовок, строка ввода, подвал
+	left := m.height - chrome - lines(m.promptView()) - lines(m.optionsPane())
+	if left < 1 {
+		// Экран может быть меньше обвязки — на этом ломается любая
+		// арифметика раскладки. Одна строка транскрипта хуже отрицательной.
+		left = 1
+	}
+	m.view.Height = left
+}
+
+// promptView — приглашение у строки ввода либо пусто.
+func (m model) promptView() string {
+	if m.prompt == "" {
+		return ""
+	}
+	return lipgloss.NewStyle().Bold(true).Render(m.prompt)
+}
+
+// optionsPane — панель вариантов, если ей место: под дампом обмена её нет.
+func (m model) optionsPane() string {
+	if m.debugOpen {
+		return ""
+	}
+	return m.optionsView()
+}
+
+// lines — сколько строк занимает блок. Пустой блок не занимает ни одной: он и
+// не печатается.
+func lines(block string) int {
+	if block == "" {
+		return 0
+	}
+	return strings.Count(block, "\n") + 1
 }
 
 func (m model) debugText() string {
@@ -351,7 +446,7 @@ func (m model) View() string {
 	if m.opts.Status != nil {
 		head += " · " + m.opts.Status()
 	}
-	foot := "↑↓ история · PgUp/PgDn прокрутка · Tab отладка · ^C выход"
+	foot := "↑↓ варианты · ^P/^N история · PgUp/PgDn прокрутка · Tab отладка · ^C выход"
 	switch {
 	case m.ended:
 		// Развязка уже дочитана до этой строки — подвал говорит, что дальше
@@ -362,15 +457,16 @@ func (m model) View() string {
 	}
 	frame := lipgloss.NewStyle().Faint(true)
 	input := m.input.View()
-	if m.prompt != "" {
+	if prompt := m.promptView(); prompt != "" {
 		// Приглашение — подсказка у строки ввода, а не строка транскрипта:
 		// см. §2.1 спека.
-		input = lipgloss.NewStyle().Bold(true).Render(m.prompt) + "\n" + input
+		input = prompt + "\n" + input
 	}
-	return strings.Join([]string{
-		frame.Render(head),
-		m.view.View(),
-		input,
-		frame.Render(foot),
-	}, "\n")
+	parts := []string{frame.Render(head), m.view.View()}
+	// Панель вариантов прячется, пока открыт дамп обмена: там читают промпт, а
+	// не выбирают ход, и место экрана дороже.
+	if opts := m.optionsPane(); opts != "" {
+		parts = append(parts, opts)
+	}
+	return strings.Join(append(parts, input, frame.Render(foot)), "\n")
 }

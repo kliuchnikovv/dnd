@@ -93,12 +93,19 @@ func TestMandatoryFactBypassesTheRoll(t *testing.T) {
 	}
 }
 
+// Требование не снимает держателя отказом — по новому правилу отсутствие
+// держателя вообще не отказ (см. TestQuestionToSomeoneWhoDoesNotKnowIsNotRefused).
+// Токе формально держит f_gated, но requires не выполнены — holderFor его не
+// находит, и вопрос уходит в бросок вхолостую, как к незнающему.
 func TestGatedFactNeedsItsRequirement(t *testing.T) {
 	g := turnGame(OutcomeSuccess)
 	g.K.Learn("f_gated", "e_bern") // тема известна, но требование не выполнено
 	got := g.Apply(Intent{Verb: "question", Args: Args{Target: "e_toke", Topic: "f_gated"}})
-	if !got.Refused {
-		t.Error("факт выдан без выполненного requires")
+	if got.Refused {
+		t.Fatalf("вопрос о теме с невыполненным requires отклонён: %s", got.Refusal)
+	}
+	if len(got.Learned) != 0 {
+		t.Errorf("факт выдан без выполненного requires: %+v", got.Learned)
 	}
 }
 
@@ -233,5 +240,56 @@ func TestAskAboutGivesNoFactsAndCostsNothing(t *testing.T) {
 		if c.Filled != before[i].Filled {
 			t.Errorf("часы %s тикнули на вопросе о мире", c.ID)
 		}
+	}
+}
+
+// Спросить человека о том, чего он не знает, — нормальный ход разговора, а не
+// невозможное действие. Живой плейтест утыкался в этот отказ десятками ходов
+// (см. core/hunch_test.go), и чутьё за три прогона не срабатывало ни разу.
+func TestQuestionToSomeoneWhoDoesNotKnowIsNotRefused(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Entities["e_nils"] = store.Entity{
+		ID: "e_nils", Kind: store.EntityNPC, Name: "Нильс", Node: "n_quay",
+	}
+	g.K.Learn("f_open", "e_briefing")
+
+	got := g.Apply(Intent{Verb: "question", Actor: g.Actor,
+		Args: Args{Target: "e_nils", Topic: "f_open"}})
+	if got.Refused {
+		t.Fatalf("вопрос незнающему отклонён: %s", got.Refusal)
+	}
+	if len(got.Learned) != 0 {
+		t.Errorf("незнающий выдал факт: %+v", got.Learned)
+	}
+}
+
+// Бросок остаётся. Его отсутствие метило бы незнающих — та же логика, по
+// которой осмотр инертной детали бросает кость наравне с настоящей целью.
+func TestQuestionToSomeoneWhoDoesNotKnowStillRolls(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Entities["e_nils"] = store.Entity{
+		ID: "e_nils", Kind: store.EntityNPC, Name: "Нильс", Node: "n_quay",
+	}
+	g.K.Learn("f_open", "e_briefing")
+
+	got := g.Apply(Intent{Verb: "question", Actor: g.Actor,
+		Args: Args{Target: "e_nils", Topic: "f_open"}})
+	if got.Res == nil {
+		t.Fatal("ход прошёл без резолва — отсутствие броска выдаёт незнающего")
+	}
+}
+
+// Защита от угадывания остаётся: спросить о факте, которого парти не знает,
+// по-прежнему нельзя. Перечисление схемы для свободного текста строится из
+// party_knowledge, но структурированный ввод такое пропустил бы.
+func TestQuestionAboutUnknownFactIsStillRefused(t *testing.T) {
+	g := turnGame(OutcomeSuccess)
+	g.DB.Entities["e_nils"] = store.Entity{
+		ID: "e_nils", Kind: store.EntityNPC, Name: "Нильс", Node: "n_quay",
+	}
+	got := g.Apply(Intent{Verb: "question", Actor: g.Actor,
+		Args: Args{Target: "e_nils", Topic: "f_gated"}})
+	if !got.Refused {
+		t.Fatal("спросили о неизвестном парти факте — защита от угадывания дырявая")
 	}
 }
