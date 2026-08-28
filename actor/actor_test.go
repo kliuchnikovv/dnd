@@ -10,6 +10,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/propose"
@@ -197,22 +198,32 @@ type stubGuard struct {
 	ok       bool
 	err      error
 	material []string
+	state    []string
 	what     string
+	// stateReason — при отказе это противоречие состоянию, а не утечка дела.
+	// По умолчанию отказ трактуется как утечка: так старые тесты не меняются.
+	stateReason bool
 	// verdicts — вердикты по вызовам: ремонт проверяется второй раз.
 	verdicts []bool
 	lines    []string
 	calls    int
 }
 
-func (g *stubGuard) Check(_ context.Context, line string, material []string, _ llm.Request) (Verdict, error) {
+func (g *stubGuard) Check(_ context.Context, line string, material, state []string,
+	_ llm.Request) (guard.Verdict, error) {
 	g.material = material
+	g.state = state
 	g.lines = append(g.lines, line)
 	ok := g.ok
 	if len(g.verdicts) > 0 {
 		ok = g.verdicts[min(g.calls, len(g.verdicts)-1)]
 	}
 	g.calls++
-	return Verdict{OK: ok, What: g.what}, g.err
+	v := guard.Verdict{OK: ok, What: g.what}
+	if !ok {
+		v.Leak, v.ContradictsState = !g.stateReason, g.stateReason
+	}
+	return v, g.err
 }
 
 func TestGuardRejectionFallsBackToTemplate(t *testing.T) {
@@ -261,6 +272,31 @@ func TestGuardGetsOnlyAllowedMaterial(t *testing.T) {
 		if strings.Contains(joined, leak) {
 			t.Errorf("в материал попало %q", leak)
 		}
+	}
+}
+
+// Дайджест состояния доходит до гварда отдельным списком: проверить, не соврала
+// ли реплика про владение, место, знание или исход, гвард может только видя
+// состояние. И в материал он не подмешивается — это разные списки: материалом
+// не оправдывают ложь о состоянии.
+func TestGuardGetsStateDigest(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	sg := &stubGuard{ok: true}
+	a, _ := actorWith(t, `{"move":"observe","line":"Сыро сегодня."}`)
+	a = a.WithGuard(sg)
+	state := []string{"Несёт при себе: предписание", "Сейчас находится: Пристань"}
+	a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", State: state}, llm.Request{})
+
+	seen := strings.Join(sg.state, " | ")
+	for _, want := range state {
+		if !strings.Contains(seen, want) {
+			t.Errorf("дайджест не дошёл до гварда: %q нет в %q", want, seen)
+		}
+	}
+	if strings.Contains(strings.Join(sg.material, " | "), "Несёт при себе") {
+		t.Error("дайджест утёк в материал — это разные списки")
 	}
 }
 
@@ -510,17 +546,6 @@ func TestFlavourActsGoCheapAndShort(t *testing.T) {
 	}
 	if maxTokensFor(ActGreeting) >= maxTokensFor(ActProbe) {
 		t.Error("у приветствия потолок вывода не короче, чем у открытого вопроса")
-	}
-}
-
-// Проверка на выдумку — это «да/нет». Она не сочиняет и дорогой модели не
-// требует никогда.
-// Проверка идёт основным тиром, и это не расточительность, а измерение:
-// дешёвый судья пропускает одну утечку из десяти (guard_corpus_test.go), а
-// утечка бьёт в решаемость дела.
-func TestGuardGoesMainTier(t *testing.T) {
-	if got := NewGuard(nil).tier(); got != llm.TierMain {
-		t.Errorf("страж пошёл тиром %q — дешёвый пропускает утечки", got)
 	}
 }
 
@@ -1131,6 +1156,74 @@ func TestRepairChannelFailureFallsToFloor(t *testing.T) {
 	}
 	if got == "" || strings.Contains(got, "Олсен") {
 		t.Errorf("реплика %q", got)
+	}
+}
+
+// --- ремонт противоречия состоянию ---
+
+// Противоречие состоянию чинится тем же переспросом, что и утечка: первая
+// реплика соврала про место, вторая сказала то же без лжи — её и слышит игрок.
+func TestStateContradictionIsRepaired(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := repliesInOrder(t,
+		`{"line":"Раз ты уже в кузнице, глянь на горн."}`,
+		`{"line":"Дел тут хватает, гляньте по сторонам."}`)
+	sg := &stubGuard{verdicts: []bool{false, true}, stateReason: true,
+		what: "ты уже в кузнице"}
+	a = a.WithGuard(sg)
+
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", State: []string{"Сейчас находится: Пристань"}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "кузниц") {
+		t.Errorf("ложь про состояние дошла до игрока: %q", got)
+	}
+	if sg.calls != 2 {
+		t.Errorf("проверок %d — отремонтированная реплика не перепроверена", sg.calls)
+	}
+}
+
+// Повторное противоречие состоянию — как и повторная утечка — падает в
+// нейтральную реплику: дно после провала ремонта, не раньше.
+func TestStateContradictionRepeatFallsToNeutral(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := repliesInOrder(t,
+		`{"line":"Раз ты уже в кузнице, глянь на горн."}`,
+		`{"line":"Ну ты же в кузнице стоишь."}`)
+	a = a.WithGuard(&stubGuard{ok: false, stateReason: true, what: "ты уже в кузнице"})
+
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", Scene: SceneOf(g, "e_bern"),
+			State: []string{"Сейчас находится: Пристань"}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "кузниц") {
+		t.Errorf("ложь про состояние дошла до игрока: %q", got)
+	}
+	if got == "" {
+		t.Error("нейтральная реплика не подставилась")
+	}
+}
+
+// Формулировка ремонта различает вектор: у противоречия состоянию — «этого на
+// самом деле нет», а не «придумано». Точная формулировка помогает переспросу.
+func TestStateContradictionRepairFraming(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, f := repliesInOrder(t,
+		`{"line":"Раз ты в кузнице..."}`, `{"line":"Кто ж его знает."}`)
+	a = a.WithGuard(&stubGuard{verdicts: []bool{false, true}, stateReason: true,
+		what: "ты в кузнице"})
+	if _, err := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[1].Input; !strings.Contains(in, "на самом деле не так") {
+		t.Errorf("ремонт не назвал противоречие состоянию как таковое:\n%s", in)
 	}
 }
 

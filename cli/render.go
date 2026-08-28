@@ -40,6 +40,11 @@ type Prose struct {
 	// следующей строкой, и проза успевала ей противоречить — сперва «он
 	// отвечает охотнее, чем ждали», а потом сухое «Что вам надобно?».
 	Speaking string
+	// State — доверенный дайджест состояния (core.StateDigest). Пусто —
+	// проза не проверяется на противоречие состоянию. У брифинга пусто
+	// намеренно: это единственное место, где игроку легально сообщают факты
+	// дела, и гвардить его состоянием нельзя.
+	State []string
 }
 
 type Render struct {
@@ -104,7 +109,8 @@ func (r Render) Scene(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "== %s ==\n", g.DB.Locations[g.Node].Name)
 	fmt.Fprintf(&b, "%s\n", r.prose(Prose{Kind: ProsePlace,
-		Frame: g.Flavour("look." + string(g.Node)), Scene: sceneOf(g)}))
+		Frame: g.Flavour("look." + string(g.Node)), Scene: sceneOf(g),
+		State: core.StateDigest(g, core.TurnResult{}).Lines()}))
 	b.WriteString(targetList(g))
 	if reach := g.ReachableNodes(); len(reach) > 0 {
 		parts := make([]string, len(reach))
@@ -126,7 +132,7 @@ func (r Render) Scene(g *core.Game) string {
 // пока нет.
 func (r Render) Probe(g *core.Game, probe string) string {
 	return r.prose(Prose{Kind: ProseProbe, Frame: probeFallback, Probe: probe,
-		Scene: sceneOf(g)}) + "\n"
+		Scene: sceneOf(g), State: core.StateDigest(g, core.TurnResult{}).Lines()}) + "\n"
 }
 
 // Turn печатает исход хода. Отказ и провал оформлены по-разному намеренно:
@@ -139,7 +145,8 @@ func (r Render) Turn(g *core.Game, in core.Intent, t core.TurnResult) string {
 	if t.FlavourKey != "" {
 		fmt.Fprintf(&b, "%s\n", r.prose(Prose{Kind: ProseOutcome,
 			Frame: g.Flavour(t.FlavourKey), Scene: sceneOf(g),
-			Outcome: outcomeOf(g, t), Speaking: speakerName(g, in, t)}))
+			Outcome: outcomeOf(g, t), Speaking: speakerName(g, in, t),
+			State: core.StateDigest(g, t).Lines()}))
 	}
 	// Бросок печатается, только если он был: у безопасного действия кость не
 	// трогается, и Log.Die остаётся нулём.

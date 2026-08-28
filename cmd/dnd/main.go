@@ -26,6 +26,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
@@ -230,8 +231,14 @@ func main() {
 			session.WithInterpreter(&intent.GameInterpreter{Parser: parser, Game: game})
 		}
 		act := actor.New(gw)
+		gm := master.New(gw)
+		// Один гвард на оба голоса: и реплика актёра, и проза Мастера не вправе
+		// соврать про состояние. Экземпляр общий — «как ловится противоречие»
+		// одно на всю игру, а не два места правды.
 		if *guardLines {
-			act = act.WithGuard(actor.NewGuard(gw))
+			lg := guard.New(gw)
+			act = act.WithGuard(lg)
+			gm = gm.WithGuard(lg)
 		}
 		// Почему реплика стала заглушкой — в ту же панель, что и остальные
 		// внештатные сообщения. Игроку это не показывается: четыре пути к
@@ -240,7 +247,6 @@ func main() {
 		act = act.WithNotify(func(reason string) {
 			fmt.Fprintf(debugSink(debugRing), "(%s)\n", reason)
 		})
-		gm := master.New(gw)
 		session.WithVoicer(&actor.GameVoicer{
 			Actor: act, Game: game, Turn: session.Turn, Master: gm,
 			Notify: func(err error) {
@@ -513,7 +519,8 @@ func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 		return "", nil
 	}
 	return n.master.Narrate(ctx, what, p.Frame,
-		master.World{Setting: n.game.Setting, Scene: p.Scene}, outcome, p.Speaking, llm.Request{})
+		master.World{Setting: n.game.Setting, Scene: p.Scene}, outcome, p.Speaking,
+		p.State, llm.Request{})
 }
 
 // Refuse произносит отказ мира. Тот же Мастер и тот же мир, что у прозы:

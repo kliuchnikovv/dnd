@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/llm"
 )
 
@@ -71,13 +72,31 @@ type CanonFact struct {
 	Text  string
 }
 
+// Checker — проверка прозы на два вектора газлайтинга. Мастер не вправе соврать
+// про состояние так же, как персонаж: «ты уже в кузнице», «получилось», «ключ у
+// тебя» — вопреки стору. Интерфейс здесь, реализация — пакет guard, тот же, что
+// у актёра: «как ловится противоречие» одно на всю игру.
+type Checker interface {
+	Check(ctx context.Context, line string, material, state []string,
+		req llm.Request) (guard.Verdict, error)
+}
+
 type Master struct {
 	gw     *llm.Gateway
 	schema string
+	// guard — проверка прозы против дайджеста состояния. Необязательна: без неё
+	// проза печатается как прежде, надеясь на промпт и read-scope Мастера.
+	guard Checker
 }
 
 func New(gw *llm.Gateway) *Master {
 	return &Master{gw: gw, schema: grantSchema()}
+}
+
+// WithGuard включает проверку прозы на противоречие состоянию и утечку дела.
+func (m *Master) WithGuard(g Checker) *Master {
+	m.guard = g
+	return m
 }
 
 const grantSystem = `Ты — Мастер настольной игры и единственная власть над её миром.
@@ -277,8 +296,28 @@ func (m *Master) Grant(ctx context.Context, needs []string, canon []CanonFact,
 
 // Narrate описывает сцену и исход прозой. Пустая рамка означает, что автор
 // текста не написал: тогда описывать нечего и придумывать нечего.
+//
+// state — доверенный дайджест состояния (core.StateDigest). Пуст — проза не
+// проверяется (брифинг: единственное место, где игроку легально сообщают факты
+// дела, гвардить его состоянием нельзя). Непуст и гвард включён — проза
+// сверяется с состоянием: соврать про владение, место, исход или знание Мастеру
+// не вправе, как и персонажу.
 func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
-	outcome []string, speaking string, req llm.Request) (string, error) {
+	outcome []string, speaking string, state []string, req llm.Request) (string, error) {
+	text, err := m.narrateOnce(ctx, kind, frame, w, outcome, speaking, "", req)
+	if err != nil || text == "" {
+		return text, err
+	}
+	if m.guard == nil || len(state) == 0 {
+		return text, nil
+	}
+	return m.checked(ctx, kind, frame, w, outcome, speaking, state, text, req)
+}
+
+// narrateOnce — один вызов Мастера. avoid, если задан, называет утверждение,
+// которого в прозе быть не должно: ремонт переспрашивает то же без него.
+func (m *Master) narrateOnce(ctx context.Context, kind Kind, frame string, w World,
+	outcome []string, speaking, avoid string, req llm.Request) (string, error) {
 	if strings.TrimSpace(frame) == "" {
 		return "", nil
 	}
@@ -328,6 +367,10 @@ func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
 			b.WriteString("  " + o + "\n")
 		}
 	}
+	if strings.TrimSpace(avoid) != "" {
+		b.WriteString("\nВАЖНО: этого в состоянии игры нет — не утверждай, опиши то же " +
+			"без этого: " + avoid + "\n")
+	}
 	req.Input = b.String()
 
 	resp, err := m.gw.Do(ctx, req)
@@ -335,6 +378,49 @@ func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
 		return "", err
 	}
 	return strings.TrimSpace(resp.Text), nil
+}
+
+// checked проводит прозу через гвард. Противоречие состоянию (или утечка) —
+// один переспрос «то же, без утверждения Х», перепроверка; при повторе или сбое
+// возвращается пусто, и презентация печатает авторскую рамку. Рамка — доверенный
+// текст автора: она про состояние не врёт, и нейтралью служит именно она, а не
+// канцелярская заглушка.
+func (m *Master) checked(ctx context.Context, kind Kind, frame string, w World,
+	outcome []string, speaking string, state []string, text string,
+	req llm.Request) (string, error) {
+	material := proseMaterial(frame, w, outcome)
+	v, err := m.guard.Check(ctx, text, material, state, req)
+	if err != nil {
+		// Сбой проверки — как у актёра: лучше доверенная рамка, чем непроверенная
+		// проза. Рамку печатает презентация, получив пусто.
+		return "", nil
+	}
+	if v.OK {
+		return text, nil
+	}
+	fixed, err := m.narrateOnce(ctx, kind, frame, w, outcome, speaking, v.What, req)
+	if err != nil || fixed == "" {
+		return "", nil
+	}
+	// Отремонтированное проверяется снова: переспрос вправе подставить второе
+	// противоречие вместо первого, и один круг здесь тоже один.
+	if v2, err := m.guard.Check(ctx, fixed, material, state, req); err != nil || !v2.OK {
+		return "", nil
+	}
+	return fixed, nil
+}
+
+// proseMaterial — на что прозе разрешено опираться: авторская рамка, сцена,
+// сеттинг и механический исход. Правды дела и неизвестных парти фактов тут нет —
+// read-scope Мастера тот же, что в промпте.
+func proseMaterial(frame string, w World, outcome []string) []string {
+	out := []string{frame}
+	out = append(out, w.Scene...)
+	if strings.TrimSpace(w.Setting) != "" {
+		out = append(out, w.Setting)
+	}
+	out = append(out, outcome...)
+	return out
 }
 
 func grantSchema() string {
