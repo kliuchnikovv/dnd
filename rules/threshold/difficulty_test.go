@@ -31,21 +31,20 @@ func TestDifficultyFor(t *testing.T) {
 		{"открытая цель — ступень вниз",
 			core.SceneView{Exposed: true}, DifficultyEasy},
 
-		// Среда, которую нечем компенсировать, — то же противодействие, только
-		// от места, а не от воли.
-		{"среда без инструмента — ступень вверх",
-			core.SceneView{NodeTags: []string{"dark"}}, DifficultyHard},
-		{"инструмент возвращает среду к норме",
-			core.SceneView{NodeTags: []string{"dark"}, Tools: []string{"p_lantern"}}, DifficultyNormal},
+		// Среда порог не двигает: она уже оплачена ситуативным слагаемым, и
+		// вторая цена за тот же факт — те же две ступени, только размазанные по
+		// двум механизмам. Мерой это подтверждено: adverse стоит в половине
+		// узлов и как ступень срабатывал в 50.9% несудимых бросков.
+		{"темнота порог не двигает — она уже в слагаемом",
+			core.SceneView{NodeTags: []string{"dark"}}, DifficultyNormal},
+		{"темнота не отменяет открытости цели",
+			core.SceneView{NodeTags: []string{"dark"}, Exposed: true}, DifficultyEasy},
 
 		// Сигналы противоречат друг другу: связанный, но злой противник. Ни
 		// один не отбрасывается молча — ступени просто нет.
 		{"противодействие и открытость гасят друг друга",
 			core.SceneView{Opposed: true, Exposed: true}, DifficultyNormal},
-		{"среда и открытость гасят друг друга",
-			core.SceneView{NodeTags: []string{"dark"}, Exposed: true}, DifficultyNormal},
-		// Две причины идти вверх — всё равно одна ступень.
-		{"противодействие и среда не складываются",
+		{"противодействие в темноте — всё та же одна ступень",
 			core.SceneView{Opposed: true, NodeTags: []string{"dark"}}, DifficultyHard},
 	}
 
