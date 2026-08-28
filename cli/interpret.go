@@ -25,7 +25,7 @@ type Interpreter interface {
 	// вопрос: «рукой» после «чем именно?» читается как новое действие, и игра
 	// спрашивает то же самое по кругу.
 	Interpret(ctx context.Context, text string, with store.EntityID,
-		pending string) (in *core.Intent, probe, clarify string, err error)
+		pending string) (in *core.Intent, probe core.Probe, clarify string, err error)
 }
 
 // ChatInterpreter — переводчик чат-режима: тем же вызовом, которым разобрал
@@ -41,7 +41,7 @@ type ChatInterpreter interface {
 	// InterpretChat возвращает интент, безоценочную реплику Мастера, свободную
 	// пробу и вопрос игроку. Ошибка означает сбой канала, а не непонятый ввод.
 	InterpretChat(ctx context.Context, text string, with store.EntityID,
-		pending string) (in *core.Intent, reply, probe, clarify string, err error)
+		pending string) (in *core.Intent, reply string, probe core.Probe, clarify string, err error)
 }
 
 // WithChat включает чат-режим. Он идёт ВМЕСТО перевода свободного текста, а не
@@ -125,7 +125,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		s.noteProposal(llm.RoleIntentParser, llmProposal{Intent: in})
 		s.applyIntent(*in)
 		return true
-	case probe != "":
+	case probe.Text != "":
 		s.resolveProbe(probe)
 		return true
 	default:
@@ -156,11 +156,11 @@ func (s *Session) interpretChat(text string, parseErr error) bool {
 		// понимать, что дело в инструменте, а не в его замысле.
 		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
 		return false
-	case probe != "":
+	case probe.Text != "":
 		// Реплика чат-режима подводкой к пробе быть не может: подводка
 		// предваряет действие, а у пробы отклик и есть весь её текст. Показать
 		// оба значило бы описать одно событие дважды.
-		s.noteProposal(llm.RoleChatMaster, llmProposal{Probe: probe})
+		s.noteProposal(llm.RoleChatMaster, llmProposal{Probe: probe.Text})
 		s.resolveProbe(probe)
 		return true
 	case in == nil:

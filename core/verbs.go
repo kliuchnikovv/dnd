@@ -3,6 +3,8 @@
 // атрибуты, ни про то, как считается grit.
 package core
 
+import "sort"
+
 type Verb string
 
 type VerbClass string
@@ -68,6 +70,44 @@ var Verbs = map[Verb]VerbDef{
 	"mend":              {"mend", ClassSupport, true, true, false},
 	"use_ability":       {"use_ability", ClassResource, true, true, false},
 	"use_item":          {"use_item", ClassResource, true, true, false},
+}
+
+// classes — закрытый реестр классов. Существует потому, что класс приходит
+// СНАРУЖИ: его предлагает парсер по свободному тексту игрока, и принимать его
+// на слово нельзя. Выдуманное значение здесь не «неизвестный класс», а
+// отсутствие подсказки.
+var classes = map[VerbClass]bool{
+	ClassNone: true, ClassInvestigate: true, ClassReason: true,
+	ClassSocial: true, ClassMove: true, ClassAttack: true,
+	ClassSupport: true, ClassResource: true, ClassSkill: true,
+}
+
+// LookupClass проверяет недоверенную подсказку класса по реестру ядра.
+//
+// «none» отвергается наравне с выдуманным: это класс глаголов, которые ничего
+// не делают (look, emote, say), и как подсказка о форме он неотличим от её
+// отсутствия. Отдельное значение «форма есть, но никакая» только добавило бы
+// вызывающим ветку, ведущую туда же.
+func LookupClass(s string) (VerbClass, bool) {
+	c := VerbClass(s)
+	if s == "" || c == ClassNone || !classes[c] {
+		return "", false
+	}
+	return c, true
+}
+
+// AllClasses — классы реестра в стабильном порядке. Нужен слою над доменом:
+// перечисление в схеме парсера обязано браться отсюда, иначе появится второе
+// место правды о том, какие классы бывают, и разойдётся оно молча.
+func AllClasses() []VerbClass {
+	out := make([]VerbClass, 0, len(classes))
+	for c := range classes {
+		if c != ClassNone {
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 func LookupVerb(s string) (VerbDef, bool) {

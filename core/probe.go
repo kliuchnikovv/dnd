@@ -32,11 +32,35 @@ var probeVerbs = []Verb{"examine", "search", "stake_out", "tail"}
 // Функция только читает. Ход из неё применяет вызывающий, обычным Apply: второй
 // двери в состояние здесь не появляется.
 func (g *Game) MatchProbe(text string) (Intent, bool) {
-	id, ok := naming.Resolve(text, g.probeTargets())
+	return g.MatchProbeAs(Probe{Text: text})
+}
+
+// Probe — свободная проба вместе с подсказкой парсера о её форме.
+//
+// Подсказка НЕДОВЕРЕННАЯ: её сочинила модель по свободному тексту игрока. Она
+// лежит в одном значении с текстом именно поэтому — чтобы нигде по дороге не
+// возникло места, где класс выглядит как решение ядра, а не как чужое мнение.
+type Probe struct {
+	Text string
+	// Class — на что, по мнению парсера, действие похоже. Пусто, когда
+	// парсер не берётся судить. На порог и на легальность не влияет никак:
+	// первый ставит DifficultyFor по позиции, вторую — Check.
+	Class VerbClass
+}
+
+// MatchProbeAs — тот же маршрут, но с подсказкой парсера о форме действия.
+//
+// Подсказка выбирает, В КАКОМ ПОРЯДКЕ перебирать глаголы, и только. Она не
+// создаёт ходов: лечь проба может исключительно на гейт, который написал автор,
+// и обязана пройти Check. Порог берётся дальше по маршруту, из позиции, и о
+// подсказке не знает. Так свободный ввод перестаёт быть способом торговаться за
+// сложность: сказать «это лёгкий трюк» можно, получить за это порог — нет.
+func (g *Game) MatchProbeAs(p Probe) (Intent, bool) {
+	id, ok := naming.Resolve(p.Text, g.probeTargets())
 	if !ok {
 		return Intent{}, false
 	}
-	for _, v := range probeVerbs {
+	for _, v := range probeVerbsFor(p.Class) {
 		in := Intent{Verb: v, Actor: g.Actor, Args: Args{Target: store.EntityID(id)}}
 		if _, found := g.holderFor(in); !found {
 			continue
@@ -47,6 +71,33 @@ func (g *Game) MatchProbe(text string) (Intent, bool) {
 		return in, true
 	}
 	return Intent{}, false
+}
+
+// probeVerbsFor — порядок перебора глаголов под подсказанную форму. Глаголы
+// подсказанного класса идут первыми, дальше прежний список наблюдения: даже
+// правдоподобная подсказка не должна закрывать маршрут, который работал без
+// неё.
+//
+// Выдуманный класс отсеивается реестром и не меняет порядок вообще. Арность
+// здесь не проверяется намеренно: глагол, которому нужен узел или пара фактов,
+// отсеется сам — сперва отсутствием авторского гейта, потом Check. Второе место
+// правды об аргументах глаголов разъехалось бы с первым молча.
+func probeVerbsFor(hint VerbClass) []Verb {
+	class, ok := LookupClass(string(hint))
+	if !ok {
+		return probeVerbs
+	}
+	seen := make(map[Verb]bool, len(probeVerbs))
+	for _, v := range probeVerbs {
+		seen[v] = true
+	}
+	out := make([]Verb, 0, len(probeVerbs)+4)
+	for _, d := range AllVerbs() {
+		if d.Class == class && d.Rolls && !seen[d.Verb] {
+			out = append(out, d.Verb)
+		}
+	}
+	return append(out, probeVerbs...)
 }
 
 // probeTargets — то, на что проба вправе лечь: детали места и неживые

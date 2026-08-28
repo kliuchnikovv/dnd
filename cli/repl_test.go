@@ -129,22 +129,25 @@ func TestFailedMoveDoesNotArrive(t *testing.T) {
 // --- переводчик свободного текста ---
 
 type fakeInterp struct {
-	intent  *core.Intent
-	probe   string
-	clarify string
-	err     error
-	seen    []string
+	intent *core.Intent
+	probe  string
+	// probeClass — форма, предложенная парсером. Недоверенная: ядро её
+	// проверяет само.
+	probeClass core.VerbClass
+	clarify    string
+	err        error
+	seen       []string
 	// with, pending — контекст разговора, доехавший до разбора.
 	with    []store.EntityID
 	pending []string
 }
 
 func (f *fakeInterp) Interpret(_ context.Context, text string, with store.EntityID,
-	pending string) (*core.Intent, string, string, error) {
+	pending string) (*core.Intent, core.Probe, string, error) {
 	f.seen = append(f.seen, text)
 	f.with = append(f.with, with)
 	f.pending = append(f.pending, pending)
-	return f.intent, f.probe, f.clarify, f.err
+	return f.intent, core.Probe{Text: f.probe, Class: f.probeClass}, f.clarify, f.err
 }
 
 func runWith(t *testing.T, interp Interpreter, script string) (string, *core.Game) {
@@ -627,18 +630,19 @@ func TestUnanswerableOpenQuestionDoesNotRefuse(t *testing.T) {
 // --- чат-режим: один вызов даёт разбор и реплику, ядро разрешает ---
 
 type fakeChat struct {
-	intent  *core.Intent
-	reply   string
-	probe   string
-	clarify string
-	err     error
-	calls   int
+	intent     *core.Intent
+	reply      string
+	probe      string
+	probeClass core.VerbClass
+	clarify    string
+	err        error
+	calls      int
 }
 
 func (f *fakeChat) InterpretChat(_ context.Context, text string, with store.EntityID,
-	pending string) (*core.Intent, string, string, string, error) {
+	pending string) (*core.Intent, string, core.Probe, string, error) {
 	f.calls++
-	return f.intent, f.reply, f.probe, f.clarify, f.err
+	return f.intent, f.reply, core.Probe{Text: f.probe, Class: f.probeClass}, f.clarify, f.err
 }
 
 func runChat(t *testing.T, fc *fakeChat, script string) (string, *core.Game) {

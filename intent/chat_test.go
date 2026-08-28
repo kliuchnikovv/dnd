@@ -148,8 +148,8 @@ func TestChatLandsAProbe(t *testing.T) {
 	if in != nil {
 		t.Fatalf("проба стала действием: %+v", in)
 	}
-	if probe != "принюхивается к бочкам" {
-		t.Errorf("проба не доехала: %q", probe)
+	if probe.Text != "принюхивается к бочкам" {
+		t.Errorf("проба не доехала: %q", probe.Text)
 	}
 	if clarify != "" {
 		t.Errorf("проба пришла уточнением: %q", clarify)

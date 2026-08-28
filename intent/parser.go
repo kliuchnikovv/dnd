@@ -86,6 +86,12 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
    что игрок пробует. Отказа не бывает: игрок пробует поисследовать, и мир
    отвечает откликом, а не сообщением о том, что так нельзя. Не подгоняй фразу
    под неподходящий глагол — но и не отбивай её.
+   - Если игрок при этом описывает физическое действие, добавь class — на что
+     оно похоже по ФОРМЕ: attack для удара и возни, skill для ловкости и
+     точной работы руками, move для перемещения. Это подсказка о форме, и
+     только: сложность назначает игра, и назвать действие лёгким или трудным
+     ты не можешь ничем — ни этим полем, ни словами в probe. Не уверен в форме
+     — оставь class пустым, пустой лучше выдуманного.
 5. Если фраза ложится, но непонятно на что именно, верни clarify с коротким
    вопросом — в характере мира, не служебным языком. Уточнение — это вопрос
    игроку, а не отказ, и второй раз одно и то же не спрашивают: если тот же
@@ -151,7 +157,12 @@ const systemPrompt = `Ты переводишь фразу игрока в де�
 Игрок: «принюхиваюсь, чем тут пахнет за бочками»
 Ответ: {"outcome":"free_probe","probe":"принюхивается к воздуху за штабелем бочек"}
 Ни один глагол этого не выражает — и это не повод отказывать. Игрок пробует,
-мир отвечает.`
+мир отвечает. Формы у принюхивания нет — class пуст.
+
+Детали места: p_door — Трухлявая дверь
+Игрок: «наваливаюсь плечом на дверь»
+Ответ: {"outcome":"free_probe","probe":"наваливается плечом на дверь","class":"attack"}
+Форма понятна — это возня и сила. Насколько это трудно, решает игра.`
 
 // chatAddendum — то, чем чат-режим отличается от разбора: разобрав фразу,
 // модель тем же ответом отвечает игроку. Добавка, а не свой промпт: правила
@@ -259,6 +270,18 @@ func probeText(raw reply, text string) string {
 	return fallback(strings.TrimSpace(raw.Probe), strings.TrimSpace(text))
 }
 
+// probeClass — предложенная моделью форма свободной пробы, проверенная по
+// реестру ЯДРА. Выдуманное значение не «неизвестный класс», а отсутствие
+// подсказки: принять его на слово значило бы дать модели заводить категории в
+// домене. Ни сложности, ни легальности подсказка не несёт — их решает ядро.
+func probeClass(raw reply) core.VerbClass {
+	c, ok := core.LookupClass(strings.TrimSpace(raw.Class))
+	if !ok {
+		return ""
+	}
+	return c
+}
+
 // validate — вторая половина гарантии. Схема отвечает за форму ответа, эта
 // функция за его смысл: ссылка на сущность вне сцены отклоняется, даже если
 // формально валидна.
@@ -269,11 +292,11 @@ func (p *Parser) validate(raw reply, hint SceneHint, text string) (Result, strin
 	case OutcomeClarify:
 		return Result{Clarify: fallback(raw.Clarify, "уточни, что именно ты делаешь")}, ""
 	case OutcomeFreeProbe:
-		return Result{Probe: probeText(raw, text)}, ""
+		return Result{Probe: probeText(raw, text), Class: probeClass(raw)}, ""
 	case OutcomeUnsupported:
 		// Приземляется пробой, но сигнал о узости словаря сохраняется: метрика
 		// меряет именно его, и без него не видно, ГДЕ словарь узок.
-		return Result{Probe: probeText(raw, text),
+		return Result{Probe: probeText(raw, text), Class: probeClass(raw),
 			Candidate: fallback(raw.Reason, "словарь такого не покрывает")}, ""
 	case OutcomeIntent:
 	default:
@@ -489,12 +512,12 @@ type GameInterpreter struct {
 // и платить за него вызовом незачем. Реплики у такого хода нет — её заменяет
 // ответ самого человека, который сейчас и заговорит.
 func (gi *GameInterpreter) InterpretChat(ctx context.Context, text string,
-	with store.EntityID, pending string) (*core.Intent, string, string, string, error) {
+	with store.EntityID, pending string) (*core.Intent, string, core.Probe, string, error) {
 	return gi.interpret(ctx, text, with, pending)
 }
 
 func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with store.EntityID,
-	pending string) (*core.Intent, string, string, error) {
+	pending string) (*core.Intent, core.Probe, string, error) {
 	in, _, probe, clarify, err := gi.interpret(ctx, text, with, pending)
 	return in, probe, clarify, err
 }
@@ -503,7 +526,7 @@ func (gi *GameInterpreter) Interpret(ctx context.Context, text string, with stor
 // показывает её только чат-режим: одно место разбора вместо двух, которые
 // разъехались бы молча.
 func (gi *GameInterpreter) interpret(ctx context.Context, text string, with store.EntityID,
-	pending string) (in *core.Intent, reply, probe, clarify string, err error) {
+	pending string) (in *core.Intent, reply string, probe core.Probe, clarify string, err error) {
 	hint := BuildHint(gi.Game)
 	// Одно слово — имя того, к кому игрок повернулся. Самый дешёвый ход в
 	// разговоре, и вызов модели ему не нужен: имя в сцене это подстрока, а не
@@ -513,7 +536,7 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 		// Реплики у такого хода нет, и придумывать её незачем: сейчас
 		// заговорит сам человек, к которому повернулись.
 		return &core.Intent{Verb: "talk_to", Actor: gi.Game.Actor,
-			Args: core.Args{Target: store.EntityID(id), Text: text}}, "", "", "", nil
+			Args: core.Args{Target: store.EntityID(id), Text: text}}, "", core.Probe{}, "", nil
 	}
 	// Разговор — часть сцены. Транскрипт лежит в дневнике собеседника: его
 	// ведёт озвучка, а разбор им пользуется, и второго места правды не
@@ -524,7 +547,7 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 	}
 	res, err := gi.Parser.Parse(ctx, text, hint, gi.Req)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", core.Probe{}, "", err
 	}
 	switch {
 	case res.Accepted():
@@ -539,13 +562,13 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 		if res.Intent.Args.Text == "" {
 			res.Intent.Args.Text = text
 		}
-		return res.Intent, res.Reply, "", "", nil
+		return res.Intent, res.Reply, core.Probe{}, "", nil
 	case res.Probe != "":
 		// Приземление вместо тупика. Раньше здесь стоял отказ словарём, и
 		// именно он рубил исследование: игрок пробовал, а мир отвечал
 		// служебным языком, что так нельзя.
-		return nil, res.Reply, res.Probe, "", nil
+		return nil, res.Reply, core.Probe{Text: res.Probe, Class: res.Class}, "", nil
 	default:
-		return nil, "", "", res.Clarify, nil
+		return nil, "", core.Probe{}, res.Clarify, nil
 	}
 }

@@ -1417,8 +1417,8 @@ func TestInterpretReturnsProbeSeparatelyFromClarify(t *testing.T) {
 	if in != nil {
 		t.Fatalf("проба стала действием: %+v", in)
 	}
-	if probe != "пробует расшатать доску" {
-		t.Errorf("проба не доехала: %q", probe)
+	if probe.Text != "пробует расшатать доску" {
+		t.Errorf("проба не доехала: %q", probe.Text)
 	}
 	if clarify != "" {
 		t.Errorf("проба пришла уточнением: %q", clarify)
@@ -1496,5 +1496,61 @@ func TestProbesCountAsObservations(t *testing.T) {
 	}
 	if rate := m.Overall(); rate != 0 {
 		t.Errorf("проба посчитана отказом: Overall=%v", rate)
+	}
+}
+
+// Парсер вправе предложить КЛАСС свободной пробы — подсказку о форме. Она
+// недоверенная и над костью бесправна (ADR-0001), но без неё импровизация не
+// доходит до броска вообще: у действия нет формы, а значит нет ни кости, ни
+// цены провала.
+func TestFreeProbeCarriesTheProposedClass(t *testing.T) {
+	p, _ := parserWith(t,
+		`{"outcome":"free_probe","probe":"наваливается на дверь","class":"attack"}`)
+	got, err := p.Parse(context.Background(), "наваливаюсь на дверь", SceneHint{}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Probe == "" {
+		t.Fatalf("проба потерялась: %+v", got)
+	}
+	if got.Class != core.ClassAttack {
+		t.Errorf("предложенный класс не доехал: %q", got.Class)
+	}
+}
+
+// Класс, которого в реестре ядра нет, — не подсказка, а мусор. Принять его на
+// слово значило бы дать модели заводить категории в домене.
+func TestFreeProbeDropsAnInventedClass(t *testing.T) {
+	for _, bad := range []string{"рукопашная", "ADMIN", "", "none"} {
+		p, _ := parserWith(t, `{"outcome":"free_probe","probe":"пробует","class":"`+bad+`"}`)
+		got, err := p.Parse(context.Background(), "пробую", SceneHint{}, llm.Request{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Probe == "" {
+			t.Fatalf("класс %q утопил саму пробу: %+v", bad, got)
+		}
+		if got.Class != "" {
+			t.Errorf("класс %q принят как %q", bad, got.Class)
+		}
+	}
+}
+
+// Схема перечисляет классы из реестра ядра, а не свой список: два места правды
+// о том, какие классы бывают, разошлись бы молча.
+func TestSchemaOffersOnlyRegistryClasses(t *testing.T) {
+	props := Schema()["properties"].(map[string]any)
+	field, ok := props["class"].(map[string]any)
+	if !ok {
+		t.Fatal("в схеме нет поля class — подсказать форму нечем")
+	}
+	enum, ok := field["enum"].([]string)
+	if !ok {
+		t.Fatalf("у class нет перечисления: %+v", field)
+	}
+	for _, name := range enum {
+		if _, ok := core.LookupClass(name); !ok {
+			t.Errorf("схема предлагает класс %q, которого нет в реестре ядра", name)
+		}
 	}
 }
