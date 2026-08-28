@@ -29,7 +29,7 @@ func (s *System) Resolve(in core.Intent, view core.SceneView, d core.Dice) core.
 	attr := sheet.Attr(in.Verb)
 	tag := sheet.TagBonus(in.Verb, view)
 	sit := Situational(in, view)
-	th := ThresholdFor(view.GateThreshold)
+	th := ThresholdFor(DifficultyFor(in, view))
 
 	// push — заявка игрока: одно очко grit за +2. Решение принимается до
 	// броска, и в этом вся его цена.
