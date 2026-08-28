@@ -441,9 +441,11 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 		return told(out.Line)
 	}
 	// Сработавшая проверка не обязана стоить голоса: сначала переспрос «то
-	// же, без придуманного». Заглушка — дно после провала ремонта, а не
-	// первая реакция.
-	fixed, err := a.repair(ctx, s, sit, out.Line, v.What, req)
+	// же, без нарушающего». Заглушка — дно после провала ремонта, а не
+	// первая реакция. Путь один на оба вектора: и выдумку дела, и ложь про
+	// состояние чинит тот же переспрос, меняется лишь формулировка того, что
+	// убрать.
+	fixed, err := a.repair(ctx, s, sit, out.Line, v.What, v.ContradictsState, req)
 	if err != nil || fixed == "" {
 		reason := "утечка не починилась (" + v.What + "): ремонт вернул пустое"
 		if err != nil {
@@ -463,20 +465,25 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 	return told(fixed)
 }
 
-const repairPrompt = `Ты сказал фразу, в которой оказалось придумано то, чего ты знать не можешь.
+const repairPrompt = `Ты сказал фразу, в которой оказалось то, чего говорить не следовало: либо
+выдуманное, чего ты знать не можешь, либо утверждение о том, чего на самом деле
+нет.
 
-Скажи ТО ЖЕ САМОЕ, тем же голосом и тем же тоном, но без придуманного.
+Скажи ТО ЖЕ САМОЕ, тем же голосом и тем же тоном, но без этого.
 Только слова вслух: без ремарок, без описаний своих действий, без тире.
 Ничего нового не добавляй: ни имён, ни мест, ни чисел, ни событий. Если без
-придуманного сказать нечего — уклонись по-человечески: поворчи, отшутись,
+этого сказать нечего — уклонись по-человечески: поворчи, отшутись,
 спроси в ответ. Одна-две фразы.
 
 Отвечай на том же языке, на котором сказана фраза.`
 
-// repair переспрашивает модель ту же реплику без придуманного. Дешёвым тиром:
-// это правка одной фразы, а платится за неё на каждой утечке.
+// repair переспрашивает модель ту же реплику без нарушающего. Дешёвым тиром:
+// это правка одной фразы, а платится за неё на каждом срабатывании.
+//
+// stateContradiction различает формулировку: «придумано» и «этого на самом деле
+// нет» — разные ошибки, и переспрос точнее, когда назван нужный род нарушения.
 func (a *Actor) repair(ctx context.Context, s Speaker, sit Situation,
-	line, what string, req llm.Request) (string, error) {
+	line, what string, stateContradiction bool, req llm.Request) (string, error) {
 	req.Role = llm.RoleActor
 	req.Tier = llm.TierCheap
 	req.Schema = schemaJSON(nil, nil)
@@ -490,7 +497,11 @@ func (a *Actor) repair(ctx context.Context, s Speaker, sit Situation,
 	fmt.Fprintf(&b, "Ты — %s.\nТвой голос: %s\n", s.Name, s.Voice)
 	fmt.Fprintf(&b, "\nТы сказал: %s\n", line)
 	if what != "" {
-		fmt.Fprintf(&b, "Придумано вот это, и этого быть не может: %s\n", what)
+		if stateContradiction {
+			fmt.Fprintf(&b, "Вот это на самом деле не так — не утверждай этого: %s\n", what)
+		} else {
+			fmt.Fprintf(&b, "Придумано вот это, и этого быть не может: %s\n", what)
+		}
 	}
 	if sit.PlayerText != "" {
 		fmt.Fprintf(&b, "\nТебе говорили: %s\n", sit.PlayerText)

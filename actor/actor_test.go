@@ -200,6 +200,9 @@ type stubGuard struct {
 	material []string
 	state    []string
 	what     string
+	// stateReason — при отказе это противоречие состоянию, а не утечка дела.
+	// По умолчанию отказ трактуется как утечка: так старые тесты не меняются.
+	stateReason bool
 	// verdicts — вердикты по вызовам: ремонт проверяется второй раз.
 	verdicts []bool
 	lines    []string
@@ -216,7 +219,11 @@ func (g *stubGuard) Check(_ context.Context, line string, material, state []stri
 		ok = g.verdicts[min(g.calls, len(g.verdicts)-1)]
 	}
 	g.calls++
-	return guard.Verdict{OK: ok, What: g.what}, g.err
+	v := guard.Verdict{OK: ok, What: g.what}
+	if !ok {
+		v.Leak, v.ContradictsState = !g.stateReason, g.stateReason
+	}
+	return v, g.err
 }
 
 func TestGuardRejectionFallsBackToTemplate(t *testing.T) {
@@ -1149,6 +1156,74 @@ func TestRepairChannelFailureFallsToFloor(t *testing.T) {
 	}
 	if got == "" || strings.Contains(got, "Олсен") {
 		t.Errorf("реплика %q", got)
+	}
+}
+
+// --- ремонт противоречия состоянию ---
+
+// Противоречие состоянию чинится тем же переспросом, что и утечка: первая
+// реплика соврала про место, вторая сказала то же без лжи — её и слышит игрок.
+func TestStateContradictionIsRepaired(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := repliesInOrder(t,
+		`{"line":"Раз ты уже в кузнице, глянь на горн."}`,
+		`{"line":"Дел тут хватает, гляньте по сторонам."}`)
+	sg := &stubGuard{verdicts: []bool{false, true}, stateReason: true,
+		what: "ты уже в кузнице"}
+	a = a.WithGuard(sg)
+
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", State: []string{"Сейчас находится: Пристань"}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "кузниц") {
+		t.Errorf("ложь про состояние дошла до игрока: %q", got)
+	}
+	if sg.calls != 2 {
+		t.Errorf("проверок %d — отремонтированная реплика не перепроверена", sg.calls)
+	}
+}
+
+// Повторное противоречие состоянию — как и повторная утечка — падает в
+// нейтральную реплику: дно после провала ремонта, не раньше.
+func TestStateContradictionRepeatFallsToNeutral(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, _ := repliesInOrder(t,
+		`{"line":"Раз ты уже в кузнице, глянь на горн."}`,
+		`{"line":"Ну ты же в кузнице стоишь."}`)
+	a = a.WithGuard(&stubGuard{ok: false, stateReason: true, what: "ты уже в кузнице"})
+
+	got, err := a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", Scene: SceneOf(g, "e_bern"),
+			State: []string{"Сейчас находится: Пристань"}}, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "кузниц") {
+		t.Errorf("ложь про состояние дошла до игрока: %q", got)
+	}
+	if got == "" {
+		t.Error("нейтральная реплика не подставилась")
+	}
+}
+
+// Формулировка ремонта различает вектор: у противоречия состоянию — «этого на
+// самом деле нет», а не «придумано». Точная формулировка помогает переспросу.
+func TestStateContradictionRepairFraming(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	a, f := repliesInOrder(t,
+		`{"line":"Раз ты в кузнице..."}`, `{"line":"Кто ж его знает."}`)
+	a = a.WithGuard(&stubGuard{verdicts: []bool{false, true}, stateReason: true,
+		what: "ты в кузнице"})
+	if _, err := a.Line(context.Background(), sp, Situation{Verb: "talk_to"}, llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if in := f.Calls()[1].Input; !strings.Contains(in, "на самом деле не так") {
+		t.Errorf("ремонт не назвал противоречие состоянию как таковое:\n%s", in)
 	}
 }
 
