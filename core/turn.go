@@ -342,7 +342,27 @@ func (g *Game) SceneView(in Intent) SceneView {
 	if h, ok := g.holderFor(in); ok {
 		view.GateThreshold = h.Gate.Threshold
 	}
+	view.Opposed = g.opposes(in.Args.Target)
+	// Exposed остаётся false: состояния, выражающего беспомощность цели
+	// (оглушена, связана, не защищается), в M1a ещё нет — боя нет. Канал
+	// заведён здесь, чтобы, когда такое состояние появится, порог читал его
+	// из состояния, а не из прозы Мастера.
 	return view
+}
+
+// opposes сообщает, есть ли у цели воля и намерение мешать. Воля — свойство
+// сущности: у пропа, записи и отсутствующего её нет по типу, а не по
+// расположению. Соседи по узлу сюда не входят: численное превосходство уже
+// учтено ситуативным слагаемым, и второй раз считать его нельзя.
+func (g *Game) opposes(target store.EntityID) bool {
+	if target == "" {
+		return false
+	}
+	e, ok := g.DB.Entities[target]
+	if !ok || e.Kind != store.EntityNPC || e.Node != g.Node {
+		return false
+	}
+	return g.D.Disposition(target) <= hostileDisposition
 }
 
 // isProp сообщает, что цель — инертная деталь текущего узла. Проп законная
@@ -367,10 +387,15 @@ func (g *Game) nodeTags(n store.NodeID) []string {
 	return g.DB.Locations[n].Tags
 }
 
+// hostileDisposition — расположение, с которого сущность считается
+// враждебной. Одно место правды: и подсчёт противников, и признак
+// противодействия обязаны проводить границу по одной черте.
+const hostileDisposition = -2
+
 func (g *Game) hostileCount() int {
 	n := 0
 	for _, e := range g.DB.EntitiesAt(g.Node) {
-		if g.D.Disposition(e.ID) <= -2 {
+		if g.D.Disposition(e.ID) <= hostileDisposition {
 			n++
 		}
 	}
