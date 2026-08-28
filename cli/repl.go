@@ -12,6 +12,7 @@ import (
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/naming"
 	"github.com/kliuchnikovv/dnd/store"
+	"github.com/kliuchnikovv/dnd/view"
 )
 
 // Session гоняет один и тот же цикл и для интерактивного REPL, и для скрипта:
@@ -371,6 +372,23 @@ func (s *Session) chosen(line string) (core.Intent, bool) {
 	return s.offered[n-1].Intent, true
 }
 
+// chosenToken разворачивает токен опции в её интент. Сервер стоит здесь: токен
+// сопоставляется с ПОКАЗАННЫМ набором этого хода, а не декодируется на веру, —
+// и найденный интент всё равно уходит в applyIntent на валидацию. Клиент
+// интентов не сочиняет; он лишь ссылается на предложенное.
+func (s *Session) chosenToken(line string) (core.Intent, bool) {
+	if !s.affordances || len(s.offered) == 0 {
+		return core.Intent{}, false
+	}
+	line = strings.TrimSpace(line)
+	for _, a := range s.offered {
+		if view.OptionToken(a) == line {
+			return a.Intent, true
+		}
+	}
+	return core.Intent{}, false
+}
+
 // Feed исполняет ОДИН ввод и сообщает, пора ли заканчивать. Здесь живёт всё,
 // что раньше было телом цикла Run: разбор, перевод свободного текста,
 // исполнение и проверка развязки.
@@ -399,6 +417,14 @@ func (s *Session) Feed(line string) bool {
 	if numeric(line) {
 		// Номер вне диапазона: ход не состоялся, и разбирать строку дальше
 		// нечего. Отправить «9» в модель значило бы платить за опечатку.
+		return s.afterFeed()
+	}
+	// Токен опции — тот же путь, что номер: клиент шлёт непрозрачный токен,
+	// сессия разворачивает его в интент показанного набора и гонит тем же
+	// applyIntent. Раньше номера: цифру распознать дешевле, а токен по форме с
+	// цифрой не пересекается.
+	if in, ok := s.chosenToken(line); ok {
+		s.applyIntent(in)
 		return s.afterFeed()
 	}
 	cmd, err := Parse(line)

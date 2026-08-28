@@ -65,6 +65,20 @@ func TestStateShowsAttemptsAndGrit(t *testing.T) {
 	}
 }
 
+// TestStateSurfacesHarmOnlyWhenWounded — state печатает меры из дескрипторов
+// правила и только всплывшие: рана молчит на полном здоровье и всплывает от
+// ранения. Это тот же surfacing, что уйдёт клиенту, проверенный уже в консоли.
+func TestStateSurfacesHarmOnlyWhenWounded(t *testing.T) {
+	g := renderGame(t)
+	if strings.Contains(Render{}.State(g), "ранения") {
+		t.Errorf("на полном здоровье state показал раны: %q", Render{}.State(g))
+	}
+	g.DB.Characters[g.Actor].Harm = 1
+	if !strings.Contains(Render{}.State(g), "ранения: 1/3") {
+		t.Errorf("ранение не всплыло в state: %q", Render{}.State(g))
+	}
+}
+
 func TestRenderNeverPrintsTruth(t *testing.T) {
 	g := renderGame(t)
 	all := Render{}.Scene(g) + Render{}.Facts(g) + Render{}.State(g) + Render{}.Clocks(g)

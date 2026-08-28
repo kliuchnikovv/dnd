@@ -7,7 +7,27 @@ import (
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/store"
+	"github.com/kliuchnikovv/dnd/view"
 )
+
+// surfacedMeters печатает ТОЛЬКО всплывшие меры, «Метка: значение[/потолок]».
+// Скрытая мера на экран не идёт: что показать сейчас, решил флаг Surface
+// правила, а не печать. Формат с потолком и без — по наличию Max: у раны он
+// есть, у grit нет.
+func surfacedMeters(ms []view.Meter) string {
+	var b strings.Builder
+	for _, m := range ms {
+		if !m.Surface {
+			continue
+		}
+		if m.Max != nil {
+			fmt.Fprintf(&b, "%s: %d/%d\n", m.Label, m.Value, *m.Max)
+		} else {
+			fmt.Fprintf(&b, "%s: %d\n", m.Label, m.Value)
+		}
+	}
+	return b.String()
+}
 
 // ProseKind — что описывает проза: обстановку или исход хода.
 type ProseKind string
@@ -281,10 +301,13 @@ func (Render) Facts(g *core.Game) string {
 }
 
 func (Render) State(g *core.Game) string {
-	ch := g.DB.Characters[g.Actor]
 	var b strings.Builder
-	fmt.Fprintf(&b, "узел: %s\nранения: %d/%d\ngrit: %d\nпопыток обвинения: %d\n",
-		g.Node, ch.Harm, core.HarmMax, ch.Grit, g.Attempts)
+	fmt.Fprintf(&b, "узел: %s\n", g.Node)
+	// Меры печатаются из дескрипторов правила и ТОЛЬКО всплывшие: здоровый
+	// персонаж не видит строки ран. Минимализм держит правило флагом Surface, а
+	// не презентация по своему усмотрению — тот же surfacing уйдёт и клиенту.
+	b.WriteString(surfacedMeters(RefRuleset{}.Meters(g)))
+	fmt.Fprintf(&b, "попыток обвинения: %d\n", g.Attempts)
 	if g.Incapacitated() {
 		b.WriteString("выведен из строя: доступны только осмотр и отдых\n")
 	}
