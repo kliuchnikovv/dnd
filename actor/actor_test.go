@@ -10,6 +10,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/propose"
@@ -197,6 +198,7 @@ type stubGuard struct {
 	ok       bool
 	err      error
 	material []string
+	state    []string
 	what     string
 	// verdicts — вердикты по вызовам: ремонт проверяется второй раз.
 	verdicts []bool
@@ -204,15 +206,17 @@ type stubGuard struct {
 	calls    int
 }
 
-func (g *stubGuard) Check(_ context.Context, line string, material []string, _ llm.Request) (Verdict, error) {
+func (g *stubGuard) Check(_ context.Context, line string, material, state []string,
+	_ llm.Request) (guard.Verdict, error) {
 	g.material = material
+	g.state = state
 	g.lines = append(g.lines, line)
 	ok := g.ok
 	if len(g.verdicts) > 0 {
 		ok = g.verdicts[min(g.calls, len(g.verdicts)-1)]
 	}
 	g.calls++
-	return Verdict{OK: ok, What: g.what}, g.err
+	return guard.Verdict{OK: ok, What: g.what}, g.err
 }
 
 func TestGuardRejectionFallsBackToTemplate(t *testing.T) {
@@ -261,6 +265,31 @@ func TestGuardGetsOnlyAllowedMaterial(t *testing.T) {
 		if strings.Contains(joined, leak) {
 			t.Errorf("в материал попало %q", leak)
 		}
+	}
+}
+
+// Дайджест состояния доходит до гварда отдельным списком: проверить, не соврала
+// ли реплика про владение, место, знание или исход, гвард может только видя
+// состояние. И в материал он не подмешивается — это разные списки: материалом
+// не оправдывают ложь о состоянии.
+func TestGuardGetsStateDigest(t *testing.T) {
+	g := harbour(t)
+	sp, _ := SpeakerFor(g, "e_bern")
+	sg := &stubGuard{ok: true}
+	a, _ := actorWith(t, `{"move":"observe","line":"Сыро сегодня."}`)
+	a = a.WithGuard(sg)
+	state := []string{"Несёт при себе: предписание", "Сейчас находится: Пристань"}
+	a.Line(context.Background(), sp,
+		Situation{Verb: "talk_to", State: state}, llm.Request{})
+
+	seen := strings.Join(sg.state, " | ")
+	for _, want := range state {
+		if !strings.Contains(seen, want) {
+			t.Errorf("дайджест не дошёл до гварда: %q нет в %q", want, seen)
+		}
+	}
+	if strings.Contains(strings.Join(sg.material, " | "), "Несёт при себе") {
+		t.Error("дайджест утёк в материал — это разные списки")
 	}
 }
 
@@ -510,17 +539,6 @@ func TestFlavourActsGoCheapAndShort(t *testing.T) {
 	}
 	if maxTokensFor(ActGreeting) >= maxTokensFor(ActProbe) {
 		t.Error("у приветствия потолок вывода не короче, чем у открытого вопроса")
-	}
-}
-
-// Проверка на выдумку — это «да/нет». Она не сочиняет и дорогой модели не
-// требует никогда.
-// Проверка идёт основным тиром, и это не расточительность, а измерение:
-// дешёвый судья пропускает одну утечку из десяти (guard_corpus_test.go), а
-// утечка бьёт в решаемость дела.
-func TestGuardGoesMainTier(t *testing.T) {
-	if got := NewGuard(nil).tier(); got != llm.TierMain {
-		t.Errorf("страж пошёл тиром %q — дешёвый пропускает утечки", got)
 	}
 }
 

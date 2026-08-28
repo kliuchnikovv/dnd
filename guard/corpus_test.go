@@ -1,4 +1,4 @@
-package actor
+package guard
 
 import (
 	"context"
@@ -183,11 +183,11 @@ func TestGuardFrequencyOnLiveModel(t *testing.T) {
 		llm.NewRouter().Route(llm.RoleCanonGuard,
 			llm.Target{Provider: llm.NewOpenRouter(llm.ORWithTitle("dnd-guard-corpus")), Model: model}),
 		llm.NewLedger(llm.Caps{}))
-	guard := NewGuard(gw)
+	g := New(gw)
 
 	var wrong []string
 	got := rate(t, func(c guardCase) bool {
-		v, err := guard.Check(context.Background(), c.line, guardMaterial, llm.Request{})
+		v, err := g.Check(context.Background(), c.line, guardMaterial, nil, llm.Request{})
 		if err != nil {
 			t.Fatalf("проверка сорвалась на %q: %v", c.line, err)
 		}

@@ -26,6 +26,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
@@ -231,7 +232,7 @@ func main() {
 		}
 		act := actor.New(gw)
 		if *guardLines {
-			act = act.WithGuard(actor.NewGuard(gw))
+			act = act.WithGuard(guard.New(gw))
 		}
 		// Почему реплика стала заглушкой — в ту же панель, что и остальные
 		// внештатные сообщения. Игроку это не показывается: четыре пути к

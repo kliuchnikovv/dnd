@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/propose"
@@ -116,6 +117,12 @@ type Situation struct {
 	// перечисление told_place: назвать несмежное место персонаж не может
 	// физически.
 	Roads []Known
+	// State — доверенный дайджест состояния (core.StateDigest). В промпт
+	// генерации НЕ уходит: это материал для проверки, а не для сочинения. Гвард
+	// сверяет реплику с ним, чтобы модель не соврала про владение, место, знание,
+	// исход или часы. Пусто — состояние не проверяется (гвард без дайджеста
+	// ловит только утечку дела, как раньше).
+	State []string
 }
 
 // Move — закрытый набор того, что персонаж может сделать репликой.
@@ -258,18 +265,13 @@ func knownIDs(k []Known) []string {
 	return out
 }
 
-// Verdict — решение проверки. Кроме «можно ли», она обязана вернуть «что
-// именно придумано»: без этого единственный выход — заглушка, а заглушка
-// стоит игроку голоса персонажа.
-type Verdict struct {
-	OK   bool
-	What string
-}
-
-// LineGuard проверяет, не утекает ли в реплике содержание дела. Отдельный
-// интерфейс, потому что проверка стоит вызова и должна быть отключаемой.
+// LineGuard проверяет реплику на два вектора газлайтинга: утечку дела и
+// противоречие установленному состоянию. Отдельный интерфейс, потому что
+// проверка стоит вызова и должна быть отключаемой. Реализация — пакет guard,
+// один на актёра и на прозу Мастера.
 type LineGuard interface {
-	Check(ctx context.Context, line string, material []string, req llm.Request) (Verdict, error)
+	Check(ctx context.Context, line string, material, state []string,
+		req llm.Request) (guard.Verdict, error)
 }
 
 // WorldMaster — власть над миром: единственный, кто вправе решить деталь,
@@ -429,7 +431,7 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 		return told(out.Line)
 	}
 	material := allowedMaterial(s, sit, "")
-	v, err := a.guard.Check(ctx, out.Line, material, req)
+	v, err := a.guard.Check(ctx, out.Line, material, sit.State, req)
 	if err != nil {
 		// Сбой проверки трактуется как отказ: лучше бледно и правдиво, чем
 		// живо и с выдуманным фермером.
@@ -451,7 +453,7 @@ func (a *Actor) finish(ctx context.Context, s Speaker, sit Situation, out Reply,
 	}
 	// Отремонтированное проверяется снова: ремонт вправе подставить вторую
 	// выдумку вместо первой, и один круг здесь тоже один.
-	if v2, err := a.guard.Check(ctx, fixed, material, req); err != nil || !v2.OK {
+	if v2, err := a.guard.Check(ctx, fixed, material, sit.State, req); err != nil || !v2.OK {
 		reason := "утечка после ремонта (" + v.What + " → " + v2.What + ")"
 		if err != nil {
 			reason = "перепроверка после ремонта не отработала: " + err.Error()
@@ -1063,6 +1065,10 @@ func (v *GameVoicer) Voice(ctx context.Context, in core.Intent, res core.TurnRes
 		Frame:          frameOf(v.Game, res.FlavourKey),
 		CaseNames:      caseNames(v.Game),
 		Roads:          roadsFrom(v.Game),
+		// Доверенный дайджест состояния для гварда: реплика не вправе соврать про
+		// владение, место, знание, исход хода или часы. Только в проверку —
+		// генерации он не показывается.
+		State: core.StateDigest(v.Game, res).Lines(),
 	}
 	if reveals {
 		sit.Reveal = revealed(v.Game, res.Learned)
