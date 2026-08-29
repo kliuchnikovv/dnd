@@ -44,7 +44,7 @@ func playTurns(t *testing.T, rt *sessionRuntime, n int) {
 func TestSessionSurvivesRestart(t *testing.T) {
 	st := NewMemStore()
 	m1 := NewManagerWithStore(casesRoot, st)
-	id, err := m1.Create("harbour", 1)
+	id, err := m1.Create("harbour", 1, "test-user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestSessionSurvivesRestart(t *testing.T) {
 func TestReconstructAppliesPendingTail(t *testing.T) {
 	st := NewMemStore()
 	m1 := NewManagerWithStore(casesRoot, st)
-	id, _ := m1.Create("harbour", 1)
+	id, _ := m1.Create("harbour", 1, "test-user")
 	rt1, _ := m1.Get(id)
 
 	// Готовим интент move_zone из показанного набора и пишем его как pending
@@ -132,7 +132,7 @@ func TestReconstructAppliesPendingTail(t *testing.T) {
 func TestReplayIsIdempotent(t *testing.T) {
 	st := NewMemStore()
 	m1 := NewManagerWithStore(casesRoot, st)
-	id, _ := m1.Create("harbour", 1)
+	id, _ := m1.Create("harbour", 1, "test-user")
 	rt1, _ := m1.Get(id)
 	playTurns(t, rt1, 2)
 

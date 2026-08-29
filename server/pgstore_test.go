@@ -90,7 +90,7 @@ func TestPgStoreSurvivesRestart(t *testing.T) {
 	defer st.Close(context.Background())
 
 	m1 := NewManagerWithStore(casesRoot, st)
-	id, err := m1.Create("harbour", 1)
+	id, err := m1.Create("harbour", 1, "test-user")
 	if err != nil {
 		t.Fatal(err)
 	}

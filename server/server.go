@@ -36,14 +36,16 @@ func New(mgr *Manager, opts ...Option) *Server {
 		opt(s)
 	}
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
-	s.mux.HandleFunc("POST /sessions", s.handleCreateSession)
 	// Путь совместим с клиентом nomi: GET /chat/ws?token=&chat_id=.
 	s.mux.HandleFunc("/chat/ws", s.handleWS)
 	if s.auth != nil {
+		s.mux.HandleFunc("POST /sessions", s.requireAuth(s.handleCreateSession))
 		s.mux.HandleFunc("POST /auth/google", s.handleGoogleLogin)
 		s.mux.HandleFunc("POST /auth/refresh", s.handleRefresh)
 		s.mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
 		s.mux.HandleFunc("POST /auth/dev", s.handleDevLogin)
+	} else {
+		s.mux.HandleFunc("POST /sessions", s.handleCreateSession)
 	}
 	return s
 }
@@ -72,7 +74,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if req.Seed != nil {
 		seed = *req.Seed
 	}
-	chatID, err := s.mgr.Create(req.Case, seed)
+	chatID, err := s.mgr.Create(req.Case, seed, userIDFrom(r.Context()))
 	if err != nil {
 		// Единственная ошибка Create — про дело: не нашли или не разобрали.
 		// Это ошибка запроса, не сервера.
