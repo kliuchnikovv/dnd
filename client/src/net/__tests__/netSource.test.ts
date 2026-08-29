@@ -115,17 +115,6 @@ test('prose deltas accumulate into narration; done finalizes', async () => {
   expect(net.current().narration?.[0].streaming).toBe(false);
 });
 
-function errorFrame(code: number) {
-  return {
-    id: 1,
-    chat_id: 'c',
-    channel: 'chat',
-    kind: 'error',
-    op: 'message',
-    error: { code },
-  };
-}
-
 test('reconnects after unexpected close and re-applies session_state', async () => {
   const sockets: FakeSocket[] = [];
   const net = new NetSource({
@@ -174,14 +163,37 @@ test('close() stops reconnect', async () => {
   expect(sockets.length).toBe(1); // нет реконнекта после close()
 });
 
-test('auth failure: 401 error frame retries getToken once, then reconnects; second 401 calls onAuthLost', async () => {
-  const sockets: FakeSocket[] = [];
-  const getToken = jest.fn(async () => 'tok');
+test('getToken() throws on connect → onAuthLost, closed, no socket, no reconnect scheduled', async () => {
   const onAuthLost = jest.fn();
+  let scheduled = false;
   const net = new NetSource({
     chatId: 'c',
     wsUrl: 'ws://x',
-    getToken,
+    getToken: async () => {
+      throw new Error('no token');
+    },
+    onAuthLost,
+    makeSocket: () => {
+      throw new Error('makeSocket should not be called');
+    },
+  });
+  (net as any).schedule = () => {
+    scheduled = true;
+  };
+  await net.connect();
+  expect(onAuthLost).toHaveBeenCalledTimes(1);
+  expect((net as any).closed).toBe(true);
+  expect(scheduled).toBe(false);
+});
+
+test('ws.onerror (transient) with a valid token schedules a backoff reconnect, not onAuthLost', async () => {
+  const sockets: FakeSocket[] = [];
+  const onAuthLost = jest.fn();
+  const captured: { fn: (() => void) | null } = { fn: null };
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x',
+    getToken: async () => 'tok',
     onAuthLost,
     makeSocket: () => {
       const f = new FakeSocket();
@@ -189,22 +201,48 @@ test('auth failure: 401 error frame retries getToken once, then reconnects; seco
       return f;
     },
   });
-  (net as any).schedule = (fn: () => void) => fn();
+  (net as any).schedule = (fn: () => void) => {
+    captured.fn = fn;
+  };
   await net.connect();
-  expect(getToken).toHaveBeenCalledTimes(1);
+  sockets[0].open();
+  sockets[0].onerror?.(); // неожиданная сетевая ошибка, не auth
 
-  sockets[0].push(errorFrame(401));
-  await Promise.resolve();
-  await Promise.resolve();
-  expect(getToken).toHaveBeenCalledTimes(2); // один рефреш через getToken
-  expect(sockets.length).toBe(2); // реконнект
+  expect(captured.fn).not.toBeNull(); // реконнект запланирован (backoff), не выполнен немедленно
   expect(onAuthLost).not.toHaveBeenCalled();
+  expect(sockets.length).toBe(1); // ещё не переподключились — ждём таймер
 
-  sockets[1].push(errorFrame(401));
+  captured.fn?.();
   await Promise.resolve();
+  expect(sockets.length).toBe(2); // теперь переподключились
+  expect(onAuthLost).not.toHaveBeenCalled();
+});
+
+test('onerror followed by onclose on the same socket does not double-schedule a reconnect', async () => {
+  const sockets: FakeSocket[] = [];
+  let scheduleCalls = 0;
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x',
+    getToken: async () => 'tok',
+    onAuthLost: () => {},
+    makeSocket: () => {
+      const f = new FakeSocket();
+      sockets.push(f);
+      return f;
+    },
+  });
+  (net as any).schedule = (fn: () => void) => {
+    scheduleCalls += 1;
+    fn();
+  };
+  await net.connect();
+  sockets[0].open();
+  sockets[0].onerror?.();
+  sockets[0].onclose?.(); // тот же сокет — второй эвент не должен планировать ещё один реконнект
   await Promise.resolve();
-  expect(onAuthLost).toHaveBeenCalledTimes(1); // повторный отказ — сдаёмся
-  expect(sockets.length).toBe(2); // реконнект больше не пробуем
+  expect(scheduleCalls).toBe(1);
+  expect(sockets.length).toBe(2);
 });
 
 test('close() cancels a pending (scheduled but not yet fired) reconnect', async () => {
@@ -238,13 +276,17 @@ test('close() cancels a pending (scheduled but not yet fired) reconnect', async 
   expect(sockets.length).toBe(1); // новый сокет не создан
 });
 
-test('after giving up (second consecutive 401 → onAuthLost), no further reconnect loop', async () => {
+test('token loss surfacing during a reconnect attempt: getToken throws → onAuthLost once, no further reconnect loop', async () => {
   const sockets: FakeSocket[] = [];
   const onAuthLost = jest.fn();
+  let tokenLost = false;
   const net = new NetSource({
     chatId: 'c',
     wsUrl: 'ws://x',
-    getToken: async () => 'tok',
+    getToken: async () => {
+      if (tokenLost) throw new Error('refresh failed, no token');
+      return 'tok';
+    },
     onAuthLost,
     makeSocket: () => {
       const f = new FakeSocket();
@@ -254,25 +296,21 @@ test('after giving up (second consecutive 401 → onAuthLost), no further reconn
   });
   (net as any).schedule = (fn: () => void) => fn();
   await net.connect();
+  sockets[0].open();
 
-  sockets[0].push(errorFrame(401)); // первый отказ — рефреш и реконнект
-  await Promise.resolve();
-  await Promise.resolve();
-  expect(sockets.length).toBe(2);
-
-  sockets[1].push(errorFrame(401)); // второй подряд — сдаёмся
+  tokenLost = true; // имитирует: refresh не удался, токены очищены, пока сокет ещё жил
+  sockets[0].onclose?.(); // неожиданный обрыв → reconnect → connect() видит, что getToken бросает
   await Promise.resolve();
   await Promise.resolve();
   expect(onAuthLost).toHaveBeenCalledTimes(1);
-  expect(sockets.length).toBe(2);
+  expect(sockets.length).toBe(1); // новый сокет не создан — connect() вернулся до makeSocket
 
-  // сервер (или наш собственный close() внутри handleAuthFailure) закрывает сокет —
-  // это НЕ должно снова уйти в backoff-реконнект и снова дёрнуть onAuthLost
-  sockets[1].onclose?.();
+  // дальнейшие события того же (уже отключённого) сокета не должны ничего запускать повторно
+  sockets[0].onerror?.();
   await Promise.resolve();
   await Promise.resolve();
-  expect(sockets.length).toBe(2); // нет нового сокета
-  expect(onAuthLost).toHaveBeenCalledTimes(1); // не вызван повторно
+  expect(sockets.length).toBe(1);
+  expect(onAuthLost).toHaveBeenCalledTimes(1);
 });
 
 test('history frame seeds finished narration on reconnect', async () => {

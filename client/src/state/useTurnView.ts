@@ -18,7 +18,7 @@ export function useTurnView(source: TurnViewSource) {
 
     const send = useCallback(
         (intent: Intent) => {
-            void source.send(intent);
+            source.send(intent).catch(() => {});
         },
         [source],
     );

@@ -46,7 +46,6 @@ export class NetSource implements TurnViewSource {
   private pending: ((v: TurnView) => void) | null = null;
   private closed = false;
   private backoff = 1000;
-  private authRetried = false;
   private schedule: (fn: () => void, ms: number) => void = (fn, ms) => {
     setTimeout(fn, ms);
   };
@@ -65,31 +64,46 @@ export class NetSource implements TurnViewSource {
   }
 
   // Сервер отклоняет подключения без токена (server/ws.go) — токен обязателен в URL.
-  // Refresh при 401/обрыве и onAuthLost — Tasks 4–5 (auth-aware reconnect); здесь токен
-  // получается один раз перед подключением.
+  // getToken() бросает ТОЛЬКО когда токена реально нет (refresh не удался и токены
+  // очищены — см. SessionScreen); обычный обрыв сети токен не трогает, и getToken
+  // по-прежнему отдаёт валидное значение — тогда просто продолжаем connect() как обычно.
+  // WS-события (onerror/onclose) не несут HTTP-статус и не могут значить «401» — это
+  // сигнал утраты соединения, а не авторизации, поэтому оба ведут в один и тот же
+  // backoff-реконнект (handleUnexpectedDisconnect), а не в onAuthLost().
   async connect(): Promise<void> {
     if (this.closed) return;
-    const token = await this.deps.getToken();
+    let token: string;
+    try {
+      token = await this.deps.getToken();
+    } catch {
+      this.deps.onAuthLost();
+      this.closed = true;
+      return;
+    }
     if (this.closed) return; // close() могли вызвать во время ожидания getToken()
     const url = `${this.deps.wsUrl}?token=${encodeURIComponent(token)}&chat_id=${encodeURIComponent(this.deps.chatId)}`;
     const make = this.deps.makeSocket ?? ((u: string) => new WebSocket(u) as unknown as WebSocketLike);
     const ws = make(url);
     this.ws = ws;
-    ws.onmessage = (e) => this.onFrame(JSON.parse(e.data) as Frame);
-    ws.onopen = () => {
-      this.backoff = 1000;
-    };
-    ws.onclose = () => {
-      this.ws = null;
+    let handled = false; // не планируем реконнект дважды, если onerror и onclose оба сработают для одного сокета
+    const handleUnexpectedDisconnect = () => {
+      if (handled) return;
+      handled = true;
+      if (this.ws === ws) this.ws = null;
       if (this.closed) return;
       const wait = this.backoff;
       this.backoff = Math.min(this.backoff * 2, 30000);
       this.schedule(() => {
         if (this.closed) return; // могли close() успеть между планированием и срабатыванием
-        void this.connect();
+        this.connect().catch(() => {});
       }, wait);
     };
-    ws.onerror = () => this.handleAuthFailure();
+    ws.onmessage = (e) => this.onFrame(JSON.parse(e.data) as Frame);
+    ws.onopen = () => {
+      this.backoff = 1000;
+    };
+    ws.onclose = handleUnexpectedDisconnect;
+    ws.onerror = handleUnexpectedDisconnect;
   }
 
   close(): void {
@@ -102,34 +116,6 @@ export class NetSource implements TurnViewSource {
       ws.onopen = null;
       ws.onerror = null;
       ws.close();
-    }
-  }
-
-  // Отказ авторизации: первый раз — рефреш токена (через getToken) и реконнект;
-  // повторный отказ подряд — сдаёмся, зовём onAuthLost() и глушим дальнейшие реконнекты
-  // (иначе обрыв сокета сервером снова уйдёт в backoff-реконнект → бесконечный цикл onAuthLost).
-  private handleAuthFailure(): void {
-    if (!this.authRetried) {
-      this.authRetried = true;
-      const old = this.ws;
-      this.ws = null;
-      if (old) {
-        old.onclose = null; // текущий обрыв — не «неожиданный»: не планируем повторный реконнект
-        old.close();
-      }
-      void this.connect();
-    } else {
-      this.deps.onAuthLost();
-      this.closed = true;
-      const old = this.ws;
-      this.ws = null;
-      if (old) {
-        old.onclose = null;
-        old.onmessage = null;
-        old.onopen = null;
-        old.onerror = null;
-        old.close();
-      }
     }
   }
 
@@ -146,15 +132,13 @@ export class NetSource implements TurnViewSource {
 
   private onFrame(f: Frame): void {
     if (f.kind === Kind.error) {
-      const code = (f.error as { code?: number } | undefined)?.code;
-      if (code === 401) {
-        this.handleAuthFailure();
-      }
+      // Серверный error-фрейм несёт только {message} (server/frame.go) — реальный 401
+      // это HTTP-отказ хэндшейка, который проявляется как onerror/onclose, а не как
+      // фрейм, поэтому здесь нет и не может быть auth-логики.
       return;
     }
     switch (f.op) {
       case Op.sessionState:
-        this.authRetried = false;
         this.prose = '';
         this.view = f.payload as TurnView;
         this.emit();
