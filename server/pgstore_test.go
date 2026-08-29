@@ -84,13 +84,20 @@ func TestPgStoreContract(t *testing.T) {
 }
 
 // Сессия переживает рестарт и на Postgres: новый Manager над тем же пулом
-// восстанавливает то же состояние.
+// восстанавливает то же состояние, включая владельца (user_id — FK на users,
+// поэтому владелец сперва заводится через UpsertUser).
 func TestPgStoreSurvivesRestart(t *testing.T) {
 	st := pgStoreForTest(t)
 	defer st.Close(context.Background())
+	ctx := context.Background()
+
+	ownerID := "owner-" + randToken()
+	if err := st.UpsertUser(ctx, UserRecord{ID: ownerID, Email: "owner@x.test"}); err != nil {
+		t.Fatalf("завести владельца: %v", err)
+	}
 
 	m1 := NewManagerWithStore(casesRoot, st)
-	id, err := m1.Create("harbour", 1, "test-user")
+	id, err := m1.Create("harbour", 1, ownerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +116,14 @@ func TestPgStoreSurvivesRestart(t *testing.T) {
 	}
 	if got := viewJSON(t, rt2); got != wantView {
 		t.Fatalf("состояние разошлось после рестарта на Postgres")
+	}
+	// Владение обязано пережить рестарт: иначе легитимный владелец получает
+	// 403 на реконнекте, потому что rt.userID потерялся при реплее из БД.
+	if rt2.userID != rt1.userID {
+		t.Fatalf("userID после рестарта %q, был %q", rt2.userID, rt1.userID)
+	}
+	if rt2.userID != ownerID {
+		t.Fatalf("userID после рестарта %q, ждали %q", rt2.userID, ownerID)
 	}
 }
 

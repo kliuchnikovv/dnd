@@ -59,15 +59,23 @@ func (s *pgStore) migrate(ctx context.Context) error {
 
 func (s *pgStore) SaveSession(ctx context.Context, rec SessionRecord) error {
 	// Upsert: рестарт не должен спотыкаться о уже записанную сессию.
+	// user_id — FK на users(id): пустой UserID (легаси-сессии, сервер без
+	// auth) обязан лечь как NULL, а не как "" — иначе вставка упадёт по
+	// внешнему ключу на пустую строку, которой нет и не будет в users.
+	var userID *string
+	if rec.UserID != "" {
+		userID = &rec.UserID
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO sessions (chat_id, case_id, seed, snapshot, core_version)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO sessions (chat_id, case_id, seed, snapshot, core_version, user_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (chat_id) DO UPDATE SET
 			case_id = EXCLUDED.case_id,
 			seed = EXCLUDED.seed,
 			snapshot = EXCLUDED.snapshot,
-			core_version = EXCLUDED.core_version`,
-		rec.ChatID, rec.CaseID, rec.Seed, rec.Snapshot, rec.CoreVersion)
+			core_version = EXCLUDED.core_version,
+			user_id = EXCLUDED.user_id`,
+		rec.ChatID, rec.CaseID, rec.Seed, rec.Snapshot, rec.CoreVersion, userID)
 	if err != nil {
 		return fmt.Errorf("запись сессии: %w", err)
 	}
@@ -76,7 +84,7 @@ func (s *pgStore) SaveSession(ctx context.Context, rec SessionRecord) error {
 
 func (s *pgStore) Sessions(ctx context.Context) ([]SessionRecord, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT chat_id, case_id, seed, snapshot, core_version FROM sessions`)
+		SELECT chat_id, case_id, seed, snapshot, core_version, user_id FROM sessions`)
 	if err != nil {
 		return nil, fmt.Errorf("чтение сессий: %w", err)
 	}
@@ -84,9 +92,11 @@ func (s *pgStore) Sessions(ctx context.Context) ([]SessionRecord, error) {
 	var out []SessionRecord
 	for rows.Next() {
 		var r SessionRecord
-		if err := rows.Scan(&r.ChatID, &r.CaseID, &r.Seed, &r.Snapshot, &r.CoreVersion); err != nil {
+		var userID *string
+		if err := rows.Scan(&r.ChatID, &r.CaseID, &r.Seed, &r.Snapshot, &r.CoreVersion, &userID); err != nil {
 			return nil, err
 		}
+		r.UserID = deref(userID)
 		out = append(out, r)
 	}
 	return out, rows.Err()
