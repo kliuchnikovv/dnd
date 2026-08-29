@@ -84,6 +84,12 @@ func (s *Service) Me(ctx context.Context, userID string) (User, bool, error) {
 	return s.store.UserByID(ctx, userID)
 }
 
+// Verify проверяет access-токен и возвращает userID (Subject). Используется
+// мидлварью requireAuth на HTTP-грани.
+func (s *Service) Verify(access string) (string, error) {
+	return s.t.VerifyAccess(access)
+}
+
 func (s *Service) issue(ctx context.Context, u User) (Session, error) {
 	access, exp, err := s.t.IssueAccess(u.ID)
 	if err != nil {

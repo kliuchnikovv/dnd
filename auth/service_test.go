@@ -112,6 +112,21 @@ func TestRefreshRotates(t *testing.T) {
 	}
 }
 
+func TestServiceVerify(t *testing.T) {
+	s, _ := svc(t, &FakeVerifier{ID: Identity{Sub: "g1", Email: "a@b.c"}})
+	login, err := s.GoogleLogin(context.Background(), "id")
+	if err != nil {
+		t.Fatalf("вход: %v", err)
+	}
+	uid, err := s.Verify(login.AccessToken)
+	if err != nil || uid != login.User.ID {
+		t.Fatalf("Verify: uid=%q err=%v, ждали %q", uid, err, login.User.ID)
+	}
+	if _, err := s.Verify("garbage"); err == nil {
+		t.Fatal("битый access-токен принят")
+	}
+}
+
 func TestLoginAs(t *testing.T) {
 	s, store := svc(t, &FakeVerifier{})
 	id := Identity{Sub: "g2", Email: "b@c.d", Name: "Bob", Picture: "pic"}

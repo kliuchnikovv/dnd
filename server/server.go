@@ -3,25 +3,48 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/kliuchnikovv/dnd/auth"
 )
 
 // Server — HTTP-грань транспорта: health для Railway и старт сессии. Всё
 // realtime уходит через WebSocket (следующая фаза); здесь только минимальный
 // REST рядом с ним.
 type Server struct {
-	mgr *Manager
-	mux *http.ServeMux
+	mgr     *Manager
+	mux     *http.ServeMux
+	auth    *auth.Service
+	devAuth bool
+}
+
+// Option настраивает Server при создании (New). Опционально — сервер без
+// опций работает как раньше, без auth-маршрутов.
+type Option func(*Server)
+
+// WithAuth подключает auth.Service и включает маршруты /auth/*, /me.
+// devAuth разрешает POST /auth/dev (вход без Google — для локали и тестов).
+func WithAuth(a *auth.Service, devAuth bool) Option {
+	return func(s *Server) { s.auth = a; s.devAuth = devAuth }
 }
 
 // New собирает маршруты. Хендлер отдаётся через Handler(), а жизненный цикл
 // http.Server (порт, graceful shutdown) держит cmd/server: пакет остаётся
 // тестируемым через httptest без поднятия сокета.
-func New(mgr *Manager) *Server {
+func New(mgr *Manager, opts ...Option) *Server {
 	s := &Server{mgr: mgr, mux: http.NewServeMux()}
+	for _, opt := range opts {
+		opt(s)
+	}
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("POST /sessions", s.handleCreateSession)
 	// Путь совместим с клиентом nomi: GET /chat/ws?token=&chat_id=.
 	s.mux.HandleFunc("/chat/ws", s.handleWS)
+	if s.auth != nil {
+		s.mux.HandleFunc("POST /auth/google", s.handleGoogleLogin)
+		s.mux.HandleFunc("POST /auth/refresh", s.handleRefresh)
+		s.mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
+		s.mux.HandleFunc("POST /auth/dev", s.handleDevLogin)
+	}
 	return s
 }
 
