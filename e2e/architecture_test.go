@@ -114,6 +114,11 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		// /dev/tty. Это официальный модуль самого Go, а не сторонняя libc,
 		// и другого источника правды для этого вопроса нет.
 		"golang.org/x/term",
+		// coder/websocket — транспорт серверного слоя (cmd/server). Ручной
+		// RFC 6455 поверх net/http — это фрейминг, маски и ping, где своя
+		// реализация обходится дороже готовой; библиотека минимальна и
+		// context-aware. Живёт НАД игрой, домена не касается.
+		"github.com/coder/websocket",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {

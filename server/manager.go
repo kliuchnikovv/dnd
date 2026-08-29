@@ -20,14 +20,36 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 )
 
-// sessionRuntime — живая игра одной сессии в памяти. В следующих фазах сюда
-// добавятся подписчики сокета и буфер прозы; сейчас достаточно самой игры и
-// её паспорта, по которому сессия воспроизводится из журнала.
+// sessionRuntime — живая игра одной сессии в памяти вместе с её сокет-
+// подписчиками. Генерация хода не привязана к живому сокету: механику применяет
+// ядро, результат рассылается всем подписчикам chat_id, поэтому второе
+// устройство и реконнект видят один и тот же ход (буфер прозы придёт в фазе 4).
 type sessionRuntime struct {
 	chatID string
 	caseID store.CaseID
 	seed   int64
-	game   *core.Game
+
+	mu   sync.Mutex
+	game *core.Game
+	// spokenTo — последний адресат: разговор продолжается с тем же NPC, пока
+	// игрок не обратится к другому. Определяет набор аффордансов хода.
+	spokenTo store.EntityID
+	// lastAppliedID — наибольший applied Frame.ID: клиент шлёт монотонный
+	// счётчик, переживающий реконнект, поэтому повтор (id <= lastApplied) —
+	// это дубль доставки, а не новый ход. Идемпотентность хода.
+	lastAppliedID int
+	// subs — открытые сокеты этой сессии. Рассылка session_state идёт всем.
+	subs map[*subscriber]struct{}
+	// outSeq — счётчик id серверных кадров (session_state, error): id входящих
+	// принадлежит клиенту, исходящие нумеруются сервером.
+	outSeq int
+}
+
+// subscriber — один подключённый сокет. out буферизован: медленный клиент не
+// держит горутину хода; переполнение означает отставшего читателя (фаза 5
+// решит его реконнектом с досстримом).
+type subscriber struct {
+	out chan Frame
 }
 
 // Manager — кэш живых сессий. MVP держит их в памяти; восстановление реплеем
@@ -85,6 +107,7 @@ func (m *Manager) Create(caseName string, seed int64) (string, error) {
 		caseID: cfg.CaseID,
 		seed:   seed,
 		game:   game,
+		subs:   make(map[*subscriber]struct{}),
 	}
 	return chatID, nil
 }

@@ -20,6 +20,8 @@ func New(mgr *Manager) *Server {
 	s := &Server{mgr: mgr, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("POST /sessions", s.handleCreateSession)
+	// Путь совместим с клиентом nomi: GET /chat/ws?token=&chat_id=.
+	s.mux.HandleFunc("/chat/ws", s.handleWS)
 	return s
 }
 
