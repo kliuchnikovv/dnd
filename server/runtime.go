@@ -90,6 +90,13 @@ func (rt *sessionRuntime) applyInput(frameID int, in inputPayload) (bool, string
 	intent.Actor = rt.game.Actor
 
 	res := rt.game.Apply(intent)
+	// Перемещение — известный шов: ядро резолвит бросок, узел меняет слой над
+	// ним (в CLI это afterAction). Сервер обязан сделать то же, иначе успешный
+	// move_zone крутит кость и оставляет игрока на месте. Живой ход и реплей
+	// идут этим же путём — состояние симметрично по построению.
+	if intent.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
+		rt.game.MoveTo(intent.Args.Node)
+	}
 	// Адресат хода продолжает разговор: следующий набор аффордансов строится
 	// от него. Пусто — вышли из разговора.
 	if intent.Args.Target != "" {
