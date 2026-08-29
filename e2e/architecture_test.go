@@ -124,6 +124,9 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		// протокол Postgres писать незачем. Живёт НАД игрой, в чистые слои не
 		// просачивается.
 		"github.com/jackc/pgx/v5",
+		// golang-jwt/jwt — токены доступа и refresh для аутентификации (auth пакет).
+		// Живёт НАД игрой в слое входа, домена не касается.
+		"github.com/golang-jwt/jwt/v5",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {
