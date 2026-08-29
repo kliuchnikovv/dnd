@@ -51,12 +51,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	sub := rt.subscribe()
+	// attach регистрирует сокет и сразу кладёт в его очередь session_state и
+	// возобновление прозы (догон дельт в полёте либо history завершённого
+	// хода) — под одним rt.mu, чтобы не разъехаться с живой рассылкой.
+	sub := rt.attach()
 	defer rt.unsubscribe(sub)
-
-	// Первое, что видит (ре)подключившийся, — где игра сейчас. В фазе 5 сюда
-	// добавится history и досстрим прозы в полёте.
-	sub.out <- rt.snapshotView()
 
 	// Единственный писатель сокета — насос: coder/websocket запрещает
 	// конкурентную запись, поэтому все кадры (session_state, error, pong)
