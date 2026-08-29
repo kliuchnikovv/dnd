@@ -119,6 +119,11 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		// реализация обходится дороже готовой; библиотека минимальна и
 		// context-aware. Живёт НАД игрой, домена не касается.
 		"github.com/coder/websocket",
+		// jackc/pgx — драйвер Postgres для долговечного журнала (cmd/server).
+		// Журнал и его реплей — опора восстановления сессии (ADR-0002); свой
+		// протокол Postgres писать незачем. Живёт НАД игрой, в чистые слои не
+		// просачивается.
+		"github.com/jackc/pgx/v5",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {
