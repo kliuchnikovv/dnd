@@ -34,6 +34,9 @@ type sessionRuntime struct {
 	seed     int64
 	snapshot string
 	store    Store
+	// userID — владелец сессии (Subject из access-токена на момент Create).
+	// Пусто у легаси-сессий, созданных до auth-гейта.
+	userID string
 
 	// narrator — Мастер для стрима прозы. nil означает механику без прозы
 	// (сервер без сконфигурированного LLM): ходы применяются, session_state
@@ -111,7 +114,7 @@ func NewManagerWithStore(casesRoot string, st Store) *Manager {
 // Create грузит дело, строит игру на данном seed, записывает паспорт сессии в
 // журнал и регистрирует её, возвращая chat_id. Ошибка — про дело (не нашли/не
 // разобрали) или про журнал.
-func (m *Manager) Create(caseName string, seed int64) (string, error) {
+func (m *Manager) Create(caseName string, seed int64, userID string) (string, error) {
 	game, caseID, snapshot, err := m.buildGame(caseName, seed)
 	if err != nil {
 		return "", err
@@ -124,6 +127,7 @@ func (m *Manager) Create(caseName string, seed int64) (string, error) {
 		Seed:        seed,
 		Snapshot:    snapshot,
 		CoreVersion: core.Version,
+		UserID:      userID,
 	}); err != nil {
 		return "", fmt.Errorf("журнал: %w", err)
 	}
@@ -134,6 +138,7 @@ func (m *Manager) Create(caseName string, seed int64) (string, error) {
 		seed:     seed,
 		snapshot: snapshot,
 		store:    m.store,
+		userID:   userID,
 		narrator: m.narrator,
 		game:     game,
 		subs:     make(map[*subscriber]struct{}),
@@ -189,6 +194,7 @@ func (m *Manager) reconstruct(chatID string) (*sessionRuntime, bool) {
 		seed:     rec.Seed,
 		snapshot: snapshot,
 		store:    m.store,
+		userID:   rec.UserID,
 		narrator: m.narrator,
 		game:     game,
 		subs:     make(map[*subscriber]struct{}),

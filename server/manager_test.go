@@ -4,7 +4,7 @@ import "testing"
 
 func TestManagerCreateAndGet(t *testing.T) {
 	m := NewManager(casesRoot)
-	id, err := m.Create("harbour", 1)
+	id, err := m.Create("harbour", 1, "test-user")
 	if err != nil {
 		t.Fatalf("создание: %v", err)
 	}
@@ -24,11 +24,11 @@ func TestManagerCreateAndGet(t *testing.T) {
 // объекты игры. Ход в одной не должен трогать другую.
 func TestManagerSessionsAreIsolated(t *testing.T) {
 	m := NewManager(casesRoot)
-	a, err := m.Create("harbour", 1)
+	a, err := m.Create("harbour", 1, "test-user")
 	if err != nil {
 		t.Fatalf("первая: %v", err)
 	}
-	b, err := m.Create("harbour", 1)
+	b, err := m.Create("harbour", 1, "test-user")
 	if err != nil {
 		t.Fatalf("вторая: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestManagerSessionsAreIsolated(t *testing.T) {
 // Неизвестное дело — ошибка, а не пустой chat_id.
 func TestManagerUnknownCase(t *testing.T) {
 	m := NewManager(casesRoot)
-	if _, err := m.Create("нет-такого", 1); err == nil {
+	if _, err := m.Create("нет-такого", 1, "test-user"); err == nil {
 		t.Fatalf("ждали ошибку на неизвестном деле")
 	}
 }

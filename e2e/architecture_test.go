@@ -124,6 +124,17 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		// протокол Postgres писать незачем. Живёт НАД игрой, в чистые слои не
 		// просачивается.
 		"github.com/jackc/pgx/v5",
+		// golang-jwt/jwt — токены доступа и refresh для аутентификации (auth пакет).
+		// Живёт НАД игрой в слое входа, домена не касается.
+		"github.com/golang-jwt/jwt/v5",
+		// google.golang.org/api — проверка Google ID-token для аутентификации
+		// (auth пакет, NewGoogleVerifier). Живёт НАД игрой в слое входа, домена не касается.
+		// Фильтр ниже включает google.golang.org/ для проверки этой и аналогичных зависимостей.
+		"google.golang.org/api",
+		// google/uuid — генерация userID при регистрации (cmd/server, newID
+		// для auth.NewService). Стандартный, проверенный генератор UUIDv4;
+		// живёт НАД игрой в слое входа, домена не касается.
+		"github.com/google/uuid",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {
@@ -131,7 +142,9 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 	}
 	for _, line := range strings.Split(string(body), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "github.com/") && !strings.HasPrefix(line, "golang.org/") {
+		if !strings.HasPrefix(line, "github.com/") &&
+			!strings.HasPrefix(line, "golang.org/") &&
+			!strings.HasPrefix(line, "google.golang.org/") {
 			continue
 		}
 		if strings.HasPrefix(line, "github.com/kliuchnikovv/dnd") {

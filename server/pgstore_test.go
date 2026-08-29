@@ -84,13 +84,20 @@ func TestPgStoreContract(t *testing.T) {
 }
 
 // Сессия переживает рестарт и на Postgres: новый Manager над тем же пулом
-// восстанавливает то же состояние.
+// восстанавливает то же состояние, включая владельца (user_id — FK на users,
+// поэтому владелец сперва заводится через UpsertUser).
 func TestPgStoreSurvivesRestart(t *testing.T) {
 	st := pgStoreForTest(t)
 	defer st.Close(context.Background())
+	ctx := context.Background()
+
+	ownerID := "owner-" + randToken()
+	if err := st.UpsertUser(ctx, UserRecord{ID: ownerID, Email: "owner@x.test"}); err != nil {
+		t.Fatalf("завести владельца: %v", err)
+	}
 
 	m1 := NewManagerWithStore(casesRoot, st)
-	id, err := m1.Create("harbour", 1)
+	id, err := m1.Create("harbour", 1, ownerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,5 +116,64 @@ func TestPgStoreSurvivesRestart(t *testing.T) {
 	}
 	if got := viewJSON(t, rt2); got != wantView {
 		t.Fatalf("состояние разошлось после рестарта на Postgres")
+	}
+	// Владение обязано пережить рестарт: иначе легитимный владелец получает
+	// 403 на реконнекте, потому что rt.userID потерялся при реплее из БД.
+	if rt2.userID != rt1.userID {
+		t.Fatalf("userID после рестарта %q, был %q", rt2.userID, rt1.userID)
+	}
+	if rt2.userID != ownerID {
+		t.Fatalf("userID после рестарта %q, ждали %q", rt2.userID, ownerID)
+	}
+}
+
+// pgStore реализует контракт users/refresh: upsert идемпотентен по
+// google_sub, refresh-токен виден до удаления и невидим после.
+func TestPgStoreUsersAndRefresh(t *testing.T) {
+	st := pgStoreForTest(t)
+	defer st.Close(context.Background())
+	ctx := context.Background()
+
+	id := "u-" + randToken()
+	sub := "g-" + randToken()
+	if err := st.UpsertUser(ctx, UserRecord{ID: id, GoogleSub: sub, Email: "a@b.c", Name: "Ann"}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, _ := st.UserByGoogleSub(ctx, sub)
+	if !ok || got.ID != id {
+		t.Fatalf("по sub: %+v ok=%v", got, ok)
+	}
+	// upsert идемпотентен по google_sub
+	if err := st.UpsertUser(ctx, UserRecord{ID: id, GoogleSub: sub, Email: "a2@b.c", Name: "Ann2"}); err != nil {
+		t.Fatalf("повторный upsert: %v", err)
+	}
+
+	h := "h-" + randToken()
+	if err := st.SaveRefresh(ctx, h, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok, _ := st.RefreshOwner(ctx, h)
+	if !ok || owner != id {
+		t.Fatalf("refresh owner: %q ok=%v", owner, ok)
+	}
+	_ = st.DeleteRefresh(ctx, h)
+	if _, ok, _ := st.RefreshOwner(ctx, h); ok {
+		t.Fatal("удалённый refresh жив")
+	}
+
+	// ClaimRefresh одноразов: первый вызов забирает владельца и гасит хэш
+	// атомарно (DELETE ... RETURNING в одном round-trip), второй уже не
+	// находит строку. Это и закрывает окно гонки параллельного refresh.
+	h2 := "h2-" + randToken()
+	if err := st.SaveRefresh(ctx, h2, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	owner2, ok, err := st.ClaimRefresh(ctx, h2)
+	if err != nil || !ok || owner2 != id {
+		t.Fatalf("первый ClaimRefresh: owner=%q ok=%v err=%v", owner2, ok, err)
+	}
+	owner2, ok, err = st.ClaimRefresh(ctx, h2)
+	if err != nil || ok || owner2 != "" {
+		t.Fatalf("второй ClaimRefresh должен провалиться: owner=%q ok=%v err=%v", owner2, ok, err)
 	}
 }

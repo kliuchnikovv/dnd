@@ -17,11 +17,24 @@ import (
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	// Анонимный токен устройства: любой непустой принимается, пустой — 401.
-	// Проверка подписи и Apple-auth — позже; шов уже стоит.
-	if q.Get("token") == "" {
-		http.Error(w, "нужен token", http.StatusUnauthorized)
-		return
+	// uid — владелец, ожидаемый для проверки владения chat_id ниже. При
+	// s.auth == nil владение не проверяется (обратная совместимость с
+	// анонимным режимом), поэтому uid остаётся пустым и сравнение с ним не
+	// делается.
+	var uid string
+	if s.auth != nil {
+		var err error
+		uid, err = s.auth.Verify(q.Get("token"))
+		if err != nil {
+			http.Error(w, "нужна авторизация", http.StatusUnauthorized)
+			return
+		}
+	} else {
+		// Анонимный токен устройства: любой непустой принимается, пустой — 401.
+		if q.Get("token") == "" {
+			http.Error(w, "нужен token", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	channel := q.Get("channel")
@@ -39,6 +52,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	rt, ok := s.mgr.Get(chatID)
 	if !ok {
 		http.Error(w, "нет такой сессии", http.StatusNotFound)
+		return
+	}
+	if s.auth != nil && rt.userID != uid {
+		http.Error(w, "чужая сессия", http.StatusForbidden)
 		return
 	}
 

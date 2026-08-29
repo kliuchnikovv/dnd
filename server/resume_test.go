@@ -22,7 +22,7 @@ func drainReady(sub *subscriber) []Frame {
 // без дельт и без done (ход уже кончился).
 func TestAttachFinishedSendsHistory(t *testing.T) {
 	m := NewManager(casesRoot)
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
 	// Имитируем завершённый ход с прозой в буфере.
@@ -65,7 +65,7 @@ func TestAttachFinishedSendsHistory(t *testing.T) {
 // history и без done (остаток и done доедут живой рассылкой).
 func TestAttachInflightSendsBufferedDeltas(t *testing.T) {
 	m := NewManager(casesRoot)
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
 	rt.mu.Lock()
@@ -96,7 +96,7 @@ func TestAttachInflightSendsBufferedDeltas(t *testing.T) {
 // Реконнект без прозы (свежая сессия): только session_state.
 func TestAttachNoProseOnlyState(t *testing.T) {
 	m := NewManager(casesRoot)
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
 	sub := rt.attach()
@@ -111,10 +111,10 @@ func TestAttachNoProseOnlyState(t *testing.T) {
 func TestWSReconnectResumesProse(t *testing.T) {
 	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
 	srv := New(m)
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 
 	// Первое соединение: играем ход, дожидаемся done.
-	c1, done1 := wsDial(t, srv, id)
+	c1, done1 := wsDial(t, srv, id, "dev")
 	start := decodeView(t, readFrame(t, c1))
 	writeInput(t, c1, 1, inputPayload{Token: start.Options[0].Token})
 	var first string
@@ -132,7 +132,7 @@ func TestWSReconnectResumesProse(t *testing.T) {
 	done1()
 
 	// Реконнект: session_state + history с готовой прозой.
-	c2, done2 := wsDial(t, srv, id)
+	c2, done2 := wsDial(t, srv, id, "dev")
 	defer done2()
 	if decodeView(t, readFrame(t, c2)).Version == 0 {
 		t.Fatalf("реконнект без корректного session_state")

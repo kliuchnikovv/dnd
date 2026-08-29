@@ -15,11 +15,13 @@ import (
 )
 
 // wsDial поднимает httptest-сервер и подключается к chat-каналу сессии.
-func wsDial(t *testing.T, srv *Server, chatID string) (*websocket.Conn, func()) {
+// token передаётся как есть в query: анонимный режим (s.auth == nil) требует
+// лишь непустой токен, auth-режим — валидный access-токен владельца.
+func wsDial(t *testing.T, srv *Server, chatID, token string) (*websocket.Conn, func()) {
 	t.Helper()
 	hs := httptest.NewServer(srv.Handler())
 	url := "ws" + strings.TrimPrefix(hs.URL, "http") +
-		"/chat/ws?token=dev&chat_id=" + chatID
+		"/chat/ws?token=" + token + "&chat_id=" + chatID
 	conn, _, err := websocket.Dial(context.Background(), url, nil)
 	if err != nil {
 		hs.Close()
@@ -57,11 +59,11 @@ func decodeView(t *testing.T, f Frame) view.TurnView {
 // На (ре)коннекте первым кадром приходит session_state текущего хода.
 func TestWSConnectSendsSessionState(t *testing.T) {
 	srv := New(NewManager(casesRoot))
-	id, err := srv.mgr.Create("harbour", 1)
+	id, err := srv.mgr.Create("harbour", 1, "test-user")
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, done := wsDial(t, srv, id)
+	conn, done := wsDial(t, srv, id, "dev")
 	defer done()
 
 	tv := decodeView(t, readFrame(t, conn))
@@ -74,8 +76,8 @@ func TestWSConnectSendsSessionState(t *testing.T) {
 // session_state с корректным TurnView.
 func TestWSTurnByToken(t *testing.T) {
 	srv := New(NewManager(casesRoot))
-	id, _ := srv.mgr.Create("harbour", 1)
-	conn, done := wsDial(t, srv, id)
+	id, _ := srv.mgr.Create("harbour", 1, "test-user")
+	conn, done := wsDial(t, srv, id, "dev")
 	defer done()
 
 	start := decodeView(t, readFrame(t, conn))
@@ -113,8 +115,8 @@ func TestWSTokenAndNumberSamePath(t *testing.T) {
 // способом choose, и возвращает получившийся TurnView.
 func runFirstTurn(t *testing.T, srv *Server, choose func(view.Option) inputPayload) view.TurnView {
 	t.Helper()
-	id, _ := srv.mgr.Create("harbour", 1)
-	conn, done := wsDial(t, srv, id)
+	id, _ := srv.mgr.Create("harbour", 1, "test-user")
+	conn, done := wsDial(t, srv, id, "dev")
 	defer done()
 	start := decodeView(t, readFrame(t, conn))
 	writeInput(t, conn, 1, choose(start.Options[0]))
@@ -125,8 +127,8 @@ func runFirstTurn(t *testing.T, srv *Server, choose func(view.Option) inputPaylo
 // на том же сокете проходит.
 func TestWSInvalidInputKeepsConnection(t *testing.T) {
 	srv := New(NewManager(casesRoot))
-	id, _ := srv.mgr.Create("harbour", 1)
-	conn, done := wsDial(t, srv, id)
+	id, _ := srv.mgr.Create("harbour", 1, "test-user")
+	conn, done := wsDial(t, srv, id, "dev")
 	defer done()
 
 	start := decodeView(t, readFrame(t, conn))
@@ -146,8 +148,8 @@ func TestWSInvalidInputKeepsConnection(t *testing.T) {
 // состояние (идемпотентность доставки).
 func TestWSIdempotentReplay(t *testing.T) {
 	srv := New(NewManager(casesRoot))
-	id, _ := srv.mgr.Create("harbour", 1)
-	conn, done := wsDial(t, srv, id)
+	id, _ := srv.mgr.Create("harbour", 1, "test-user")
+	conn, done := wsDial(t, srv, id, "dev")
 	defer done()
 
 	start := decodeView(t, readFrame(t, conn))
@@ -174,7 +176,7 @@ func TestWSIdempotentReplay(t *testing.T) {
 // Пустой token — 401 ещё до апгрейда.
 func TestWSRequiresToken(t *testing.T) {
 	srv := New(NewManager(casesRoot))
-	id, _ := srv.mgr.Create("harbour", 1)
+	id, _ := srv.mgr.Create("harbour", 1, "test-user")
 	hs := httptest.NewServer(srv.Handler())
 	defer hs.Close()
 

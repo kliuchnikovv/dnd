@@ -44,7 +44,7 @@ func collectUntilDone(t *testing.T, sub *subscriber) []Frame {
 // Ход даёт session_state мгновенно, затем прозу дельтами и op:done.
 func TestProseStreamsAfterSessionState(t *testing.T) {
 	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
 	sub := rt.subscribe()
@@ -95,7 +95,7 @@ func TestProseStreamsAfterSessionState(t *testing.T) {
 // получает прозу и done.
 func TestProseSurvivesSubscriberDrop(t *testing.T) {
 	m := narratorManager(t, "Замок поддаётся, петли стонут, дверь идёт внутрь")
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
 	// Живой подписчик и «мёртвый» (переполненный буфер имитирует отставшего).
@@ -121,7 +121,7 @@ func TestProseSurvivesSubscriberDrop(t *testing.T) {
 // основа досстрима при возобновлении (фаза 5).
 func TestProseBufferFilledAfterDone(t *testing.T) {
 	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 	sub := rt.subscribe()
 
@@ -144,7 +144,7 @@ func TestProseBufferFilledAfterDone(t *testing.T) {
 // stopProse безопасен и когда генерации нет (двойной op:stop, стоп до хода).
 func TestStopProseIsSafeWithoutGeneration(t *testing.T) {
 	m := narratorManager(t, "неважно")
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 	rt.stopProse() // не должно паниковать
 }
@@ -153,8 +153,8 @@ func TestStopProseIsSafeWithoutGeneration(t *testing.T) {
 func TestWSProseEndToEnd(t *testing.T) {
 	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
 	srv := New(m)
-	id, _ := m.Create("harbour", 1)
-	conn, done := wsDial(t, srv, id)
+	id, _ := m.Create("harbour", 1, "test-user")
+	conn, done := wsDial(t, srv, id, "dev")
 	defer done()
 
 	start := decodeView(t, readFrame(t, conn))

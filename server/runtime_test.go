@@ -11,7 +11,7 @@ import (
 // узел (шов afterAction из CLI). Без этого шва ход крутил бы кость впустую.
 func TestApplyMoveChangesNode(t *testing.T) {
 	m := NewManager(casesRoot)
-	id, _ := m.Create("harbour", 1)
+	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
 	var moveTok string
