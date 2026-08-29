@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kliuchnikovv/dnd/store"
 )
+
+var errNotImplemented = errors.New("server: не реализовано (Task 5)")
 
 //go:embed migrations/0001_init.sql
 var migration0001 string
@@ -202,6 +206,36 @@ func scanCommand(rows pgx.Rows) (store.CommandLogEntry, error) {
 	e.Intent = append([]byte(nil), intent...)
 	e.Status = store.CommandStatus(status)
 	return e, nil
+}
+
+func (s *pgStore) UpsertUser(context.Context, UserRecord) error {
+	// TODO(Task 5): реальная реализация
+	return errNotImplemented
+}
+
+func (s *pgStore) UserByGoogleSub(context.Context, string) (UserRecord, bool, error) {
+	// TODO(Task 5): реальная реализация
+	return UserRecord{}, false, errNotImplemented
+}
+
+func (s *pgStore) UserByID(context.Context, string) (UserRecord, bool, error) {
+	// TODO(Task 5): реальная реализация
+	return UserRecord{}, false, errNotImplemented
+}
+
+func (s *pgStore) SaveRefresh(context.Context, string, string, time.Time) error {
+	// TODO(Task 5): реальная реализация
+	return errNotImplemented
+}
+
+func (s *pgStore) RefreshOwner(context.Context, string) (string, bool, error) {
+	// TODO(Task 5): реальная реализация
+	return "", false, errNotImplemented
+}
+
+func (s *pgStore) DeleteRefresh(context.Context, string) error {
+	// TODO(Task 5): реальная реализация
+	return errNotImplemented
 }
 
 // Гарантия на этапе компиляции: pgStore реализует Store.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/store"
@@ -143,5 +144,41 @@ func TestReplayIsIdempotent(t *testing.T) {
 	cmds, _ := st.Commands(context.Background(), store.SessionID(id))
 	if len(cmds) != 2 {
 		t.Fatalf("в журнале %d команд, ждали 2 (реплей дописал команды?)", len(cmds))
+	}
+}
+
+func TestMemStoreUsersAndRefresh(t *testing.T) {
+	st := NewMemStore()
+	ctx := context.Background()
+	u := UserRecord{ID: "u1", GoogleSub: "g1", Email: "a@b.c", Name: "Ann"}
+	if err := st.UpsertUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, _ := st.UserByGoogleSub(ctx, "g1")
+	if !ok || got.ID != "u1" {
+		t.Fatalf("по sub: %+v ok=%v", got, ok)
+	}
+	byID, ok, _ := st.UserByID(ctx, "u1")
+	if !ok || byID.Email != "a@b.c" {
+		t.Fatalf("по id: %+v", byID)
+	}
+
+	exp := time.Now().Add(time.Hour)
+	if err := st.SaveRefresh(ctx, "h1", "u1", exp); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok, _ := st.RefreshOwner(ctx, "h1")
+	if !ok || owner != "u1" {
+		t.Fatalf("refresh owner: %q ok=%v", owner, ok)
+	}
+	// Истёкший не отдаётся.
+	_ = st.SaveRefresh(ctx, "h2", "u1", time.Now().Add(-time.Hour))
+	if _, ok, _ := st.RefreshOwner(ctx, "h2"); ok {
+		t.Fatal("истёкший refresh принят")
+	}
+	// Ротация: удаление гасит.
+	_ = st.DeleteRefresh(ctx, "h1")
+	if _, ok, _ := st.RefreshOwner(ctx, "h1"); ok {
+		t.Fatal("удалённый refresh ещё живёт")
 	}
 }

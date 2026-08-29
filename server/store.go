@@ -3,9 +3,19 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/kliuchnikovv/dnd/store"
 )
+
+// UserRecord — профиль пользователя, идентифицированного через Google.
+type UserRecord struct {
+	ID        string
+	GoogleSub string
+	Email     string
+	Name      string
+	Picture   string
+}
 
 // SessionRecord — паспорт сессии в журнале: то, из чего сессия восстанавливается
 // после рестарта. Состояние игры не хранится — оно выводится реплеем команд из
@@ -16,6 +26,7 @@ type SessionRecord struct {
 	Seed        int64
 	Snapshot    string
 	CoreVersion string
+	UserID      string // владелец; пусто у легаси-сессий
 }
 
 // Store — долговечный журнал сервера. Форма повторяет store.DB (тот уже «в форме
@@ -38,6 +49,26 @@ type Store interface {
 	Commands(ctx context.Context, session store.SessionID) ([]store.CommandLogEntry, error)
 	// Close освобождает ресурсы (пул соединений Postgres). Для памяти — no-op.
 	Close(ctx context.Context) error
+
+	// UpsertUser сохраняет или обновляет профиль пользователя.
+	UpsertUser(ctx context.Context, u UserRecord) error
+	// UserByGoogleSub возвращает профиль по Google sub. ok=false, если не найден.
+	UserByGoogleSub(ctx context.Context, sub string) (UserRecord, bool, error)
+	// UserByID возвращает профиль по ID. ok=false, если не найден.
+	UserByID(ctx context.Context, id string) (UserRecord, bool, error)
+	// SaveRefresh сохраняет хэш refresh-токена с владельцем и временем истечения.
+	SaveRefresh(ctx context.Context, hash, userID string, expiresAt time.Time) error
+	// RefreshOwner возвращает владельца хэша (только если он не истёкший).
+	// ok=false, если не найден или истёкший.
+	RefreshOwner(ctx context.Context, hash string) (userID string, ok bool, err error)
+	// DeleteRefresh удаляет хэш refresh-токена (обычно при ротации).
+	DeleteRefresh(ctx context.Context, hash string) error
+}
+
+// memRefresh — служебная структура для хранения refresh-токена.
+type memRefresh struct {
+	userID string
+	exp    time.Time
 }
 
 // memStore — журнал в памяти. Переживает пересборку Manager (это отдельный
@@ -48,6 +79,9 @@ type memStore struct {
 	mu       sync.Mutex
 	db       *store.DB
 	sessions map[string]SessionRecord
+	users    map[string]UserRecord // by ID
+	bySub    map[string]string     // google_sub -> ID
+	refresh  map[string]memRefresh // hash -> {userID, exp}
 }
 
 // NewMemStore — пустой журнал в памяти.
@@ -55,6 +89,9 @@ func NewMemStore() *memStore {
 	return &memStore{
 		db:       store.NewDB(),
 		sessions: make(map[string]SessionRecord),
+		users:    make(map[string]UserRecord),
+		bySub:    make(map[string]string),
+		refresh:  make(map[string]memRefresh),
 	}
 }
 
@@ -95,3 +132,55 @@ func (s *memStore) Commands(_ context.Context, session store.SessionID) ([]store
 }
 
 func (s *memStore) Close(context.Context) error { return nil }
+
+func (s *memStore) UpsertUser(_ context.Context, u UserRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.users[u.ID] = u
+	if u.GoogleSub != "" {
+		s.bySub[u.GoogleSub] = u.ID
+	}
+	return nil
+}
+
+func (s *memStore) UserByGoogleSub(_ context.Context, sub string) (UserRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, ok := s.bySub[sub]
+	if !ok {
+		return UserRecord{}, false, nil
+	}
+	u, ok := s.users[id]
+	return u, ok, nil
+}
+
+func (s *memStore) UserByID(_ context.Context, id string) (UserRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[id]
+	return u, ok, nil
+}
+
+func (s *memStore) SaveRefresh(_ context.Context, hash, userID string, exp time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh[hash] = memRefresh{userID: userID, exp: exp}
+	return nil
+}
+
+func (s *memStore) RefreshOwner(_ context.Context, hash string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.refresh[hash]
+	if !ok || !r.exp.After(time.Now()) {
+		return "", false, nil
+	}
+	return r.userID, true, nil
+}
+
+func (s *memStore) DeleteRefresh(_ context.Context, hash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.refresh, hash)
+	return nil
+}
