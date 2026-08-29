@@ -1,0 +1,12 @@
+# Конфигурация Railway. Сборка — по Dockerfile; здоровье проверяется тем же
+# /healthz, что и локально. Рестарт по сбою: упавший инстанс поднимается, а не
+# висит мёртвым.
+
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
