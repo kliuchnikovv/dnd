@@ -245,12 +245,20 @@ func scanCommand(rows pgx.Rows) (store.CommandLogEntry, error) {
 }
 
 func (s *pgStore) UpsertUser(ctx context.Context, u UserRecord) error {
+	// Пустой GoogleSub (легаси/тестовые пользователи) должен лечь как NULL, а
+	// не ''. google_sub UNIQUE + ON CONFLICT(google_sub) — с '' второй такой
+	// же пользователь конфликтует с первым и UPDATE'ит чужую строку, а не
+	// вставляет свою (NULL с NULL никогда не конфликтует в Postgres).
+	var sub *string
+	if u.GoogleSub != "" {
+		sub = &u.GoogleSub
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO users (id, google_sub, email, name, picture)
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (google_sub) DO UPDATE SET
 			email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture`,
-		u.ID, u.GoogleSub, u.Email, u.Name, u.Picture)
+		u.ID, sub, u.Email, u.Name, u.Picture)
 	return err
 }
 
