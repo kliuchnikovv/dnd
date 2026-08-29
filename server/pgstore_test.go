@@ -177,3 +177,21 @@ func TestPgStoreUsersAndRefresh(t *testing.T) {
 		t.Fatalf("второй ClaimRefresh должен провалиться: owner=%q ok=%v err=%v", owner2, ok, err)
 	}
 }
+
+// SessionsByUser отдаёт только сессии владельца, с заполненными UserID и
+// CreatedAt.
+func TestPgStoreSessionsByUser(t *testing.T) {
+	st := pgStoreForTest(t)
+	defer st.Close(context.Background())
+	ctx := context.Background()
+	uid := "u-" + randToken()
+	_ = st.UpsertUser(ctx, UserRecord{ID: uid, Email: "o@x"})
+	_ = st.SaveSession(ctx, SessionRecord{ChatID: "c-" + randToken(), CaseID: "harbour", Seed: 1, UserID: uid, CoreVersion: "core-1", Snapshot: "s"})
+	got, err := st.SessionsByUser(ctx, uid)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("SessionsByUser: %d rows err=%v", len(got), err)
+	}
+	if got[0].UserID != uid || got[0].CreatedAt.IsZero() {
+		t.Fatalf("owner/created_at не заполнены: %+v", got[0])
+	}
+}

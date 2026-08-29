@@ -88,3 +88,37 @@ func TestWSAllowsOwnChatID(t *testing.T) {
 
 	decodeView(t, readFrame(t, conn))
 }
+
+// GET /sessions отдаёт только сессии вызывающего, не чужие.
+func TestListSessionsReturnsOnlyOwn(t *testing.T) {
+	srv, svc := testServerWithAuth(t)
+	a, _ := svc.LoginAs(context.Background(), auth.Identity{Sub: "gA", Email: "a@x"})
+	b, _ := svc.LoginAs(context.Background(), auth.Identity{Sub: "gB", Email: "b@x"})
+	idA := createSessionAs(t, srv, a.AccessToken, "harbour")
+	createSessionAs(t, srv, b.AccessToken, "harbour")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/sessions", nil)
+	req.Header.Set("Authorization", "Bearer "+a.AccessToken)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("код %d тело %q", rec.Code, rec.Body.String())
+	}
+	var out []struct {
+		ChatID string `json:"chat_id"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if len(out) != 1 || out[0].ChatID != idA {
+		t.Fatalf("ждали только сессию A (%s), получили %+v", idA, out)
+	}
+}
+
+// GET /sessions без Bearer — 401.
+func TestListSessionsRequiresAuth(t *testing.T) {
+	srv, _ := testServerWithAuth(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/sessions", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("без токена ждали 401, получили %d", rec.Code)
+	}
+}
