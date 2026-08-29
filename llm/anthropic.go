@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 )
 
 // anthropicProvider — единственное место в проекте, где живёт сетевой вызов
@@ -88,6 +90,59 @@ func (a *anthropicProvider) Complete(ctx context.Context, model string, r Reques
 	resp.Text = b.String()
 	return resp, nil
 }
+
+// Stream — потоковая генерация Anthropic через SDK. Только текст: схему
+// потоково не отдаём (шлюз зовёт Stream при пустой Schema), структурный вывод
+// приходит целиком через Complete. Дельты — из content_block_delta, usage — из
+// message_start (вход) и message_delta (выход).
+func (a *anthropicProvider) Stream(ctx context.Context, model string, r Request) (Stream, error) {
+	maxTokens := int64(r.MaxTokens)
+	if maxTokens <= 0 {
+		maxTokens = 4096
+	}
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(model),
+		MaxTokens: maxTokens,
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(r.Input)),
+		},
+	}
+	if r.System != "" {
+		params.System = []anthropic.TextBlockParam{{Text: r.System}}
+	}
+	return &anthropicStream{stream: a.client.Messages.NewStreaming(ctx, params)}, nil
+}
+
+// anthropicStream переводит события SDK в дельты. Recv крутит поток до
+// следующего приращения текста, копя usage по пути; финал отдаёт Response().
+type anthropicStream struct {
+	stream *ssestream.Stream[anthropic.MessageStreamEventUnion]
+	final  Response
+}
+
+func (s *anthropicStream) Recv() (Delta, error) {
+	for s.stream.Next() {
+		ev := s.stream.Current()
+		switch ev.Type {
+		case "message_start":
+			s.final.Usage.InputTokens = int(ev.Message.Usage.InputTokens)
+		case "content_block_delta":
+			if ev.Delta.Text != "" {
+				return Delta{Text: ev.Delta.Text}, nil
+			}
+		case "message_delta":
+			// Выходные токены приходят кумулятивно в message_delta.
+			s.final.Usage.OutputTokens = int(ev.Usage.OutputTokens)
+		}
+	}
+	if err := s.stream.Err(); err != nil {
+		return Delta{}, fmt.Errorf("llm: поток модели: %w", err)
+	}
+	return Delta{}, io.EOF
+}
+
+func (s *anthropicStream) Response() Response { return s.final }
+func (s *anthropicStream) Close() error       { return s.stream.Close() }
 
 // schemaTool превращает JSON-схему в определение инструмента. Схема приходит
 // строкой, потому что её автор — вызывающий слой, а не этот пакет.

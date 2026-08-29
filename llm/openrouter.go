@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -79,6 +81,7 @@ type orRequest struct {
 	MaxTokens      int           `json:"max_tokens,omitempty"`
 	ResponseFormat *orRespFormat `json:"response_format,omitempty"`
 	Usage          *orUsageOpt   `json:"usage,omitempty"`
+	Stream         bool          `json:"stream,omitempty"`
 }
 
 type orUsageOpt struct {
@@ -195,6 +198,123 @@ func (o *openRouter) Complete(ctx context.Context, model string, r Request) (Res
 	}
 	return out, nil
 }
+
+// Stream — потоковая генерация OpenRouter (OpenAI-совместимый SSE). Схему
+// потоково не отдаём: шлюз зовёт Stream только при пустой Schema. Дельты
+// приходят из choices[].delta.content, финальный usage — из чанка с полем
+// usage (просим его тем же Include, что и в Complete).
+func (o *openRouter) Stream(ctx context.Context, model string, r Request) (Stream, error) {
+	if o.key == "" {
+		return nil, fmt.Errorf("llm: OPENROUTER_API_KEY не задан")
+	}
+	body := orRequest{
+		Model:     model,
+		MaxTokens: r.MaxTokens,
+		Stream:    true,
+		Usage:     &orUsageOpt{Include: true},
+	}
+	if r.System != "" {
+		body.Messages = append(body.Messages, orMessage{Role: "system", Content: r.System})
+	}
+	body.Messages = append(body.Messages, orMessage{Role: "user", Content: r.Input})
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		o.baseURL+"/chat/completions", bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+o.key)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	if o.title != "" {
+		req.Header.Set("X-Title", o.title)
+	}
+
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("llm: запрос к openrouter: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("llm: openrouter вернул %d: %s",
+			resp.StatusCode, truncate(string(payload), 300))
+	}
+	return &orStream{resp: resp, br: bufio.NewReader(resp.Body)}, nil
+}
+
+// orStreamChunk — один SSE-чанк OpenRouter. Либо приращение текста в delta,
+// либо финальный usage (в отдельном чанке, часто с пустым choices).
+type orStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int     `json:"prompt_tokens"`
+		CompletionTokens int     `json:"completion_tokens"`
+		Cost             float64 `json:"cost"`
+	} `json:"usage"`
+}
+
+// orStream разбирает SSE лениво: каждый Recv читает строки до следующей дельты
+// текста, [DONE] или конца тела. Финальный usage копится в final по пути.
+type orStream struct {
+	resp  *http.Response
+	br    *bufio.Reader
+	final Response
+}
+
+func (s *orStream) Recv() (Delta, error) {
+	for {
+		line, err := s.br.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				return Delta{}, io.EOF
+			}
+			return Delta{}, err
+		}
+		line = strings.TrimSpace(line)
+		// Пустые строки — разделители событий; строки с ':' — комментарии/
+		// keepalive OpenRouter. И то, и другое пропускаем.
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(line[len("data:"):])
+		if data == "[DONE]" {
+			return Delta{}, io.EOF
+		}
+		var chunk orStreamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			// Битый чанк не рвёт поток: пропускаем и читаем дальше.
+			continue
+		}
+		if chunk.Usage != nil {
+			s.final.Usage = Usage{
+				InputTokens:  chunk.Usage.PromptTokens,
+				OutputTokens: chunk.Usage.CompletionTokens,
+			}
+			if chunk.Usage.Cost > 0 {
+				s.final.CostMicro = int64(chunk.Usage.Cost * 1_000_000)
+			}
+		}
+		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+			return Delta{Text: chunk.Choices[0].Delta.Content}, nil
+		}
+		// Чанк без текста (роль, usage-only) — читаем следующий.
+	}
+}
+
+func (s *orStream) Response() Response { return s.final }
+func (s *orStream) Close() error       { return s.resp.Body.Close() }
 
 func truncate(s string, n int) string {
 	if len(s) <= n {
