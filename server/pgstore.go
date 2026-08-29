@@ -283,5 +283,22 @@ func (s *pgStore) DeleteRefresh(ctx context.Context, hash string) error {
 	return err
 }
 
+// ClaimRefresh атомарно забирает refresh-токен одним round-trip: DELETE ...
+// RETURNING гарантирует, что при параллельной ротации тем же токеном лишь
+// один запрос увидит строку и получит владельца — второй получит ErrNoRows.
+func (s *pgStore) ClaimRefresh(ctx context.Context, hash string) (string, bool, error) {
+	var uid string
+	err := s.pool.QueryRow(ctx, `
+		DELETE FROM refresh_tokens WHERE token_hash=$1 AND expires_at > now()
+		RETURNING user_id`, hash).Scan(&uid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return uid, true, nil
+}
+
 // Гарантия на этапе компиляции: pgStore реализует Store.
 var _ Store = (*pgStore)(nil)

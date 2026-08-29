@@ -34,6 +34,9 @@ func (a userStoreAdapter) RefreshOwner(ctx context.Context, hash string) (string
 func (a userStoreAdapter) DeleteRefresh(ctx context.Context, hash string) error {
 	return a.st.DeleteRefresh(ctx, hash)
 }
+func (a userStoreAdapter) ClaimRefresh(ctx context.Context, hash string) (string, bool, error) {
+	return a.st.ClaimRefresh(ctx, hash)
+}
 
 func (s *Server) handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {

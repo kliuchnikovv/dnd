@@ -3,6 +3,8 @@ package auth
 import (
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func fixedNow(s string) func() time.Time {
@@ -40,6 +42,25 @@ func TestAccessExpires(t *testing.T) {
 	late := NewTokens("s", fixedNow("2026-10-01T00:00:00Z"))
 	if _, err := late.VerifyAccess(token); err != ErrExpired {
 		t.Fatalf("ждали ErrExpired, получили %v", err)
+	}
+}
+
+// TestVerifyAccessRejectsAlgNone проверяет пиннинг алгоритма: токен, подписанный
+// (точнее, вовсе не подписанный) методом "none", должен отвергаться как
+// недействительный, а не приниматься из-за подмены алгоритма в заголовке
+// (классическая атака alg=none / alg-confusion на JWT).
+func TestVerifyAccessRejectsAlgNone(t *testing.T) {
+	tk := NewTokens("secret", fixedNow("2026-08-29T00:00:00Z"))
+	c := claims{RegisteredClaims: jwt.RegisteredClaims{
+		Subject:   "user-1",
+		ExpiresAt: jwt.NewNumericDate(fixedNow("2026-08-29T00:00:00Z")().Add(time.Hour)),
+	}}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodNone, c).SignedString(jwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatalf("подготовка alg=none токена: %v", err)
+	}
+	if _, err := tk.VerifyAccess(token); err != ErrInvalid {
+		t.Fatalf("ждали ErrInvalid для alg=none, получили %v", err)
 	}
 }
 

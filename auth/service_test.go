@@ -62,6 +62,14 @@ func (m *memUserStore) DeleteRefresh(_ context.Context, hash string) error {
 	delete(m.refresh, hash)
 	return nil
 }
+func (m *memUserStore) ClaimRefresh(_ context.Context, hash string) (string, bool, error) {
+	r, ok := m.refresh[hash]
+	if !ok || !r.exp.After(time.Now()) {
+		return "", false, nil
+	}
+	delete(m.refresh, hash)
+	return r.uid, true, nil
+}
 
 func svc(t *testing.T, v Verifier) (*Service, *memUserStore) {
 	t.Helper()
@@ -109,6 +117,28 @@ func TestRefreshRotates(t *testing.T) {
 	// Старый refresh больше не работает.
 	if _, err := s.Refresh(context.Background(), login.RefreshToken); err == nil {
 		t.Fatal("старый refresh принят после ротации")
+	}
+}
+
+// TestClaimRefreshSingleUse проверяет атомарность заявки на refresh: первый
+// ClaimRefresh забирает владельца и гасит хэш, второй — уже не находит его.
+// Это и есть механизм, закрывающий окно гонки параллельного refresh одним и
+// тем же токеном (иначе оба запроса успели бы пройти RefreshOwner до того,
+// как второй из них выполнит DeleteRefresh).
+func TestClaimRefreshSingleUse(t *testing.T) {
+	_, store := svc(t, &FakeVerifier{})
+	ctx := context.Background()
+	hash := "claim-hash"
+	if err := store.SaveRefresh(ctx, hash, "user-x", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	uid, ok, err := store.ClaimRefresh(ctx, hash)
+	if err != nil || !ok || uid != "user-x" {
+		t.Fatalf("первый ClaimRefresh: uid=%q ok=%v err=%v", uid, ok, err)
+	}
+	uid, ok, err = store.ClaimRefresh(ctx, hash)
+	if err != nil || ok || uid != "" {
+		t.Fatalf("второй ClaimRefresh должен провалиться: uid=%q ok=%v err=%v", uid, ok, err)
 	}
 }
 

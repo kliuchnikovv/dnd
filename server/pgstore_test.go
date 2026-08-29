@@ -160,4 +160,20 @@ func TestPgStoreUsersAndRefresh(t *testing.T) {
 	if _, ok, _ := st.RefreshOwner(ctx, h); ok {
 		t.Fatal("удалённый refresh жив")
 	}
+
+	// ClaimRefresh одноразов: первый вызов забирает владельца и гасит хэш
+	// атомарно (DELETE ... RETURNING в одном round-trip), второй уже не
+	// находит строку. Это и закрывает окно гонки параллельного refresh.
+	h2 := "h2-" + randToken()
+	if err := st.SaveRefresh(ctx, h2, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	owner2, ok, err := st.ClaimRefresh(ctx, h2)
+	if err != nil || !ok || owner2 != id {
+		t.Fatalf("первый ClaimRefresh: owner=%q ok=%v err=%v", owner2, ok, err)
+	}
+	owner2, ok, err = st.ClaimRefresh(ctx, h2)
+	if err != nil || ok || owner2 != "" {
+		t.Fatalf("второй ClaimRefresh должен провалиться: owner=%q ok=%v err=%v", owner2, ok, err)
+	}
 }

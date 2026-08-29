@@ -182,3 +182,23 @@ func TestMemStoreUsersAndRefresh(t *testing.T) {
 		t.Fatal("удалённый refresh ещё живёт")
 	}
 }
+
+// TestMemStoreClaimRefreshSingleUse: ClaimRefresh одноразов — первый вызов
+// забирает владельца и гасит хэш атомарно (под одним mu.Lock), второй уже не
+// находит его. Это закрывает окно гонки параллельного POST /auth/refresh
+// одним и тем же токеном, которое было у пары RefreshOwner+DeleteRefresh.
+func TestMemStoreClaimRefreshSingleUse(t *testing.T) {
+	st := NewMemStore()
+	ctx := context.Background()
+	if err := st.SaveRefresh(ctx, "h3", "u1", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok, err := st.ClaimRefresh(ctx, "h3")
+	if err != nil || !ok || owner != "u1" {
+		t.Fatalf("первый ClaimRefresh: owner=%q ok=%v err=%v", owner, ok, err)
+	}
+	owner, ok, err = st.ClaimRefresh(ctx, "h3")
+	if err != nil || ok || owner != "" {
+		t.Fatalf("второй ClaimRefresh должен провалиться: owner=%q ok=%v err=%v", owner, ok, err)
+	}
+}

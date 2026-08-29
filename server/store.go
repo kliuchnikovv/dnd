@@ -63,6 +63,11 @@ type Store interface {
 	RefreshOwner(ctx context.Context, hash string) (userID string, ok bool, err error)
 	// DeleteRefresh удаляет хэш refresh-токена (обычно при ротации).
 	DeleteRefresh(ctx context.Context, hash string) error
+	// ClaimRefresh атомарно забирает refresh-токен: существующий и не
+	// истёкший хэш удаляется, возвращая владельца с ok=true; иначе ok=false.
+	// Атомарность закрывает окно гонки между чтением владельца и удалением
+	// при параллельной ротации одним и тем же токеном.
+	ClaimRefresh(ctx context.Context, hash string) (userID string, ok bool, err error)
 }
 
 // memRefresh — служебная структура для хранения refresh-токена.
@@ -183,4 +188,15 @@ func (s *memStore) DeleteRefresh(_ context.Context, hash string) error {
 	defer s.mu.Unlock()
 	delete(s.refresh, hash)
 	return nil
+}
+
+func (s *memStore) ClaimRefresh(_ context.Context, hash string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.refresh[hash]
+	if !ok || !r.exp.After(time.Now()) {
+		return "", false, nil
+	}
+	delete(s.refresh, hash)
+	return r.userID, true, nil
 }

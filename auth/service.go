@@ -21,6 +21,11 @@ type UserStore interface {
 	SaveRefresh(ctx context.Context, hash, userID string, expiresAt time.Time) error
 	RefreshOwner(ctx context.Context, hash string) (string, bool, error)
 	DeleteRefresh(ctx context.Context, hash string) error
+	// ClaimRefresh атомарно забирает refresh-токен: если хэш существует и не
+	// истёк — удаляет его и возвращает владельца с ok=true; иначе ok=false.
+	// Используется вместо пары RefreshOwner+DeleteRefresh, чтобы закрыть окно
+	// гонки при параллельной ротации одним и тем же токеном.
+	ClaimRefresh(ctx context.Context, hash string) (userID string, ok bool, err error)
 }
 
 type Service struct {
@@ -63,15 +68,12 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (Session, err
 // Refresh обменивает refresh на новую пару, гася старый (ротация).
 func (s *Service) Refresh(ctx context.Context, refresh string) (Session, error) {
 	hash := HashRefresh(refresh)
-	uid, ok, err := s.store.RefreshOwner(ctx, hash)
+	uid, ok, err := s.store.ClaimRefresh(ctx, hash)
 	if err != nil {
 		return Session{}, err
 	}
 	if !ok {
 		return Session{}, ErrInvalid
-	}
-	if err := s.store.DeleteRefresh(ctx, hash); err != nil {
-		return Session{}, err
 	}
 	u, ok, err := s.store.UserByID(ctx, uid)
 	if err != nil || !ok {
