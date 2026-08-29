@@ -32,6 +32,12 @@ export class NetSource implements TurnViewSource {
   private prose = ''; // накопитель прозы текущего хода
   private outId = 0;
   private pending: ((v: TurnView) => void) | null = null;
+  private closed = false;
+  private backoff = 1000;
+  private authRetried = false;
+  private schedule: (fn: () => void, ms: number) => void = (fn, ms) => {
+    setTimeout(fn, ms);
+  };
 
   constructor(private deps: NetSourceDeps) {}
 
@@ -56,12 +62,42 @@ export class NetSource implements TurnViewSource {
     const ws = make(url);
     this.ws = ws;
     ws.onmessage = (e) => this.onFrame(JSON.parse(e.data) as Frame);
-    ws.onopen = () => {};
+    ws.onopen = () => {
+      this.backoff = 1000;
+    };
+    ws.onclose = () => {
+      this.ws = null;
+      if (this.closed) return;
+      const wait = this.backoff;
+      this.backoff = Math.min(this.backoff * 2, 30000);
+      this.schedule(() => {
+        void this.connect();
+      }, wait);
+    };
+    ws.onerror = () => this.handleAuthFailure();
   }
 
   close(): void {
+    this.closed = true;
     this.ws?.close();
     this.ws = null;
+  }
+
+  // Отказ авторизации: первый раз — рефреш токена (через getToken) и реконнект;
+  // повторный отказ подряд — сдаёмся и зовём onAuthLost().
+  private handleAuthFailure(): void {
+    if (!this.authRetried) {
+      this.authRetried = true;
+      const old = this.ws;
+      this.ws = null;
+      if (old) {
+        old.onclose = null; // текущий обрыв — не «неожиданный»: не планируем повторный реконнект
+        old.close();
+      }
+      void this.connect();
+    } else {
+      this.deps.onAuthLost();
+    }
   }
 
   send(intent: Intent): Promise<TurnView> {
@@ -76,8 +112,16 @@ export class NetSource implements TurnViewSource {
   }
 
   private onFrame(f: Frame): void {
+    if (f.kind === Kind.error) {
+      const code = (f.error as { code?: number } | undefined)?.code;
+      if (code === 401) {
+        this.handleAuthFailure();
+      }
+      return;
+    }
     switch (f.op) {
       case Op.sessionState:
+        this.authRetried = false;
         this.prose = '';
         this.view = f.payload as TurnView;
         this.emit();

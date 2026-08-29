@@ -115,6 +115,98 @@ test('prose deltas accumulate into narration; done finalizes', async () => {
   expect(net.current().narration?.[0].streaming).toBe(false);
 });
 
+function errorFrame(code: number) {
+  return {
+    id: 1,
+    chat_id: 'c',
+    channel: 'chat',
+    kind: 'error',
+    op: 'message',
+    error: { code },
+  };
+}
+
+test('reconnects after unexpected close and re-applies session_state', async () => {
+  const sockets: FakeSocket[] = [];
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x/chat/ws',
+    getToken: async () => 'tok',
+    onAuthLost: () => {},
+    makeSocket: () => {
+      const f = new FakeSocket();
+      sockets.push(f);
+      return f;
+    },
+  });
+  // без реальных таймеров: инжектируй немедленный планировщик
+  (net as any).schedule = (fn: () => void) => fn();
+  await net.connect();
+  sockets[0].open();
+  sockets[0].push(sessionStateFrame({}));
+  sockets[0].onclose?.(); // неожиданный обрыв
+  await Promise.resolve();
+  expect(sockets.length).toBe(2); // переподключился
+  sockets[1].open();
+  sockets[1].push(sessionStateFrame({ scene: { node: 'n2', title: 'После' } }));
+  expect(net.current().scene.title).toBe('После');
+});
+
+test('close() stops reconnect', async () => {
+  const sockets: FakeSocket[] = [];
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x',
+    getToken: async () => 'tok',
+    onAuthLost: () => {},
+    makeSocket: () => {
+      const f = new FakeSocket();
+      sockets.push(f);
+      return f;
+    },
+  });
+  (net as any).schedule = (fn: () => void) => fn();
+  await net.connect();
+  sockets[0].open();
+  net.close();
+  sockets[0].onclose?.();
+  await Promise.resolve();
+  expect(sockets.length).toBe(1); // нет реконнекта после close()
+});
+
+test('auth failure: 401 error frame retries getToken once, then reconnects; second 401 calls onAuthLost', async () => {
+  const sockets: FakeSocket[] = [];
+  const getToken = jest.fn(async () => 'tok');
+  const onAuthLost = jest.fn();
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x',
+    getToken,
+    onAuthLost,
+    makeSocket: () => {
+      const f = new FakeSocket();
+      sockets.push(f);
+      return f;
+    },
+  });
+  (net as any).schedule = (fn: () => void) => fn();
+  await net.connect();
+  expect(getToken).toHaveBeenCalledTimes(1);
+
+  sockets[0].push(errorFrame(401));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(getToken).toHaveBeenCalledTimes(2); // один рефреш через getToken
+  expect(sockets.length).toBe(2); // реконнект
+  expect(onAuthLost).not.toHaveBeenCalled();
+
+  sockets[1].push(errorFrame(401));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(onAuthLost).toHaveBeenCalledTimes(1); // повторный отказ — сдаёмся
+  expect(sockets.length).toBe(2); // реконнект больше не пробуем
+});
+
 test('history frame seeds finished narration on reconnect', async () => {
   const { net, fake } = makeNet();
   await net.connect();
