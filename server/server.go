@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/kliuchnikovv/dnd/auth"
 )
@@ -52,6 +53,13 @@ func New(mgr *Manager, opts ...Option) *Server {
 
 // Handler — http.Handler со всеми маршрутами.
 func (s *Server) Handler() http.Handler { return s.mux }
+
+// AuthService строит auth.Service поверх хранилища менеджера. userStoreAdapter
+// и m.store неэкспортируемы, поэтому cmd/server не может собрать сервис сам —
+// этот конструктор остаётся единственным мостом наружу пакета.
+func (m *Manager) AuthService(v auth.Verifier, secret string, now func() time.Time, newID func() string) *auth.Service {
+	return auth.NewService(v, auth.NewTokens(secret, now), userStoreAdapter{st: m.store}, newID)
+}
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

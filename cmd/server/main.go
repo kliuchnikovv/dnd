@@ -29,7 +29,11 @@ func main() {
 	mgr, closeStore := buildManager(casesDir)
 	defer closeStore()
 
-	srv := server.New(mgr)
+	authCtx, cancelAuth := context.WithTimeout(context.Background(), 30*time.Second)
+	svc, devAuth := buildAuth(authCtx, mgr)
+	cancelAuth()
+
+	srv := server.New(mgr, server.WithAuth(svc, devAuth))
 	httpSrv := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Handler(),
