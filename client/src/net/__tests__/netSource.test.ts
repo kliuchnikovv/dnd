@@ -39,14 +39,18 @@ function sessionStateFrame(tv: Partial<TurnView>) {
 
 function makeNet() {
   const fake = new FakeSocket();
+  let capturedUrl = '';
   const net = new NetSource({
     chatId: 'c',
     wsUrl: 'ws://x/chat/ws',
     getToken: async () => 'tok',
     onAuthLost: () => {},
-    makeSocket: () => fake,
+    makeSocket: (url) => {
+      capturedUrl = url;
+      return fake;
+    },
   });
-  return { net, fake };
+  return { net, fake, getUrl: () => capturedUrl };
 }
 
 test('current() is a placeholder until session_state arrives', () => {
@@ -54,13 +58,20 @@ test('current() is a placeholder until session_state arrives', () => {
   expect(net.current().version).toBe(0);
 });
 
-test('session_state updates current() and notifies subscribers', () => {
+test('session_state updates current() and notifies subscribers', async () => {
   const { net, fake } = makeNet();
   const seen: TurnView[] = [];
   net.subscribe((v) => seen.push(v));
-  net.connect();
+  await net.connect();
   fake.open();
   fake.push(sessionStateFrame({}));
   expect(net.current().scene.title).toBe('Причал');
   expect(seen[seen.length - 1].options?.[0].token).toBe('tok1');
+});
+
+test('connect() builds the WS URL with token and chat_id', async () => {
+  const { net, getUrl } = makeNet();
+  await net.connect();
+  expect(getUrl()).toContain('token=tok');
+  expect(getUrl()).toContain('chat_id=c');
 });

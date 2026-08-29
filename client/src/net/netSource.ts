@@ -44,12 +44,13 @@ export class NetSource implements TurnViewSource {
     };
   }
 
-  // Синхронно создаёт сокет и вешает обработчики — до того, как придёт первый кадр.
-  // Токен в URL, refresh при 401/обрыве и onAuthLost — Tasks 4–5 (auth-aware reconnect);
-  // здесь getToken()/onAuthLost только объявлены в NetSourceDeps под них.
-  connect(): void {
+  // Сервер отклоняет подключения без токена (server/ws.go) — токен обязателен в URL.
+  // Refresh при 401/обрыве и onAuthLost — Tasks 4–5 (auth-aware reconnect); здесь токен
+  // получается один раз перед подключением.
+  async connect(): Promise<void> {
+    const token = await this.deps.getToken();
+    const url = `${this.deps.wsUrl}?token=${encodeURIComponent(token)}&chat_id=${encodeURIComponent(this.deps.chatId)}`;
     const make = this.deps.makeSocket ?? ((u: string) => new WebSocket(u) as unknown as WebSocketLike);
-    const url = `${this.deps.wsUrl}?chat_id=${encodeURIComponent(this.deps.chatId)}`;
     const ws = make(url);
     this.ws = ws;
     ws.onmessage = (e) => this.onFrame(JSON.parse(e.data) as Frame);
