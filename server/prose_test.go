@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,4 +147,42 @@ func TestStopProseIsSafeWithoutGeneration(t *testing.T) {
 	id, _ := m.Create("harbour", 1)
 	rt, _ := m.Get(id)
 	rt.stopProse() // не должно паниковать
+}
+
+// Сквозь настоящий сокет: ход даёт session_state, затем прозу дельтами и done.
+func TestWSProseEndToEnd(t *testing.T) {
+	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
+	srv := New(m)
+	id, _ := m.Create("harbour", 1)
+	conn, done := wsDial(t, srv, id)
+	defer done()
+
+	start := decodeView(t, readFrame(t, conn))
+	writeInput(t, conn, 1, inputPayload{Token: start.Options[0].Token})
+
+	var text string
+	deltas, sawDone := 0, false
+	for i := 0; i < 200 && !sawDone; i++ {
+		f := readFrame(t, conn)
+		switch {
+		case f.Op == OpMessage && f.Kind == KindData:
+			var d textDelta
+			if err := json.Unmarshal(f.Payload, &d); err != nil {
+				t.Fatalf("дельта не разобралась: %v", err)
+			}
+			text += d.Delta
+			deltas++
+		case f.Op == OpDone:
+			sawDone = true
+		}
+	}
+	if deltas < 2 {
+		t.Fatalf("ждали дельты прозы через сокет, пришло %d", deltas)
+	}
+	if !sawDone {
+		t.Fatalf("не пришёл op:done")
+	}
+	if !strings.Contains(text, "туман") {
+		t.Fatalf("проза через сокет потерялась: %q", text)
+	}
 }
