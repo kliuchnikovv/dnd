@@ -1,0 +1,13 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "types": ["jest", "node"],
+    "paths": {
+      "@genie/ds": ["./src/ds"],
+      "@genie/ds/*": ["./src/ds/*"],
+      "@genie/front/themes": ["./src/theme"],
+      "@genie/front/themes/*": ["./src/theme/*"]
+    }
+  }
+}
