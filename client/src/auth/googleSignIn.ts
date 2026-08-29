@@ -19,9 +19,9 @@ export function fakeGoogleSignIn(result: string | Error): GoogleSignIn {
 
 WebBrowser.maybeCompleteAuthSession();
 
-// useGoogleSignIn — реальная обёртка. Client IDs берутся из app.json extra
-// (см. README §Auth). ID-token из результата promptAsync. Тонкая: логика
-// входа живёт в useAuth, здесь только получение id_token.
+// useGoogleSignIn — реальная обёртка. Client IDs берутся из переменных
+// окружения EXPO_PUBLIC_GOOGLE_*. ID-token из результата promptAsync. Тонкая:
+// логика входа живёт в useAuth, здесь только получение id_token.
 export function useGoogleSignIn(): GoogleSignIn {
   const [, , promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,

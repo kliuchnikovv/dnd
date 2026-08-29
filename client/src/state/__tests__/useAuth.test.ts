@@ -56,6 +56,14 @@ describe('useAuth store', () => {
     expect(await tokens.load()).toMatchObject({ accessToken: 'a2' });
   });
 
+  it('restore: tokens.load() rejects → signedOut (not stuck on loading)', async () => {
+    const tokens = memoryTokenStore();
+    tokens.load = jest.fn().mockRejectedValue(new Error('secure-store unavailable'));
+    const store = createAuthStore(deps({ tokens }));
+    await store.getState().restore();
+    expect(store.getState().status).toBe('signedOut');
+  });
+
   it('logout: clears tokens → signedOut', async () => {
     const d = deps();
     const store = createAuthStore(d);

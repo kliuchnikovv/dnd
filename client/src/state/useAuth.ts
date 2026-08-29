@@ -39,29 +39,36 @@ export function createAuthStore(deps: AuthDeps) {
     error: null,
 
     async restore() {
-      const t = await deps.tokens.load();
-      if (!t) {
-        set({ status: 'signedOut', user: null });
-        return;
-      }
       try {
-        const user = await deps.client.me(t.accessToken);
-        set({ status: 'signedIn', user, error: null });
-      } catch (e) {
-        const status = e instanceof AuthError ? e.status : (e as { status?: number })?.status;
-        if (status === 401) {
-          try {
-            const s = await deps.client.refresh(t.refreshToken);
-            await deps.tokens.save(toStored(s));
-            const user = await deps.client.me(s.accessToken);
-            set({ status: 'signedIn', user, error: null });
-            return;
-          } catch {
-            await deps.tokens.clear();
-          }
+        const t = await deps.tokens.load();
+        if (!t) {
+          set({ status: 'signedOut', user: null });
+          return;
         }
-        // Не-401 ошибка (например, сетевой сбой) не трогает токены — можно
-        // повторить restore() позже без повторного логина.
+        try {
+          const user = await deps.client.me(t.accessToken);
+          set({ status: 'signedIn', user, error: null });
+        } catch (e) {
+          const status = e instanceof AuthError ? e.status : (e as { status?: number })?.status;
+          if (status === 401) {
+            try {
+              const s = await deps.client.refresh(t.refreshToken);
+              await deps.tokens.save(toStored(s));
+              const user = await deps.client.me(s.accessToken);
+              set({ status: 'signedIn', user, error: null });
+              return;
+            } catch {
+              await deps.tokens.clear();
+            }
+          }
+          // Не-401 ошибка (например, сетевой сбой) не трогает токены — можно
+          // повторить restore() позже без повторного логина.
+          set({ status: 'signedOut', user: null });
+        }
+      } catch {
+        // Сбой самой загрузки токенов (например, secure-store недоступен на
+        // web) не должен вешать restore() в 'loading' навсегда — токены не
+        // трогаем (см. политику не-401 выше), просто считаем, что не вошли.
         set({ status: 'signedOut', user: null });
       }
     },
