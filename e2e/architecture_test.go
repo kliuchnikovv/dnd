@@ -129,6 +129,7 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		"github.com/golang-jwt/jwt/v5",
 		// google.golang.org/api — проверка Google ID-token для аутентификации
 		// (auth пакет, NewGoogleVerifier). Живёт НАД игрой в слое входа, домена не касается.
+		// Фильтр ниже включает google.golang.org/ для проверки этой и аналогичных зависимостей.
 		"google.golang.org/api",
 	}
 	body, err := os.ReadFile("../go.mod")
@@ -137,7 +138,9 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 	}
 	for _, line := range strings.Split(string(body), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "github.com/") && !strings.HasPrefix(line, "golang.org/") {
+		if !strings.HasPrefix(line, "github.com/") &&
+			!strings.HasPrefix(line, "golang.org/") &&
+			!strings.HasPrefix(line, "google.golang.org/") {
 			continue
 		}
 		if strings.HasPrefix(line, "github.com/kliuchnikovv/dnd") {
