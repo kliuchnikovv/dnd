@@ -12,10 +12,11 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 )
 
-var errNotImplemented = errors.New("server: не реализовано (Task 5)")
-
 //go:embed migrations/0001_init.sql
 var migration0001 string
+
+//go:embed migrations/0002_auth.sql
+var migration0002 string
 
 // pgStore — долговечный журнал в Postgres. Форма запросов повторяет memStore:
 // та же семантика append-only и идемпотентности, только за сетью. Пул pgx
@@ -49,6 +50,9 @@ func NewPgStore(ctx context.Context, dsn string) (Store, error) {
 func (s *pgStore) migrate(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, migration0001); err != nil {
 		return fmt.Errorf("миграция схемы: %w", err)
+	}
+	if _, err := s.pool.Exec(ctx, migration0002); err != nil {
+		return fmt.Errorf("миграция 0002: %w", err)
 	}
 	return nil
 }
@@ -208,34 +212,65 @@ func scanCommand(rows pgx.Rows) (store.CommandLogEntry, error) {
 	return e, nil
 }
 
-func (s *pgStore) UpsertUser(context.Context, UserRecord) error {
-	// TODO(Task 5): реальная реализация
-	return errNotImplemented
+func (s *pgStore) UpsertUser(ctx context.Context, u UserRecord) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO users (id, google_sub, email, name, picture)
+		VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT (google_sub) DO UPDATE SET
+			email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture`,
+		u.ID, u.GoogleSub, u.Email, u.Name, u.Picture)
+	return err
 }
 
-func (s *pgStore) UserByGoogleSub(context.Context, string) (UserRecord, bool, error) {
-	// TODO(Task 5): реальная реализация
-	return UserRecord{}, false, errNotImplemented
+func (s *pgStore) UserByGoogleSub(ctx context.Context, sub string) (UserRecord, bool, error) {
+	return s.scanUser(ctx, `SELECT id,google_sub,email,name,picture FROM users WHERE google_sub=$1`, sub)
 }
 
-func (s *pgStore) UserByID(context.Context, string) (UserRecord, bool, error) {
-	// TODO(Task 5): реальная реализация
-	return UserRecord{}, false, errNotImplemented
+func (s *pgStore) UserByID(ctx context.Context, id string) (UserRecord, bool, error) {
+	return s.scanUser(ctx, `SELECT id,google_sub,email,name,picture FROM users WHERE id=$1`, id)
 }
 
-func (s *pgStore) SaveRefresh(context.Context, string, string, time.Time) error {
-	// TODO(Task 5): реальная реализация
-	return errNotImplemented
+func (s *pgStore) scanUser(ctx context.Context, sql string, arg string) (UserRecord, bool, error) {
+	var u UserRecord
+	var sub, name, pic *string
+	err := s.pool.QueryRow(ctx, sql, arg).Scan(&u.ID, &sub, &u.Email, &name, &pic)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return UserRecord{}, false, nil
+	}
+	if err != nil {
+		return UserRecord{}, false, err
+	}
+	u.GoogleSub, u.Name, u.Picture = deref(sub), deref(name), deref(pic)
+	return u, true, nil
 }
 
-func (s *pgStore) RefreshOwner(context.Context, string) (string, bool, error) {
-	// TODO(Task 5): реальная реализация
-	return "", false, errNotImplemented
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
-func (s *pgStore) DeleteRefresh(context.Context, string) error {
-	// TODO(Task 5): реальная реализация
-	return errNotImplemented
+func (s *pgStore) SaveRefresh(ctx context.Context, hash, userID string, exp time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO refresh_tokens (token_hash, user_id, expires_at) VALUES ($1,$2,$3)`,
+		hash, userID, exp)
+	return err
+}
+
+func (s *pgStore) RefreshOwner(ctx context.Context, hash string) (string, bool, error) {
+	var uid string
+	err := s.pool.QueryRow(ctx, `
+		SELECT user_id FROM refresh_tokens WHERE token_hash=$1 AND expires_at > now()`, hash).Scan(&uid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	return uid, err == nil, err
+}
+
+func (s *pgStore) DeleteRefresh(ctx context.Context, hash string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE token_hash=$1`, hash)
+	return err
 }
 
 // Гарантия на этапе компиляции: pgStore реализует Store.

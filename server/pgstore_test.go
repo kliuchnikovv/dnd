@@ -111,3 +111,38 @@ func TestPgStoreSurvivesRestart(t *testing.T) {
 		t.Fatalf("состояние разошлось после рестарта на Postgres")
 	}
 }
+
+// pgStore реализует контракт users/refresh: upsert идемпотентен по
+// google_sub, refresh-токен виден до удаления и невидим после.
+func TestPgStoreUsersAndRefresh(t *testing.T) {
+	st := pgStoreForTest(t)
+	defer st.Close(context.Background())
+	ctx := context.Background()
+
+	id := "u-" + randToken()
+	sub := "g-" + randToken()
+	if err := st.UpsertUser(ctx, UserRecord{ID: id, GoogleSub: sub, Email: "a@b.c", Name: "Ann"}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, _ := st.UserByGoogleSub(ctx, sub)
+	if !ok || got.ID != id {
+		t.Fatalf("по sub: %+v ok=%v", got, ok)
+	}
+	// upsert идемпотентен по google_sub
+	if err := st.UpsertUser(ctx, UserRecord{ID: id, GoogleSub: sub, Email: "a2@b.c", Name: "Ann2"}); err != nil {
+		t.Fatalf("повторный upsert: %v", err)
+	}
+
+	h := "h-" + randToken()
+	if err := st.SaveRefresh(ctx, h, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok, _ := st.RefreshOwner(ctx, h)
+	if !ok || owner != id {
+		t.Fatalf("refresh owner: %q ok=%v", owner, ok)
+	}
+	_ = st.DeleteRefresh(ctx, h)
+	if _, ok, _ := st.RefreshOwner(ctx, h); ok {
+		t.Fatal("удалённый refresh жив")
+	}
+}
