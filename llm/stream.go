@@ -135,8 +135,14 @@ func (s *staticStream) Recv() (Delta, error) {
 func (s *staticStream) Response() Response { return s.resp }
 func (s *staticStream) Close() error       { return nil }
 
+// NewTextStream отдаёт готовый текст дельтами по словам — без обращения к
+// модели и без учёта расхода. Нужен, когда текст уже получен и проверен
+// (охраняемая проза сгенерирована и проверена гвардом), а клиенту нужна
+// потоковая подача: настоящей утечки в дельтах не будет, стрим косметический.
+func NewTextStream(text string) Stream { return newChunkStream(Response{Text: text}) }
+
 // chunkStream нарезает готовый текст на дельты по словам. Не настоящий стрим —
-// стенд-ин для Fake: он проверяет проводку дельт, не заменяя сеть.
+// стенд-ин для Fake и косметическая подача проверенного текста.
 type chunkStream struct {
 	resp   Response
 	pieces []string
