@@ -46,8 +46,12 @@ src/
   components/Icon.tsx   линейные SVG-иконки
   screens/         SceneScreen(6b) DialogueScreen(10a) MapScreen(9a) DossierScreen(8a)
                    HubScreen(13b) WorldFeedScreen(15a) CharacterCreateScreen(14a) + SessionScreen (роутер)
+  screens/auth/    SignInScreen, ProfileScreen — вход/профиль (см. §Auth)
   navigation/      FloatingDock(12a) + AppShell (маршрутизация табов)
-  state/           store.ts (zustand: таб + источник), useTurnView (привязка источника к экрану)
+  auth/            googleSignIn.ts (GoogleSignIn/useGoogleSignIn), tokenStore.ts (secure-store)
+  net/             authClient.ts (/auth/google, /auth/refresh, /me), config.ts (apiBaseUrl)
+  state/           store.ts (zustand: таб + источник), useTurnView (привязка источника к экрану),
+                   useAuth.ts (authStore/createAuthStore), gate.ts (screenFor — гейт App.tsx)
 ```
 
 Сессионный под-экран выбирается **из данных вида** (`sessionModeOf`): карта → MapScreen, всплывшая
@@ -65,6 +69,42 @@ src/
   но не их код 1:1.
 - **`@gorhom/bottom-sheet` установлен, но командная область сессии пока — инлайн-композер.**
   Bottom-sheet вариант («меры + вход в панели») — следующий заход.
+
+## Auth
+
+Клиент гейтит приложение по статусу `useAuth()`/`authStore` (`src/state/gate.ts`,
+`screenFor`): `loading` → сплэш (текущий ActivityIndicator), `signedOut` →
+`SignInScreen`, `signedIn` → `AppShell`. Вход — Google (`expo-auth-session`),
+токены — `expo-secure-store` (`src/auth/tokenStore.ts`).
+
+### Google client IDs
+
+1. В [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services →
+   Credentials создать OAuth 2.0 Client ID для **iOS**, **Android** и **Web**
+   (тип «Web application» нужен даже для мобильного flow — им подписывается ID-token).
+   - iOS: bundle id `com.kliuchnikovv.client` (см. `app.json` → `ios.bundleIdentifier`).
+   - Android: package name + SHA-1 dev-keystore.
+   - Web: используется как `webClientId` в `expo-auth-session` (audience ID-токена).
+2. Значения положить в `client/.env` (не коммитить):
+   ```
+   EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=...apps.googleusercontent.com
+   EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=...apps.googleusercontent.com
+   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=...apps.googleusercontent.com
+   EXPO_PUBLIC_API_URL=http://localhost:8080
+   ```
+   Код читает их через `process.env.EXPO_PUBLIC_*` (`src/auth/googleSignIn.ts`,
+   `src/net/config.ts`) — доступны в рантайме Expo без доп. настройки. `app.json` →
+   `expo.extra.googleAuth` содержит только плейсхолдеры-документацию (куда класть
+   client ID), рантайм их не читает.
+3. Redirect-схема — `app.json` → `expo.scheme` (`dnd-client`); нативные модули
+   auth — `expo-auth-session`, `expo-web-browser`, `expo-secure-store`.
+4. **После добавления/смены client ID нужен пересбор dev-билда**
+   (`npx expo run:ios --device` / `npx expo run:android`), т.к. `expo-secure-store` и
+   `expo-auth-session` — нативные модули, а не JS-конфигурация; `expo start` их не
+   подхватит без нового нативного билда.
+
+Реальный e2e-проход через Google на устройстве — ручная проверка (client IDs +
+пересборка нужны), не юнит-тест.
 
 ## Вне этого захода
 
