@@ -25,6 +25,18 @@ export interface NetSourceDeps {
 
 const PLACEHOLDER: TurnView = { version: 0, scene: { node: '', title: '' }, options: [] };
 
+// wsUrlFrom — apiBaseUrl() (http/https) → адрес WS-эндпоинта чата. Отдельная
+// чистая функция ради детерминированного юнит-теста без RN.
+export function wsUrlFrom(apiBase: string): string {
+  const base = apiBase.replace(/\/+$/, '');
+  const ws = base.startsWith('https://')
+    ? base.replace('https://', 'wss://')
+    : base.startsWith('http://')
+      ? base.replace('http://', 'ws://')
+      : base;
+  return ws + '/chat/ws';
+}
+
 export class NetSource implements TurnViewSource {
   private view: TurnView = PLACEHOLDER;
   private listeners = new Set<(v: TurnView) => void>();

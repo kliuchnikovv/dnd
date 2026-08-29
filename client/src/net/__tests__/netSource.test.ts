@@ -1,4 +1,4 @@
-import { NetSource, WebSocketLike } from '../netSource';
+import { NetSource, WebSocketLike, wsUrlFrom } from '../netSource';
 import { TurnView } from '../../turnview/types';
 
 class FakeSocket implements WebSocketLike {
@@ -283,4 +283,9 @@ test('history frame seeds finished narration on reconnect', async () => {
   fake.push({ id: 5, chat_id: 'c', channel: 'chat', kind: 'data', op: 'history', payload: { type: 'narration', text: 'Готовая проза' } });
   expect(net.current().narration?.[0].text).toBe('Готовая проза');
   expect(net.current().narration?.[0].streaming).toBe(false);
+});
+
+test('wsUrlFrom converts http→ws and https→wss and appends /chat/ws', () => {
+  expect(wsUrlFrom('http://localhost:8080')).toBe('ws://localhost:8080/chat/ws');
+  expect(wsUrlFrom('https://api.example.com')).toBe('wss://api.example.com/chat/ws');
 });
