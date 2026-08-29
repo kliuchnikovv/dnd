@@ -56,7 +56,9 @@ export class NetSource implements TurnViewSource {
   // Refresh при 401/обрыве и onAuthLost — Tasks 4–5 (auth-aware reconnect); здесь токен
   // получается один раз перед подключением.
   async connect(): Promise<void> {
+    if (this.closed) return;
     const token = await this.deps.getToken();
+    if (this.closed) return; // close() могли вызвать во время ожидания getToken()
     const url = `${this.deps.wsUrl}?token=${encodeURIComponent(token)}&chat_id=${encodeURIComponent(this.deps.chatId)}`;
     const make = this.deps.makeSocket ?? ((u: string) => new WebSocket(u) as unknown as WebSocketLike);
     const ws = make(url);
@@ -71,6 +73,7 @@ export class NetSource implements TurnViewSource {
       const wait = this.backoff;
       this.backoff = Math.min(this.backoff * 2, 30000);
       this.schedule(() => {
+        if (this.closed) return; // могли close() успеть между планированием и срабатыванием
         void this.connect();
       }, wait);
     };
@@ -78,13 +81,21 @@ export class NetSource implements TurnViewSource {
   }
 
   close(): void {
-    this.closed = true;
-    this.ws?.close();
+    this.closed = true; // сначала: connect() и таймер реконнекта должны увидеть его первыми
+    const ws = this.ws;
     this.ws = null;
+    if (ws) {
+      ws.onclose = null; // поздний close-эвент не должен планировать реконнект
+      ws.onmessage = null;
+      ws.onopen = null;
+      ws.onerror = null;
+      ws.close();
+    }
   }
 
   // Отказ авторизации: первый раз — рефреш токена (через getToken) и реконнект;
-  // повторный отказ подряд — сдаёмся и зовём onAuthLost().
+  // повторный отказ подряд — сдаёмся, зовём onAuthLost() и глушим дальнейшие реконнекты
+  // (иначе обрыв сокета сервером снова уйдёт в backoff-реконнект → бесконечный цикл onAuthLost).
   private handleAuthFailure(): void {
     if (!this.authRetried) {
       this.authRetried = true;
@@ -97,6 +108,16 @@ export class NetSource implements TurnViewSource {
       void this.connect();
     } else {
       this.deps.onAuthLost();
+      this.closed = true;
+      const old = this.ws;
+      this.ws = null;
+      if (old) {
+        old.onclose = null;
+        old.onmessage = null;
+        old.onopen = null;
+        old.onerror = null;
+        old.close();
+      }
     }
   }
 

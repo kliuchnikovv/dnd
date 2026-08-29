@@ -207,6 +207,74 @@ test('auth failure: 401 error frame retries getToken once, then reconnects; seco
   expect(sockets.length).toBe(2); // реконнект больше не пробуем
 });
 
+test('close() cancels a pending (scheduled but not yet fired) reconnect', async () => {
+  const sockets: FakeSocket[] = [];
+  const captured: { fn: (() => void) | null } = { fn: null };
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x',
+    getToken: async () => 'tok',
+    onAuthLost: () => {},
+    makeSocket: () => {
+      const f = new FakeSocket();
+      sockets.push(f);
+      return f;
+    },
+  });
+  // планировщик НЕ запускает fn сразу — ловим её, чтобы вручную дёрнуть после close()
+  (net as any).schedule = (fn: () => void) => {
+    captured.fn = fn;
+  };
+  await net.connect();
+  sockets[0].open();
+  sockets[0].onclose?.(); // неожиданный обрыв — реконнект запланирован, но ещё не выполнен
+  expect(captured.fn).not.toBeNull();
+
+  net.close(); // должен погасить запланированный реконнект
+  captured.fn?.(); // теперь срабатывает таймер
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(sockets.length).toBe(1); // новый сокет не создан
+});
+
+test('after giving up (second consecutive 401 → onAuthLost), no further reconnect loop', async () => {
+  const sockets: FakeSocket[] = [];
+  const onAuthLost = jest.fn();
+  const net = new NetSource({
+    chatId: 'c',
+    wsUrl: 'ws://x',
+    getToken: async () => 'tok',
+    onAuthLost,
+    makeSocket: () => {
+      const f = new FakeSocket();
+      sockets.push(f);
+      return f;
+    },
+  });
+  (net as any).schedule = (fn: () => void) => fn();
+  await net.connect();
+
+  sockets[0].push(errorFrame(401)); // первый отказ — рефреш и реконнект
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(sockets.length).toBe(2);
+
+  sockets[1].push(errorFrame(401)); // второй подряд — сдаёмся
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(onAuthLost).toHaveBeenCalledTimes(1);
+  expect(sockets.length).toBe(2);
+
+  // сервер (или наш собственный close() внутри handleAuthFailure) закрывает сокет —
+  // это НЕ должно снова уйти в backoff-реконнект и снова дёрнуть onAuthLost
+  sockets[1].onclose?.();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(sockets.length).toBe(2); // нет нового сокета
+  expect(onAuthLost).toHaveBeenCalledTimes(1); // не вызван повторно
+});
+
 test('history frame seeds finished narration on reconnect', async () => {
   const { net, fake } = makeNet();
   await net.connect();
