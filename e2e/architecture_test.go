@@ -127,6 +127,9 @@ func TestDependenciesAreAllowlisted(t *testing.T) {
 		// golang-jwt/jwt — токены доступа и refresh для аутентификации (auth пакет).
 		// Живёт НАД игрой в слое входа, домена не касается.
 		"github.com/golang-jwt/jwt/v5",
+		// google.golang.org/api — проверка Google ID-token для аутентификации
+		// (auth пакет, NewGoogleVerifier). Живёт НАД игрой в слое входа, домена не касается.
+		"google.golang.org/api",
 	}
 	body, err := os.ReadFile("../go.mod")
 	if err != nil {
