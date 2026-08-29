@@ -1,8 +1,15 @@
 package server
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/view"
 )
 
@@ -71,13 +78,13 @@ func (rt *sessionRuntime) snapshotView() Frame {
 // frameID — id входящего кадра: повтор (id <= lastApplied) не применяет ход
 // дважды, но всё равно пере-отдаёт текущий session_state, чтобы дубль доставки
 // оставлял клиента в согласованном состоянии.
-func (rt *sessionRuntime) applyInput(frameID int, in inputPayload) (bool, string) {
+func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputPayload) (bool, string) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
 	if frameID != 0 && frameID <= rt.lastAppliedID {
 		// Дубль доставки: ход уже применён. Пере-отдаём состояние, не трогая
-		// ядро.
+		// ни ядро, ни журнал.
 		rt.broadcastLocked(rt.snapshotViewLocked())
 		return true, ""
 	}
@@ -89,18 +96,43 @@ func (rt *sessionRuntime) applyInput(frameID int, in inputPayload) (bool, string
 	}
 	intent.Actor = rt.game.Actor
 
-	res := rt.game.Apply(intent)
-	// Перемещение — известный шов: ядро резолвит бросок, узел меняет слой над
-	// ним (в CLI это afterAction). Сервер обязан сделать то же, иначе успешный
-	// move_zone крутит кость и оставляет игрока на месте. Живой ход и реплей
-	// идут этим же путём — состояние симметрично по построению.
-	if intent.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
-		rt.game.MoveTo(intent.Args.Node)
+	// Журнал ДО обработки (ADR-0002): команда ложится как pending раньше, чем
+	// ядро тронуло состояние. Падение между записью и применением лечит реплей
+	// хвоста — команда получит applied, ход не повторится.
+	turn := rt.turn + 1
+	payload, err := json.Marshal(intent)
+	if err != nil {
+		return false, "интент не сериализуется"
 	}
-	// Адресат хода продолжает разговор: следующий набор аффордансов строится
-	// от него. Пусто — вышли из разговора.
-	if intent.Args.Target != "" {
-		rt.spokenTo = intent.Args.Target
+	dctx := store.DiceCtx{Seed: rt.seed, Turn: turn}
+	entry := store.CommandLogEntry{
+		SessionID:      store.SessionID(rt.chatID),
+		SnapshotID:     rt.snapshot,
+		CoreVersion:    core.Version,
+		Intent:         payload,
+		DiceCtx:        dctx,
+		IdempotencyKey: idempotencyKey(store.SessionID(rt.chatID), dctx, payload),
+	}
+	saved, isNew, err := rt.store.AppendCommand(ctx, entry)
+	if err != nil {
+		return false, "журнал: " + err.Error()
+	}
+	if !isNew {
+		// Ключ идемпотентности уже известен: ход применён в прошлой жизни
+		// сессии. Пере-отдаём состояние, ядро не трогаем.
+		if frameID != 0 {
+			rt.lastAppliedID = frameID
+		}
+		rt.broadcastLocked(rt.snapshotViewLocked())
+		return true, ""
+	}
+
+	res := rt.advance(intent)
+	rt.turn = turn
+	if err := rt.store.MarkApplied(ctx, saved.SessionID, saved.Seq); err != nil {
+		// Ход применён, но отметка не легла: реплей хвоста доиграет и пометит.
+		// Молчать нельзя — рассинхрон журнала с состоянием должен быть слышен.
+		return false, "журнал (applied): " + err.Error()
 	}
 	if frameID != 0 {
 		rt.lastAppliedID = frameID
@@ -110,6 +142,39 @@ func (rt *sessionRuntime) applyInput(frameID int, in inputPayload) (bool, string
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
 		KindData, OpSessionState, tv))
 	return true, ""
+}
+
+// advance применяет интент к ядру и доводит состояние до полного: резолв броска
+// ядром плюс шов перемещения (узел меняет слой над ядром). Живой ход и реплей
+// зовут ОДНО это место — состояние симметрично по построению. Ни журнала, ни
+// рассылки здесь нет: их добавляет вызывающий. Требует взятого rt.mu.
+func (rt *sessionRuntime) advance(intent core.Intent) core.TurnResult {
+	if intent.Actor == "" {
+		intent.Actor = rt.game.Actor
+	}
+	res := rt.game.Apply(intent)
+	// Перемещение — известный шов: ядро резолвит бросок, узел меняет слой над
+	// ним (в CLI это afterAction). Без него успешный move_zone крутит кость и
+	// оставляет игрока на месте.
+	if intent.Verb == "move_zone" && res.Res != nil && res.Res.Class >= core.OutcomePartial {
+		rt.game.MoveTo(intent.Args.Node)
+	}
+	// Адресат хода продолжает разговор: следующий набор аффордансов строится
+	// от него. Пусто — вышли из разговора.
+	if intent.Args.Target != "" {
+		rt.spokenTo = intent.Args.Target
+	}
+	return res
+}
+
+// idempotencyKey — ключ повторной доставки команды: сессия, кость и интент. Та
+// же формула, что в cli.Journal (ADR-0002): одинаковый ход в одном контексте
+// кости не применяется дважды.
+func idempotencyKey(s store.SessionID, d store.DiceCtx, payload []byte) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s|%d|%d|", s, d.Seed, d.Turn)
+	h.Write(payload)
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // snapshotViewLocked — как snapshotView, но под уже взятым rt.mu.

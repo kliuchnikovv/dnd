@@ -113,7 +113,7 @@ func readLoop(ctx context.Context, conn *websocket.Conn, rt *sessionRuntime, sub
 			if len(f.Payload) > 0 {
 				_ = json.Unmarshal(f.Payload, &in)
 			}
-			ok, msg := rt.applyInput(f.ID, in)
+			ok, msg := rt.applyInput(ctx, f.ID, in)
 			if !ok {
 				send(ctx, sub, errorFrame(f.ID, rt.chatID, msg))
 			}

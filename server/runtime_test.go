@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/view"
@@ -26,7 +27,7 @@ func TestApplyMoveChangesNode(t *testing.T) {
 	}
 
 	before := string(rt.game.Node)
-	ok, msg := rt.applyInput(1, inputPayload{Token: moveTok})
+	ok, msg := rt.applyInput(context.Background(), 1, inputPayload{Token: moveTok})
 	if !ok {
 		t.Fatalf("move не применился: %s", msg)
 	}
