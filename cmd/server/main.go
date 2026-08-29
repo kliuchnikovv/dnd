@@ -72,10 +72,15 @@ func env(key, def string) string {
 // ленивого восстановления). Без него — журнал в памяти. Возвращает менеджер и
 // функцию закрытия ресурсов для graceful shutdown.
 func buildManager(casesDir string) (*server.Manager, func()) {
+	narrator, err := buildNarrator()
+	if err != nil {
+		log.Fatalf("проза: %v", err)
+	}
+
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Printf("журнал: в памяти (DATABASE_URL не задан)")
-		return server.NewManager(casesDir), func() {}
+		return server.NewManager(casesDir).WithNarrator(narrator), func() {}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -83,7 +88,7 @@ func buildManager(casesDir string) (*server.Manager, func()) {
 	if err != nil {
 		log.Fatalf("журнал Postgres: %v", err)
 	}
-	mgr := server.NewManagerWithStore(casesDir, st)
+	mgr := server.NewManagerWithStore(casesDir, st).WithNarrator(narrator)
 	if err := mgr.WarmCache(ctx); err != nil {
 		log.Fatalf("прогрев кэша сессий: %v", err)
 	}

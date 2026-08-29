@@ -19,6 +19,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -34,11 +35,22 @@ type sessionRuntime struct {
 	snapshot string
 	store    Store
 
+	// narrator — Мастер для стрима прозы. nil означает механику без прозы
+	// (сервер без сконфигурированного LLM): ходы применяются, session_state
+	// уходит, прозы просто нет.
+	narrator *master.Master
+
 	mu   sync.Mutex
 	game *core.Game
 	// turn — номер применённого хода. Входит в DiceCtx и ключ идемпотентности
 	// журнала; растёт на каждый состоявшийся ход.
 	turn int
+	// Стрим прозы текущего хода: буфер дельт под досстрим при возобновлении,
+	// признак «идёт генерация» и отмена (op:stop и суперсессия новым ходом).
+	narration  []string
+	narrating  bool
+	narrateGen int
+	genCancel  context.CancelFunc
 	// spokenTo — последний адресат: разговор продолжается с тем же NPC, пока
 	// игрок не обратится к другому. Определяет набор аффордансов хода.
 	spokenTo store.EntityID
@@ -66,9 +78,19 @@ type subscriber struct {
 type Manager struct {
 	casesRoot string
 	store     Store
+	// narrator — общий Мастер для стрима прозы, один на все сессии (шлюз и
+	// ledger потокобезопасны). nil означает сервер без прозы.
+	narrator *master.Master
 
 	mu       sync.Mutex
 	sessions map[string]*sessionRuntime
+}
+
+// WithNarrator включает стрим прозы: сессии получат Мастера. Без него сервер
+// отдаёт только механику (session_state), как в фазах до LLM.
+func (m *Manager) WithNarrator(ms *master.Master) *Manager {
+	m.narrator = ms
+	return m
 }
 
 // NewManager строит менеджер с журналом в памяти — MVP без БД и основа тестов.
@@ -112,6 +134,7 @@ func (m *Manager) Create(caseName string, seed int64) (string, error) {
 		seed:     seed,
 		snapshot: snapshot,
 		store:    m.store,
+		narrator: m.narrator,
 		game:     game,
 		subs:     make(map[*subscriber]struct{}),
 	}
@@ -166,6 +189,7 @@ func (m *Manager) reconstruct(chatID string) (*sessionRuntime, bool) {
 		seed:     rec.Seed,
 		snapshot: snapshot,
 		store:    m.store,
+		narrator: m.narrator,
 		game:     game,
 		subs:     make(map[*subscriber]struct{}),
 	}

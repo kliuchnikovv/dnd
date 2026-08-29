@@ -141,6 +141,10 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 	tv := view.Build(rt.game, res, nil, serverRuleset, serverScenario, rt.spokenTo)
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
 		KindData, OpSessionState, tv))
+
+	// Механика ушла мгновенно; проза доезжает отдельной горутиной. Под rt.mu:
+	// аргументы Мастеру снимаются со свежего состояния.
+	rt.startProseLocked(intent, res)
 	return true, ""
 }
 

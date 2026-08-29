@@ -123,7 +123,9 @@ func readLoop(ctx context.Context, conn *websocket.Conn, rt *sessionRuntime, sub
 			rt.mu.Unlock()
 			send(ctx, sub, newFrame(id, rt.chatID, ChannelChat, KindSignal, OpPing, nil))
 		case OpStop:
-			// Отмена генерации — фаза стрима прозы. В фазе 3 генерации нет.
+			// Отмена генерации прозы текущего хода. Механику не трогает: она
+			// уже применена ядром и ушла в session_state.
+			rt.stopProse()
 		}
 	}
 }
