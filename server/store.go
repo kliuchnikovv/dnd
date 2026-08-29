@@ -27,6 +27,7 @@ type SessionRecord struct {
 	Snapshot    string
 	CoreVersion string
 	UserID      string // владелец; пусто у легаси-сессий
+	CreatedAt   time.Time
 }
 
 // Store — долговечный журнал сервера. Форма повторяет store.DB (тот уже «в форме
@@ -39,6 +40,8 @@ type Store interface {
 	SaveSession(ctx context.Context, rec SessionRecord) error
 	// Sessions — все известные сессии: из них сервер прогревает кэш на старте.
 	Sessions(ctx context.Context) ([]SessionRecord, error)
+	// SessionsByUser — сессии владельца userID, для экрана выбора сессии.
+	SessionsByUser(ctx context.Context, userID string) ([]SessionRecord, error)
 	// AppendCommand пишет команду как pending. Второй результат — новая ли она:
 	// при уже известном ключе идемпотентности возвращается существующая и
 	// false, чтобы реплей хвоста не применил ход дважды.
@@ -113,6 +116,18 @@ func (s *memStore) Sessions(_ context.Context) ([]SessionRecord, error) {
 	out := make([]SessionRecord, 0, len(s.sessions))
 	for _, r := range s.sessions {
 		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (s *memStore) SessionsByUser(_ context.Context, userID string) ([]SessionRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []SessionRecord
+	for _, r := range s.sessions {
+		if userID != "" && r.UserID == userID {
+			out = append(out, r)
+		}
 	}
 	return out, nil
 }

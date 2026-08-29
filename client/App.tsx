@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,18 +8,27 @@ import { useStore } from 'zustand';
 import { ThemeProvider } from './src/theme/ThemeContext';
 import { useAppFonts } from './src/theme/fonts';
 import { nightDetectiveTheme } from './src/theme/nightDetective';
-import { AppShell } from './src/navigation/AppShell';
 import { authStore } from './src/state/useAuth';
 import { screenFor } from './src/state/gate';
 import { SignInScreen } from './src/screens/auth/SignInScreen';
+import { SessionSelectScreen } from './src/screens/session/SessionSelectScreen';
+import { SessionScreen } from './src/screens/session/SessionScreen';
 
 export default function App() {
     const fontsLoaded = useAppFonts();
     const status = useStore(authStore, (s) => s.status);
+    // chatId выбранной/созданной сессии — держим локально: гейт signedIn →
+    // выбор сессии → сама игра не завязан на постоянное состояние, при выходе
+    // (signedOut) сбрасывается автоматически ниже.
+    const [chatId, setChatId] = useState<string | null>(null);
 
     useEffect(() => {
         authStore.getState().restore();
     }, []);
+
+    useEffect(() => {
+        if (status !== 'signedIn') setChatId(null);
+    }, [status]);
 
     const screen = screenFor(status);
 
@@ -29,7 +38,11 @@ export default function App() {
                 <ThemeProvider>
                     <View style={[styles.root, { backgroundColor: nightDetectiveTheme.colors.background }]}>
                         {fontsLoaded && screen === 'app' ? (
-                            <AppShell />
+                            chatId ? (
+                                <SessionScreen chatId={chatId} />
+                            ) : (
+                                <SessionSelectScreen onPick={setChatId} />
+                            )
                         ) : fontsLoaded && screen === 'signin' ? (
                             <SignInScreen />
                         ) : (

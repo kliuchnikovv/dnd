@@ -41,6 +41,7 @@ func New(mgr *Manager, opts ...Option) *Server {
 	s.mux.HandleFunc("/chat/ws", s.handleWS)
 	if s.auth != nil {
 		s.mux.HandleFunc("POST /sessions", s.requireAuth(s.handleCreateSession))
+		s.mux.HandleFunc("GET /sessions", s.requireAuth(s.handleListSessions))
 		s.mux.HandleFunc("POST /auth/google", s.handleGoogleLogin)
 		s.mux.HandleFunc("POST /auth/refresh", s.handleRefresh)
 		s.mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { MockSource } from '../turnview/source';
+import { TurnViewSource } from '../turnview/source';
 import { createHavenSource } from '../mocks/haven/case';
 import { TurnView } from '../turnview/types';
 
@@ -21,11 +21,16 @@ export function sessionModeOf(view: TurnView): SessionMode {
 interface AppState {
     tab: TabKey;
     setTab: (tab: TabKey) => void;
-    source: MockSource;
+    source: TurnViewSource;
+    setSource: (source: TurnViewSource) => void;
 }
 
+// source по умолчанию — createHavenSource() (дев/офлайн-фикстура). Прод-путь
+// для игры подменяет его на NetSource (SessionScreen-контейнер, Task 7) через
+// setSource() при выборе/старте сессии.
 export const useAppStore = create<AppState>((set) => ({
     tab: 'home',
     setTab: (tab) => set({ tab }),
     source: createHavenSource(),
+    setSource: (source) => set({ source }),
 }));

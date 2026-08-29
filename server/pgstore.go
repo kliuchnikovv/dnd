@@ -84,7 +84,7 @@ func (s *pgStore) SaveSession(ctx context.Context, rec SessionRecord) error {
 
 func (s *pgStore) Sessions(ctx context.Context) ([]SessionRecord, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT chat_id, case_id, seed, snapshot, core_version, user_id FROM sessions`)
+		SELECT chat_id, case_id, seed, snapshot, core_version, user_id, created_at FROM sessions`)
 	if err != nil {
 		return nil, fmt.Errorf("чтение сессий: %w", err)
 	}
@@ -93,10 +93,32 @@ func (s *pgStore) Sessions(ctx context.Context) ([]SessionRecord, error) {
 	for rows.Next() {
 		var r SessionRecord
 		var userID *string
-		if err := rows.Scan(&r.ChatID, &r.CaseID, &r.Seed, &r.Snapshot, &r.CoreVersion, &userID); err != nil {
+		if err := rows.Scan(&r.ChatID, &r.CaseID, &r.Seed, &r.Snapshot, &r.CoreVersion, &userID, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		r.UserID = deref(userID)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// SessionsByUser — сессии владельца userID, для экрана выбора сессии.
+func (s *pgStore) SessionsByUser(ctx context.Context, userID string) ([]SessionRecord, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT chat_id, case_id, seed, snapshot, core_version, user_id, created_at
+		FROM sessions WHERE user_id = $1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionRecord
+	for rows.Next() {
+		var r SessionRecord
+		var uid *string
+		if err := rows.Scan(&r.ChatID, &r.CaseID, &r.Seed, &r.Snapshot, &r.CoreVersion, &uid, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		r.UserID = deref(uid)
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -223,12 +245,20 @@ func scanCommand(rows pgx.Rows) (store.CommandLogEntry, error) {
 }
 
 func (s *pgStore) UpsertUser(ctx context.Context, u UserRecord) error {
+	// Пустой GoogleSub (легаси/тестовые пользователи) должен лечь как NULL, а
+	// не ''. google_sub UNIQUE + ON CONFLICT(google_sub) — с '' второй такой
+	// же пользователь конфликтует с первым и UPDATE'ит чужую строку, а не
+	// вставляет свою (NULL с NULL никогда не конфликтует в Postgres).
+	var sub *string
+	if u.GoogleSub != "" {
+		sub = &u.GoogleSub
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO users (id, google_sub, email, name, picture)
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (google_sub) DO UPDATE SET
 			email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture`,
-		u.ID, u.GoogleSub, u.Email, u.Name, u.Picture)
+		u.ID, sub, u.Email, u.Name, u.Picture)
 	return err
 }
 

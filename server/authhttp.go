@@ -101,6 +101,25 @@ func (s *Server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 	writeSession(w, sess)
 }
 
+// handleListSessions — GET /sessions: список сессий владельца (для экрана
+// выбора сессии на клиенте). POST /sessions остаётся для создания новой игры.
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	uid := userIDFrom(r.Context())
+	recs, err := s.mgr.store.SessionsByUser(r.Context(), uid)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "не удалось прочитать сессии")
+		return
+	}
+	out := make([]map[string]any, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, map[string]any{
+			"chat_id": r.ChatID, "case_id": r.CaseID,
+			"seed": r.Seed, "created_at": r.CreatedAt.Unix(),
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func writeSession(w http.ResponseWriter, s auth.Session) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token":  s.AccessToken,
