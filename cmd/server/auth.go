@@ -24,17 +24,20 @@ func buildAuth(ctx context.Context, mgr *server.Manager) (svc *auth.Service, dev
 	}
 
 	devAuth = os.Getenv("DEV_AUTH") == "1"
-	clientID := os.Getenv("GOOGLE_CLIENT_ID")
+	// GOOGLE_CLIENT_ID — один или несколько client id через запятую: на разных
+	// платформах Google кладёт в aud разный client (iOS/web/Android), и токен
+	// проходит по любому из заявленных.
+	clientIDs := auth.ParseClientIDs(os.Getenv("GOOGLE_CLIENT_ID"))
 
 	var verifier auth.Verifier
 	switch {
-	case clientID != "":
-		v, err := auth.NewGoogleVerifier(ctx, clientID)
+	case len(clientIDs) > 0:
+		v, err := auth.NewGoogleVerifier(ctx, clientIDs)
 		if err != nil {
 			log.Fatalf("Google verifier: %v", err)
 		}
 		verifier = v
-		log.Printf("авторизация: Google (client_id задан)")
+		log.Printf("авторизация: Google (%d client id)", len(clientIDs))
 	case devAuth:
 		verifier = &auth.FakeVerifier{Err: errors.New("GoogleLogin недоступен: задайте GOOGLE_CLIENT_ID")}
 		log.Printf("авторизация: только DEV_AUTH (GOOGLE_CLIENT_ID не задан)")

@@ -9,7 +9,16 @@
     "scheme": "dnd-client",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kliuchnikovv.client"
+      "bundleIdentifier": "com.kliuchnikovv.client",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
+            ]
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +39,7 @@
     ],
     "extra": {
       "googleAuth": {
-        "note": "Реальные ID подставляются через EXPO_PUBLIC_GOOGLE_*_CLIENT_ID в .env (см. README §Auth); здесь — только плейсхолдеры для документации, код их не читает.",
+        "note": "Реальные ID — через EXPO_PUBLIC_GOOGLE_*_CLIENT_ID в .env (см. .env.example), код читает env, не отсюда. ВАЖНО для iOS: в ios.infoPlist.CFBundleURLTypes выше замените REPLACE_WITH_REVERSED_IOS_CLIENT_ID на ПЕРЕВЁРНУТЫЙ iOS client id (для 123-abc.apps.googleusercontent.com это com.googleusercontent.apps.123-abc), иначе OAuth-редирект не вернётся в приложение; после правки нужен нативный rebuild (npx expo run:ios --device).",
         "iosClientId": "REPLACE_WITH_IOS_CLIENT_ID.apps.googleusercontent.com",
         "androidClientId": "REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercontent.com",
         "webClientId": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com"

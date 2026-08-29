@@ -17,3 +17,31 @@ func TestFakeVerifier(t *testing.T) {
 		t.Fatal("ждали ошибку от fake")
 	}
 }
+
+func TestParseClientIDs(t *testing.T) {
+	cases := map[string][]string{
+		"":                       nil,
+		"   ":                    nil,
+		"a":                      {"a"},
+		"a,b":                    {"a", "b"},
+		" a , b ,":               {"a", "b"},
+		"ios.x , web.x ,, ,and.x": {"ios.x", "web.x", "and.x"},
+	}
+	for in, want := range cases {
+		got := ParseClientIDs(in)
+		if len(got) != len(want) {
+			t.Fatalf("ParseClientIDs(%q) = %v, ждали %v", in, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("ParseClientIDs(%q)[%d] = %q, ждали %q", in, i, got[i], want[i])
+			}
+		}
+	}
+}
+
+func TestNewGoogleVerifierRejectsEmptyList(t *testing.T) {
+	if _, err := NewGoogleVerifier(context.Background(), nil); err == nil {
+		t.Fatal("пустой список client id должен быть ошибкой")
+	}
+}
