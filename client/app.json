@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "dnd-client",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kliuchnikovv.client"
@@ -23,7 +24,17 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "googleAuth": {
+        "note": "Реальные ID подставляются через EXPO_PUBLIC_GOOGLE_*_CLIENT_ID в .env (см. README §Auth); здесь — только плейсхолдеры для документации, код их не читает.",
+        "iosClientId": "REPLACE_WITH_IOS_CLIENT_ID.apps.googleusercontent.com",
+        "androidClientId": "REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercontent.com",
+        "webClientId": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com"
+      }
+    }
   }
 }

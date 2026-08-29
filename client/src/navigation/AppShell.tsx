@@ -11,6 +11,7 @@ import { HubScreen } from '../screens/HubScreen';
 import { WorldFeedScreen } from '../screens/WorldFeedScreen';
 import { SessionScreen } from '../screens/SessionScreen';
 import { CharacterCreateScreen } from '../screens/CharacterCreateScreen';
+import { ProfileScreen } from '../screens/auth/ProfileScreen';
 
 // AppShell — оболочка: FloatingDock (12a) + маршрутизация табов. В сессии («Дело») док уступает
 // место (immersive), а выход даёт мини-хэндл сверху — так композер сессии не спорит с доком.
@@ -59,8 +60,9 @@ const MoreScreen: React.FC = () => {
                 Ещё
             </Text>
             <Text theme={theme} variant="body" style={{ color: c.inkMuted }}>
-                Настройки, профиль, тема, подписка — рутина следующего захода.
+                Настройки, тема, подписка — рутина следующего захода.
             </Text>
+            <ProfileScreen />
         </View>
     );
 };
