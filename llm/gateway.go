@@ -53,20 +53,11 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 			lastErr = err
 			continue
 		}
-		// Провайдер вправе сообщить фактическую стоимость сам — маршрутизатор
-		// знает, на кого ушёл запрос, а статическая таблица про это не знает.
-		// Молча тратить по-прежнему нельзя: нет ни цены от провайдера, ни
-		// строки в таблице — значит расход неизвестен, и вызов не в счёт.
-		if resp.CostMicro <= 0 {
-			cost, err := CostMicro(t.Model, resp.Usage)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			resp.CostMicro = cost
+		resp, err = g.finalize(t, resp)
+		if err != nil {
+			lastErr = err
+			continue
 		}
-		resp.Model = t.Model
-		resp.Provider = t.Provider.Name()
 		g.ledger.Record(r, resp)
 		g.dump(r, t, resp)
 		return resp, nil
@@ -75,6 +66,24 @@ func (g *Gateway) Do(ctx context.Context, r Request) (Response, error) {
 		lastErr = ErrNoProvider
 	}
 	return Response{}, lastErr
+}
+
+// finalize проставляет стоимость, модель и провайдера. Провайдер вправе
+// сообщить фактическую стоимость сам — маршрутизатор знает, на кого ушёл
+// запрос, а статическая таблица про это не знает. Молча тратить по-прежнему
+// нельзя: нет ни цены от провайдера, ни строки в таблице — значит расход
+// неизвестен, и вызов не в счёт (ошибка).
+func (g *Gateway) finalize(t Target, resp Response) (Response, error) {
+	if resp.CostMicro <= 0 {
+		cost, err := CostMicro(t.Model, resp.Usage)
+		if err != nil {
+			return resp, err
+		}
+		resp.CostMicro = cost
+	}
+	resp.Model = t.Model
+	resp.Provider = t.Provider.Name()
+	return resp, nil
 }
 
 func (g *Gateway) Stats() Stats { return g.ledger.Stats() }

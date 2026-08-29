@@ -71,6 +71,17 @@ func (f *Fake) Complete(_ context.Context, model string, r Request) (Response, e
 	}, nil
 }
 
+// Stream отдаёт тот же ответ, что Complete, но дельтами по словам —
+// детерминированный стенд-ин потоковой генерации для тестов проводки. Ошибка и
+// учёт вызова — как у Complete.
+func (f *Fake) Stream(ctx context.Context, model string, r Request) (Stream, error) {
+	resp, err := f.Complete(ctx, model, r)
+	if err != nil {
+		return nil, err
+	}
+	return newChunkStream(resp), nil
+}
+
 func tokens(s string) int {
 	n := len(strings.TrimSpace(s)) / 4
 	if n == 0 && s != "" {

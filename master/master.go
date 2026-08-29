@@ -318,8 +318,24 @@ func (m *Master) Narrate(ctx context.Context, kind Kind, frame string, w World,
 // которого в прозе быть не должно: ремонт переспрашивает то же без него.
 func (m *Master) narrateOnce(ctx context.Context, kind Kind, frame string, w World,
 	outcome []string, speaking, avoid string, req llm.Request) (string, error) {
-	if strings.TrimSpace(frame) == "" {
+	req, ok := m.narrateRequest(kind, frame, w, outcome, speaking, avoid, req)
+	if !ok {
 		return "", nil
+	}
+	resp, err := m.gw.Do(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Text), nil
+}
+
+// narrateRequest собирает запрос прозы — общий путь для Do (narrateOnce) и
+// Stream (NarrateStream). Второй результат ложен, если описывать нечего: пустая
+// рамка у Мастера означает молчание.
+func (m *Master) narrateRequest(kind Kind, frame string, w World,
+	outcome []string, speaking, avoid string, req llm.Request) (llm.Request, bool) {
+	if strings.TrimSpace(frame) == "" {
+		return req, false
 	}
 
 	req.Role = llm.RoleNarrator
@@ -372,12 +388,32 @@ func (m *Master) narrateOnce(ctx context.Context, kind Kind, frame string, w Wor
 			"без этого: " + avoid + "\n")
 	}
 	req.Input = b.String()
+	return req, true
+}
 
-	resp, err := m.gw.Do(ctx, req)
-	if err != nil {
-		return "", err
+// NarrateStream — потоковая проза. Неохраняемая (пустой state или без гварда)
+// идёт настоящим токен-стримом через шлюз. Охраняемая генерится целиком,
+// проверяется гвардом и отдаётся косметической нарезкой уже ПРОВЕРЕННОГО текста
+// — утечки в дельтах не бывает по построению (инвариант «нет утечки в кадр»).
+// Пустой результат заменяется авторской рамкой: молчание Мастера игрок читает
+// как поломку.
+func (m *Master) NarrateStream(ctx context.Context, kind Kind, frame string, w World,
+	outcome []string, speaking string, state []string, req llm.Request) (llm.Stream, error) {
+	if m.guard != nil && len(state) > 0 {
+		text, err := m.Narrate(ctx, kind, frame, w, outcome, speaking, state, req)
+		if err != nil {
+			return nil, err
+		}
+		if text == "" {
+			text = strings.TrimSpace(frame)
+		}
+		return llm.NewTextStream(text), nil
 	}
-	return strings.TrimSpace(resp.Text), nil
+	r, ok := m.narrateRequest(kind, frame, w, outcome, speaking, "", req)
+	if !ok {
+		return llm.NewTextStream(strings.TrimSpace(frame)), nil
+	}
+	return m.gw.Stream(ctx, r)
 }
 
 // checked проводит прозу через гвард. Противоречие состоянию (или утечка) —
