@@ -5,6 +5,7 @@ import { Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
 import { Option } from '../../turnview/types';
 import { Intent, tokenIntent } from '../../turnview/intents';
+import { listKey } from './keys';
 
 // OptionsRail — предложенные ходы. Тап шлёт непрозрачный Option.token как есть; клиент интент
 // не сочиняет и токен не читает. check — класс проверки (тег-pill, НЕ порог). reply — реплика
@@ -22,7 +23,7 @@ export const OptionsRail: React.FC<{
     if (!options || options.length === 0) return null;
 
     const items = options.map((o, i) => (
-        <OptionItem key={o.id} option={o} index={i} layout={layout} onPress={() => onIntent(tokenIntent(o.token))} />
+        <OptionItem key={listKey(o.id, i)} option={o} index={i} layout={layout} onPress={() => onIntent(tokenIntent(o.token))} />
     ));
 
     if (layout === 'rail') {

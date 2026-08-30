@@ -5,6 +5,7 @@ import { Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
 import { Who } from '../../turnview/types';
 import { dispositionTone } from './tone';
+import { listKey } from './keys';
 
 // Participants — присутствующие. Аватар пока плейсхолдер-монограмма (арт — асинхронно из
 // асс-стора, immutable-по-ссылке). Кольцо аватара красится по знаку disposition (generic).
@@ -36,8 +37,8 @@ export const Participants: React.FC<{ participants?: Who[] }> = ({ participants 
     if (npcs.length === 0) return null;
     return (
         <View style={styles.row}>
-            {npcs.map((w) => (
-                <View key={w.id} style={styles.chip}>
+            {npcs.map((w, i) => (
+                <View key={listKey(w.id, i)} style={styles.chip}>
                     <Avatar who={w} size={28} />
                     <Text theme={theme} variant="mono" style={[styles.name, { color: c.inkMuted }]}>
                         {w.name}

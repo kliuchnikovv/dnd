@@ -5,6 +5,7 @@ import { Card, Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
 import { Panel as PanelData, PanelItem, Section, Slot } from '../../turnview/types';
 import { Intent, tokenIntent } from '../../turnview/intents';
+import { listKey } from './keys';
 
 // Panel — обобщённая панель цели от СЦЕНАРИЯ (kind "deduction" — досье, но клиент этого слова
 // не знает: рисует секции, факты и слоты по данным). Анти-спойлер: ничего не красим «верным/
@@ -36,13 +37,13 @@ const SectionView: React.FC<{ section: Section; onIntent: (intent: Intent) => vo
             <Text theme={theme} variant="mono" style={[styles.sectionLabel, { color: c.inkMuted }]}>
                 {section.label.toUpperCase()}
             </Text>
-            {(section.items ?? []).map((it) => (
-                <FactRow key={it.id} item={it} onIntent={onIntent} />
+            {(section.items ?? []).map((it, i) => (
+                <FactRow key={listKey(it.id, i)} item={it} onIntent={onIntent} />
             ))}
             {(section.slots ?? []).length > 0 ? (
                 <View style={styles.slotsGrid}>
-                    {section.slots!.map((sl) => (
-                        <SlotCard key={sl.name} slot={sl} onIntent={onIntent} />
+                    {section.slots!.map((sl, i) => (
+                        <SlotCard key={listKey(sl.name, i)} slot={sl} onIntent={onIntent} />
                     ))}
                 </View>
             ) : null}
@@ -117,9 +118,9 @@ const SlotCard: React.FC<{ slot: Slot; onIntent: (intent: Intent) => void }> = (
                 </Text>
             ) : (
                 <View style={styles.slotOptions}>
-                    {options.map((o) => (
+                    {options.map((o, i) => (
                         <Pressable
-                            key={o.id}
+                            key={listKey(o.id, i)}
                             onPress={() => (o.token ? onIntent(tokenIntent(o.token)) : undefined)}
                             hitSlop={6}
                             style={({ pressed }) => [

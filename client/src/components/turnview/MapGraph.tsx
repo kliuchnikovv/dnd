@@ -6,6 +6,7 @@ import { Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
 import { MapView, MapNode } from '../../turnview/types';
 import { Intent, tokenIntent } from '../../turnview/intents';
+import { listKey } from './keys';
 
 // MapGraph — узлы несут только то, что парти вправе знать (reachable/known из read-scope).
 // Состояния: current (где мы), reachable (амбер, сплошная связь), known-недостижимый (пунктир,
@@ -42,14 +43,14 @@ export const MapGraph: React.FC<{
         <View style={[styles.field, { height, backgroundColor: c.bgDeep ?? c.background, borderColor: c.hairline }]}>
             <Svg style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none">
                 {current
-                    ? nodes.map((n) => {
+                    ? nodes.map((n, i) => {
                           if (n.id === current.id) return null;
                           const st = stateOf(n, currentNodeId);
                           if (st === 'fog') return null;
                           const reachable = st === 'reachable';
                           return (
                               <Line
-                                  key={`l-${n.id}`}
+                                  key={`l-${listKey(n.id, i)}`}
                                   x1={current.x}
                                   y1={current.y}
                                   x2={n.x}
@@ -62,13 +63,13 @@ export const MapGraph: React.FC<{
                           );
                       })
                     : null}
-                {nodes.map((n) => {
+                {nodes.map((n, i) => {
                     const st = stateOf(n, currentNodeId);
                     const r = st === 'current' ? 3.2 : st === 'reachable' ? 2.6 : 2.2;
                     const stroke = st === 'fog' ? dim : st === 'known' ? dim : amber;
                     return (
                         <Circle
-                            key={`c-${n.id}`}
+                            key={`c-${listKey(n.id, i)}`}
                             cx={n.x}
                             cy={n.y}
                             r={r}
@@ -82,7 +83,7 @@ export const MapGraph: React.FC<{
                 })}
             </Svg>
             {/* Подписи и хит-таргеты поверх SVG (текст SVG-шрифтом ненадёжен в RN). */}
-            {nodes.map((n) => {
+            {nodes.map((n, i) => {
                 const st = stateOf(n, currentNodeId);
                 const token = st === 'reachable' ? moveTokenFor?.(n) : undefined;
                 const labelColor =
@@ -104,11 +105,11 @@ export const MapGraph: React.FC<{
                     { left: `${n.x}%` as const, top: `${n.y}%` as const },
                 ];
                 return token ? (
-                    <Pressable key={`n-${n.id}`} onPress={() => onIntent(tokenIntent(token))} hitSlop={12} style={style}>
+                    <Pressable key={`n-${listKey(n.id, i)}`} onPress={() => onIntent(tokenIntent(token))} hitSlop={12} style={style}>
                         {content}
                     </Pressable>
                 ) : (
-                    <View key={`n-${n.id}`} style={style}>
+                    <View key={`n-${listKey(n.id, i)}`} style={style}>
                         {content}
                     </View>
                 );
