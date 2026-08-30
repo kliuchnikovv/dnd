@@ -27,6 +27,25 @@ func (rt *sessionRuntime) startProseLocked(in core.Intent, res core.TurnResult) 
 	if !ok {
 		return
 	}
+	rt.launchProseLocked(pr)
+}
+
+// startOpeningProseLocked стримит вводную прозу места при рождении сессии, чтобы
+// первый экран нёс описание, а не только механику — как открытие партии в CLI
+// (Render.Scene). Без narrator — тихо ничего, механика не ломается. Прозу
+// не журналируем: до первого хода журнала ещё нет, а после рестарта опенинг
+// просто не восстановится (сцена и варианты у клиента останутся). Под rt.mu.
+func (rt *sessionRuntime) startOpeningProseLocked() {
+	if rt.narrator == nil {
+		return
+	}
+	rt.launchProseLocked(cli.PlaceProse(rt.game))
+}
+
+// launchProseLocked отменяет незавершённую прозу прошлого поколения, сбрасывает
+// буфер хода и детачит генерацию заданной прозы горутиной. Общий низ для прозы
+// исхода хода и вводной прозы. Под rt.mu.
+func (rt *sessionRuntime) launchProseLocked(pr cli.Prose) {
 	setting := rt.game.Setting
 
 	// Суперсессия: новый ход отменяет незавершённую прозу прошлого.
@@ -39,6 +58,10 @@ func (rt *sessionRuntime) startProseLocked(in core.Intent, res core.TurnResult) 
 	rt.narrating = true
 	rt.narrateGen++
 	gen := rt.narrateGen
+
+	// Сигнал «генерю»: клиент поднимает лоадер до первой дельты. Опенинг —
+	// подписчиков ещё нет, кадр теряется; его дошлёт attach() при коннекте.
+	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpStart, nil))
 
 	go rt.streamProse(ctx, gen, pr, setting)
 }

@@ -30,7 +30,9 @@ func (rt *sessionRuntime) attach() *subscriber {
 
 	switch {
 	case rt.narrating:
-		// Догоняем полёт: то, что уже сгенерилось. Остаток доедет рассылкой.
+		// Проза в полёте: сперва сигнал «генерю» (лоадер), затем догон уже
+		// сгенерённого. Остаток доедет живой рассылкой.
+		sub.out <- newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpStart, nil)
 		for ix, d := range rt.narration {
 			sub.out <- rt.deltaFrameLocked(d, ix)
 		}

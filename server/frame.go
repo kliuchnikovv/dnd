@@ -36,8 +36,10 @@ const (
 const (
 	OpMessage      = "message"       // ввод игрока / дельта прозы
 	OpPing         = "ping"          // heartbeat
+	OpStart        = "start"         // генерация прозы началась (лоадер у клиента)
 	OpDone         = "done"          // генерация хода завершена
 	OpHistory      = "history"       // недавнее при возобновлении
+	OpTranscript   = "transcript"    // полная история ходов при возобновлении
 	OpSessionState = "session_state" // полный TurnView текущего хода
 	OpStop         = "stop"          // отмена генерации
 	OpTools        = "tools"         // список инструментов (заложено nomi)

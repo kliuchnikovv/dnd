@@ -146,6 +146,13 @@ func (m *Manager) Create(caseName string, seed int64, userID string) (string, er
 	m.mu.Lock()
 	m.sessions[chatID] = rt
 	m.mu.Unlock()
+
+	// Опенинг: вводная проза места стартует сразу при рождении сессии.
+	// Подписчиков ещё нет — дельты копятся в буфере, первый attach() отдаёт их
+	// (в полёте — дельтами, завершённые — кадром history).
+	rt.mu.Lock()
+	rt.startOpeningProseLocked()
+	rt.mu.Unlock()
 	return chatID, nil
 }
 
