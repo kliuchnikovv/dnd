@@ -175,9 +175,12 @@ export class NetSource implements TurnViewSource {
     if (f.kind === Kind.error) {
       // Серверный error-фрейм несёт только {message} (server/frame.go) — реальный 401
       // это HTTP-отказ хэндшейка, который проявляется как onerror/onclose, а не как
-      // фрейм, поэтому здесь нет и не может быть auth-логики. Гасим лоадер: сбой
-      // генерации снимает живой блок, историю не трогаем.
+      // фрейм, поэтому здесь нет и не может быть auth-логики. Гасим лоадер и
+      // показываем отказ системной строкой в ленте — молчать на ввод нельзя.
       this.live = null;
+      this.awaitingResolution = false; // хода не было — бросок к следующему не привязываем
+      const msg: string = f.error?.message ?? 'что-то пошло не так';
+      this.transcript = [...this.transcript, { kind: 'system', text: msg }];
       this.emit();
       return;
     }

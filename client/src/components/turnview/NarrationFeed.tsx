@@ -28,6 +28,14 @@ export const NarrationFeed: React.FC<{ narration?: Block[] }> = ({ narration }) 
                     const res = (b as { resolution?: Resolution }).resolution;
                     return <ResolutionCard key={i} resolution={res} />;
                 }
+                // Системная строка (отказ/сбой): тихая ремарка, не голос Мастера.
+                if (b.kind === 'system') {
+                    return (
+                        <Text key={i} theme={theme} variant="mono" style={[styles.system, { color: c.inkFaint }]}>
+                            {b.text}
+                        </Text>
+                    );
+                }
                 // Проза ещё не пошла (пустой streaming-блок) — «Мастер печатает».
                 const isPending = !!b.streaming && b.text.trim() === '';
                 if (isPlayer) {
@@ -96,6 +104,7 @@ const styles = StyleSheet.create({
     npcCard: { gap: 4 },
     playerBlock: { gap: 2, alignItems: 'flex-end' },
     playerText: { fontStyle: 'italic', textAlign: 'right' },
+    system: { fontSize: 11, textAlign: 'center', letterSpacing: 0.3 },
     speaker: { fontSize: 9.5, letterSpacing: 1.4 },
     reply: { fontStyle: 'italic' },
 });

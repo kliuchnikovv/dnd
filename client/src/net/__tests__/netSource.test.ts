@@ -184,15 +184,18 @@ test('talk turn: gm framing then npc reply become two feed blocks', async () => 
   expect(n[1].streaming).toBeFalsy();
 });
 
-test('error frame clears a pending loader (no prose generated)', async () => {
+test('error frame clears the loader and surfaces a system line', async () => {
   const { net, fake } = makeNet();
   await net.connect();
   fake.open();
   fake.push(sessionStateFrame({}));
   fake.push({ id: 2, chat_id: 'c', channel: 'chat', kind: 'meta', op: 'start' });
   expect(net.current().narration?.[0].streaming).toBe(true);
-  fake.push({ id: 3, chat_id: 'c', channel: 'chat', kind: 'error', op: 'message', error: { message: 'сбой' } });
-  expect(net.current().narration).toEqual([]);
+  fake.push({ id: 3, chat_id: 'c', channel: 'chat', kind: 'error', op: 'message', error: { message: 'переводчик недоступен' } });
+  const n = net.current().narration ?? [];
+  expect(n).toHaveLength(1);
+  expect(n[0].kind).toBe('system');
+  expect(n[0].text).toBe('переводчик недоступен');
 });
 
 test('reconnects after unexpected close and re-applies session_state', async () => {
