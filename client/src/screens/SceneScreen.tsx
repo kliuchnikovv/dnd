@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,12 +14,15 @@ export const SceneScreen: React.FC<{ view: TurnView; onIntent: (i: Intent) => vo
     const { descriptor: theme } = useTheme();
     const c = theme.colors;
     const insets = useSafeAreaInsets();
+    const scrollRef = useRef<ScrollView>(null);
 
     return (
         <View style={[styles.root, { backgroundColor: c.background }]}>
             <ScrollView
+                ref={scrollRef}
                 contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: 20 }]}
                 showsVerticalScrollIndicator={false}
+                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
                 <Card theme={theme} surface="surface" radius="lg" bordered style={[styles.place, { borderColor: c.hairline }]}>
                     <Text theme={theme} variant="title" style={{ color: c.text }}>

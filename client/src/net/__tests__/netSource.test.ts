@@ -340,14 +340,62 @@ test('token loss surfacing during a reconnect attempt: getToken throws → onAut
   expect(onAuthLost).toHaveBeenCalledTimes(1);
 });
 
-test('history frame seeds finished narration on reconnect', async () => {
+test('transcript frame seeds the whole history on reconnect (player + gm)', async () => {
   const { net, fake } = makeNet();
   await net.connect();
   fake.open();
   fake.push(sessionStateFrame({}));
-  fake.push({ id: 5, chat_id: 'c', channel: 'chat', kind: 'data', op: 'history', payload: { type: 'narration', text: 'Готовая проза' } });
-  expect(net.current().narration?.[0].text).toBe('Готовая проза');
-  expect(net.current().narration?.[0].streaming).toBe(false);
+  fake.push({
+    id: 5,
+    chat_id: 'c',
+    channel: 'chat',
+    kind: 'data',
+    op: 'transcript',
+    payload: {
+      type: 'transcript',
+      entries: [
+        { role: 'player', text: 'осмотреть журнал' },
+        { role: 'gm', text: 'Готовая проза' },
+      ],
+    },
+  });
+  const n = net.current().narration ?? [];
+  expect(n).toHaveLength(2);
+  expect(n[0].kind).toBe('player');
+  expect(n[0].text).toBe('осмотреть журнал');
+  expect(n[1].kind).toBe('gm');
+  expect(n[1].text).toBe('Готовая проза');
+  expect(n[1].streaming).toBeFalsy();
+});
+
+test('optimistic echo: send pushes a player block into the feed', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({})); // options: [{label:'Осмотреть', token:'tok1'}]
+  net.send({ kind: 'token', token: 'tok1' });
+  const n = net.current().narration ?? [];
+  expect(n[n.length - 1].kind).toBe('player');
+  expect(n[n.length - 1].text).toBe('Осмотреть');
+});
+
+test('transcript is authoritative: reconnect overwrites optimistic echo', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({}));
+  net.send({ kind: 'token', token: 'tok1' }); // оптимистичный player-блок
+  fake.push({
+    id: 9,
+    chat_id: 'c',
+    channel: 'chat',
+    kind: 'data',
+    op: 'transcript',
+    payload: { type: 'transcript', entries: [{ role: 'player', text: 'осмотреть журнал у стойки' }] },
+  });
+  const n = net.current().narration ?? [];
+  expect(n).toHaveLength(1);
+  expect(n[0].text).toBe('осмотреть журнал у стойки');
 });
 
 test('wsUrlFrom converts http→ws and https→wss and appends /chat/ws', () => {

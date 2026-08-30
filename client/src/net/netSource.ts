@@ -1,4 +1,4 @@
-import { TurnView } from '../turnview/types';
+import { TurnView, Block } from '../turnview/types';
 import { Intent } from '../turnview/intents';
 import { TurnViewSource } from '../turnview/source';
 import { Frame, Kind, Op } from './frame';
@@ -38,10 +38,14 @@ export function wsUrlFrom(apiBase: string): string {
 }
 
 export class NetSource implements TurnViewSource {
-  private view: TurnView = PLACEHOLDER;
+  // Механика текущего хода (из session_state) отделена от накопительной ленты:
+  // сцена/меры/варианты — «сейчас», а narration собирается из долговечной
+  // истории (transcript) + эха действия игрока + прозы текущего хода (live).
+  private mechanics: TurnView = PLACEHOLDER;
+  private transcript: Block[] = []; // история партии; авторитетна с сервера
+  private live: Block | null = null; // проза/лоадер текущего, ещё не завершённого хода
   private listeners = new Set<(v: TurnView) => void>();
   private ws: WebSocketLike | null = null;
-  private prose = ''; // накопитель прозы текущего хода
   private outId = 0;
   private pending: ((v: TurnView) => void) | null = null;
   private closed = false;
@@ -53,7 +57,23 @@ export class NetSource implements TurnViewSource {
   constructor(private deps: NetSourceDeps) {}
 
   current(): TurnView {
-    return this.view;
+    return this.buildView();
+  }
+
+  // buildView склеивает вид для рендерера: механика хода + лента (история, эхо
+  // действия, живая проза/лоадер).
+  private buildView(): TurnView {
+    const narration = [...this.transcript, ...(this.live ? [this.live] : [])];
+    return { ...this.mechanics, narration };
+  }
+
+  // toBlock переводит запись серверной ленты в блок прозы рендерера.
+  private toBlock(e: { role: string; text: string; speaker?: string }): Block {
+    if (e.role === 'npc') {
+      return { kind: 'npc', text: e.text, speaker: e.speaker ? { id: '', name: e.speaker, disposition: 0 } : undefined };
+    }
+    // gm и player рендерятся по kind; player — эхо действия игрока.
+    return { kind: e.role === 'player' ? 'player' : 'gm', text: e.text };
   }
 
   subscribe(listener: (v: TurnView) => void): () => void {
@@ -122,6 +142,13 @@ export class NetSource implements TurnViewSource {
   send(intent: Intent): Promise<TurnView> {
     if (!this.ws) return Promise.reject(new Error('netSource: не подключено'));
     const payload = intent.kind === 'token' ? { token: intent.token } : { text: intent.text };
+    // Оптимистичное эхо: сразу показываем, что сделал игрок, не дожидаясь сервера.
+    // На реконнекте серверный transcript авторитетен и перезапишет ленту.
+    const label = this.actionLabel(intent);
+    if (label) {
+      this.transcript = [...this.transcript, { kind: 'player', text: label }];
+      this.emit();
+    }
     this.outId += 1;
     const frame: Frame = { id: this.outId, chat_id: this.deps.chatId, channel: 'chat', kind: Kind.data, op: Op.message, payload };
     this.ws.send(JSON.stringify(frame));
@@ -130,49 +157,63 @@ export class NetSource implements TurnViewSource {
     });
   }
 
+  // actionLabel — человекочитаемое действие для эха: для токена берём подпись
+  // варианта из текущей механики, для свободного текста — сам текст.
+  private actionLabel(intent: Intent): string {
+    if (intent.kind === 'token') {
+      const opt = this.mechanics.options?.find((o) => o.token === intent.token);
+      return opt?.label ?? '';
+    }
+    return intent.text.trim();
+  }
+
   private onFrame(f: Frame): void {
     if (f.kind === Kind.error) {
       // Серверный error-фрейм несёт только {message} (server/frame.go) — реальный 401
       // это HTTP-отказ хэндшейка, который проявляется как onerror/onclose, а не как
-      // фрейм, поэтому здесь нет и не может быть auth-логики. Гасим лоадер: если
-      // проза так и не пошла (сбой генерации), снимаем пустой streaming-блок.
-      this.view = { ...this.view, narration: this.prose ? [{ kind: 'gm', text: this.prose, streaming: false }] : [] };
+      // фрейм, поэтому здесь нет и не может быть auth-логики. Гасим лоадер: сбой
+      // генерации снимает живой блок, историю не трогаем.
+      this.live = null;
       this.emit();
       return;
     }
     switch (f.op) {
       case Op.sessionState:
-        this.prose = '';
-        this.view = f.payload as TurnView;
+        // Механика текущего хода. Лента и живой блок сохраняются.
+        this.mechanics = f.payload as TurnView;
         this.emit();
         if (this.pending) {
           const r = this.pending;
           this.pending = null;
-          r(this.view);
+          r(this.buildView());
+        }
+        break;
+      case Op.transcript: // авторитетная история партии при коннекте
+        if (f.payload?.type === 'transcript' && Array.isArray(f.payload.entries)) {
+          this.transcript = f.payload.entries.map((e: { role: string; text: string; speaker?: string }) => this.toBlock(e));
+          this.live = null;
+          this.emit();
         }
         break;
       case Op.start: // генерация началась — лоадер до первой дельты
-        this.prose = '';
-        this.view = { ...this.view, narration: [{ kind: 'gm', text: '', streaming: true }] };
+        this.live = { kind: 'gm', text: '', streaming: true };
         this.emit();
         break;
       case Op.message: // проза-дельта
         if (f.kind === Kind.data && f.payload?.type === 'text') {
-          this.prose += f.payload.delta ?? '';
-          this.view = { ...this.view, narration: [{ kind: 'gm', text: this.prose, streaming: true }] };
+          const text = (this.live?.text ?? '') + (f.payload.delta ?? '');
+          this.live = { kind: 'gm', text, streaming: true };
           this.emit();
         }
         break;
       case Op.done:
-        this.view = { ...this.view, narration: this.prose ? [{ kind: 'gm', text: this.prose, streaming: false }] : this.view.narration };
-        this.emit();
-        break;
-      case Op.history:
-        if (f.payload?.type === 'narration') {
-          this.prose = f.payload.text ?? '';
-          this.view = { ...this.view, narration: [{ kind: 'gm', text: this.prose, streaming: false }] };
-          this.emit();
+        // Проза хода завершена — фиксируем её в ленте (сервер тоже сохранил её
+        // долговечно; на реконнекте transcript перезапишет без дублей).
+        if (this.live && this.live.text.trim() !== '') {
+          this.transcript = [...this.transcript, { ...this.live, streaming: false }];
         }
+        this.live = null;
+        this.emit();
         break;
       case Op.ping:
         this.ws?.send(JSON.stringify({ id: 0, chat_id: this.deps.chatId, channel: 'chat', kind: Kind.signal, op: Op.ping }));
@@ -183,6 +224,7 @@ export class NetSource implements TurnViewSource {
   }
 
   private emit(): void {
-    this.listeners.forEach((l) => l(this.view));
+    const v = this.buildView();
+    this.listeners.forEach((l) => l(v));
   }
 }

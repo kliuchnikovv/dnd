@@ -27,3 +27,13 @@ test('streaming-блок с текстом рисует прозу, а не ло
     expect(getByText(/Причал в тумане/)).toBeTruthy();
     expect(queryByLabelText('Мастер печатает')).toBeNull();
 });
+
+test('player-блок рисует эхо действия под подписью ВЫ', async () => {
+    const { getByText } = await mount([
+        { kind: 'player', text: 'осмотреть журнал' },
+        { kind: 'gm', text: 'В журнале не хватает страницы' },
+    ]);
+    expect(getByText('ВЫ')).toBeTruthy();
+    expect(getByText('осмотреть журнал')).toBeTruthy();
+    expect(getByText(/не хватает страницы/)).toBeTruthy();
+});

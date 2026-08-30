@@ -21,8 +21,22 @@ export const NarrationFeed: React.FC<{ narration?: Block[] }> = ({ narration }) 
         <View style={styles.feed}>
             {narration.map((b, i) => {
                 const isNpc = b.kind === 'npc';
+                const isPlayer = b.kind === 'player';
                 // Проза ещё не пошла (пустой streaming-блок) — «Мастер печатает».
                 const isPending = !!b.streaming && b.text.trim() === '';
+                if (isPlayer) {
+                    // Эхо действия игрока: что я сделал. Отделено от прозы Мастера.
+                    return (
+                        <View key={i} style={styles.playerBlock}>
+                            <Text theme={theme} variant="mono" style={[styles.speaker, { color: c.amberText }]}>
+                                ВЫ
+                            </Text>
+                            <Text theme={theme} variant="body" style={[styles.playerText, { color: c.inkMuted }]}>
+                                {b.text}
+                            </Text>
+                        </View>
+                    );
+                }
                 if (isNpc) {
                     return (
                         <Card
@@ -74,6 +88,8 @@ const styles = StyleSheet.create({
     feed: { gap: 12 },
     gmBlock: { gap: 4 },
     npcCard: { gap: 4 },
+    playerBlock: { gap: 2, alignItems: 'flex-end' },
+    playerText: { fontStyle: 'italic', textAlign: 'right' },
     speaker: { fontSize: 9.5, letterSpacing: 1.4 },
     reply: { fontStyle: 'italic' },
 });
