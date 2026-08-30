@@ -14,13 +14,15 @@ import (
 )
 
 // proseSegment — одна часть прозы хода: заказ Мастеру + роль/говорящий, под
-// которыми она уйдёт в ленту и в OpStart. Разговорный ход — два сегмента:
-// обрамление (gm, Мастер описывает обстановку, НЕ озвучивая NPC) и реплика
-// (npc, прямая речь персонажа). Обычный ход и опенинг — один сегмент (gm).
+// которыми она уйдёт в ленту и в OpStart.
+//
+// fixed — готовый текст (не от LLM): подводка из уже полученной chat-reply
+// интерпретатора. Непустой fixed стримится как есть, без обращения к Мастеру.
 type proseSegment struct {
 	pr      cli.Prose
 	role    string
 	speaker string
+	fixed   string
 }
 
 // proseStart — тело кадра OpStart: под какой ролью/именем пойдёт следующий
@@ -32,18 +34,26 @@ type proseStart struct {
 
 // startProseLocked собирает сегменты прозы хода и запускает их стрим. Вызывается
 // под rt.mu из applyInput, СРАЗУ ПОСЛЕ session_state: механика у клиента уже
-// есть, проза доезжает. Разговорный ход даёт два сегмента: обрамление исхода и
-// прямую речь NPC. Нет прозы (отказ, нет авторской рамки) — нет и генерации.
-func (rt *sessionRuntime) startProseLocked(in core.Intent, res core.TurnResult) {
+// есть, проза доезжает.
+//
+// Разговорный ход (есть говорящий) — это прямая речь NPC, и только она: обрамление
+// Мастера мы НЕ генерим, потому что на расплывчатых репликах оно выдумывало
+// действия игрока («вы киваете на доски»). Свободный текст добавляет короткую
+// подводку из chat-reply интерпретатора (leadIn) — она заземлена на слова игрока
+// и исхода не выдаёт. Не-разговорный ход — обрамление исхода (что вышло).
+// Нет прозы (отказ, нет авторской рамки) — нет и генерации.
+func (rt *sessionRuntime) startProseLocked(in core.Intent, res core.TurnResult, leadIn string) {
 	if rt.narrator == nil {
 		return
 	}
 	var segs []proseSegment
-	if fr, ok := cli.OutcomeProse(rt.game, in, res); ok {
-		segs = append(segs, proseSegment{pr: fr, role: RoleGM})
-	}
 	if rp, ok := cli.ReplyProse(rt.game, in, res); ok {
+		if strings.TrimSpace(leadIn) != "" {
+			segs = append(segs, proseSegment{role: RoleGM, fixed: leadIn})
+		}
 		segs = append(segs, proseSegment{pr: rp, role: RoleNPC, speaker: rp.Speaking})
+	} else if fr, ok := cli.OutcomeProse(rt.game, in, res); ok {
+		segs = append(segs, proseSegment{pr: fr, role: RoleGM})
 	}
 	rt.launchSegmentsLocked(segs)
 }
@@ -107,9 +117,16 @@ func (rt *sessionRuntime) streamSegments(ctx context.Context, gen int, segs []pr
 		if i > 0 && !rt.beginSegment(gen, seg.role, seg.speaker) {
 			return // суперсессия/отмена между сегментами
 		}
-		st, err := rt.narrator.NarrateStream(ctx, kindOf(seg.pr.Kind), seg.pr.Frame,
-			master.World{Setting: setting, Scene: seg.pr.Scene},
-			seg.pr.Outcome, seg.pr.Speaking, seg.pr.State, llm.Request{})
+		var st llm.Stream
+		var err error
+		if seg.fixed != "" {
+			// Готовая подводка (chat-reply) — стримим как есть, без Мастера.
+			st = llm.NewTextStream(seg.fixed)
+		} else {
+			st, err = rt.narrator.NarrateStream(ctx, kindOf(seg.pr.Kind), seg.pr.Frame,
+				master.World{Setting: setting, Scene: seg.pr.Scene},
+				seg.pr.Outcome, seg.pr.Speaking, seg.pr.State, llm.Request{})
+		}
 		if err != nil {
 			rt.failProse(gen, err)
 			return

@@ -13,13 +13,14 @@ import (
 // interpretFreeLocked (реальный разбор — LLM, тестируется в пакете intent).
 type fakeInterp struct {
 	intent  *core.Intent
+	reply   string
 	probe   core.Probe
 	clarify string
 	err     error
 }
 
 func (f fakeInterp) InterpretChat(_ context.Context, _ string, _ store.EntityID, _ string) (*core.Intent, string, core.Probe, string, error) {
-	return f.intent, "", f.probe, f.clarify, f.err
+	return f.intent, f.reply, f.probe, f.clarify, f.err
 }
 
 // freeSession поднимает сессию с прозой и подставным разбором свободного ввода.
@@ -75,6 +76,42 @@ func TestFreeInputIntentApplies(t *testing.T) {
 	}
 	if !echoed {
 		t.Fatalf("эхо свободного действия не в ленте: %+v", e)
+	}
+}
+
+// Свободный разговорный ход: подводка Мастера (chat-reply) идёт gm-сегментом
+// перед прямой речью NPC — вместо выдумывающего обрамления. В ленте [player,
+// gm(подводка), npc].
+func TestFreeInputTalkLeadInThenReply(t *testing.T) {
+	rt, id := freeSession(t, nil)
+	rt.mu.Lock()
+	talk := rt.game.Affordances(rt.spokenTo)[0].Intent // разговорный ход к NPC
+	rt.interp = fakeInterp{intent: &talk, reply: "Вы поворачиваетесь к Берну."}
+	rt.mu.Unlock()
+
+	sub := rt.subscribe()
+	rt.applyInput(context.Background(), 1, inputPayload{Text: "как дела?"})
+	frames := collectUntilDone(t, sub)
+
+	var roles []string
+	for _, f := range frames {
+		if f.Op == OpStart {
+			var ps proseStart
+			_ = json.Unmarshal(f.Payload, &ps)
+			roles = append(roles, ps.Role)
+		}
+	}
+	// Первый OpStart — лоадер перед разбором; значимые сегменты — подводка gm и
+	// реплика npc, и они последние два по порядку.
+	if n := len(roles); n < 2 || roles[n-2] != RoleGM || roles[n-1] != RoleNPC {
+		t.Fatalf("ждали ...[gm(подводка), npc] в OpStart, получили %v", roles)
+	}
+	e := transcriptRoles(t, rt, id)
+	if n := len(e); n < 3 || e[n-3].Role != RolePlayer || e[n-2].Role != RoleGM || e[n-1].Role != RoleNPC {
+		t.Fatalf("лента = %+v, ждали ...[player, gm, npc]", e)
+	}
+	if e[len(e)-2].Text != "Вы поворачиваетесь к Берну." {
+		t.Fatalf("подводка в ленте = %q", e[len(e)-2].Text)
 	}
 }
 

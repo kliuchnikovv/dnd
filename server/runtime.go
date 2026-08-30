@@ -102,8 +102,9 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 	if aff, ok := expand(offered, in); ok {
 		intent := aff.Intent
 		intent.Actor = rt.game.Actor
-		// Лейбл действия для ленты — тот же, что игрок видел на кнопке.
-		return rt.applyIntentLocked(ctx, frameID, intent, view.AffordanceLabel(rt.game, aff))
+		// Лейбл действия для ленты — тот же, что игрок видел на кнопке. Подводки
+		// нет: у хода-варианта chat-reply не спрашивается.
+		return rt.applyIntentLocked(ctx, frameID, intent, view.AffordanceLabel(rt.game, aff), "")
 	}
 	// Связный текст: разбираем интерпретатором (интент / проба / уточнение).
 	return rt.interpretFreeLocked(frameID, strings.TrimSpace(in.Text))
@@ -112,8 +113,10 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 // applyIntentLocked проводит один интент через журнал и ядро, рассылает
 // session_state, пишет эхо действия в ленту и запускает прозу. Общий низ для
 // хода-варианта и хода из разобранного текста. actionLabel — подпись действия в
-// ленте. frameID==0 означает, что дедуп уже сделан вызывающим. Под rt.mu.
-func (rt *sessionRuntime) applyIntentLocked(ctx context.Context, frameID int, intent core.Intent, actionLabel string) (bool, string) {
+// ленте; leadIn — подводка из chat-reply (для разговорного хода из свободного
+// текста; "" у хода-варианта). frameID==0 означает, что дедуп уже сделан
+// вызывающим. Под rt.mu.
+func (rt *sessionRuntime) applyIntentLocked(ctx context.Context, frameID int, intent core.Intent, actionLabel, leadIn string) (bool, string) {
 	// Журнал ДО обработки (ADR-0002): команда ложится как pending раньше, чем
 	// ядро тронуло состояние. Падение между записью и применением лечит реплей
 	// хвоста — команда получит applied, ход не повторится.
@@ -166,7 +169,7 @@ func (rt *sessionRuntime) applyIntentLocked(ctx context.Context, frameID int, in
 
 	// Механика ушла мгновенно; проза доезжает отдельной горутиной. Под rt.mu:
 	// аргументы Мастеру снимаются со свежего состояния.
-	rt.startProseLocked(intent, res)
+	rt.startProseLocked(intent, res, leadIn)
 	return true, ""
 }
 
@@ -197,7 +200,9 @@ func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, s
 
 	pending := rt.pending
 	rt.pending = "" // вопрос задан один раз: ответ на него уже пришёл
-	inp, _, probe, clarify, err := rt.interp.InterpretChat(context.Background(), text, rt.spokenTo, pending)
+	// reply — подводка Мастера (безоценочная, заземлена на слова игрока): станет
+	// leadIn'ом разговорного хода вместо выдумывающего обрамления.
+	inp, reply, probe, clarify, err := rt.interp.InterpretChat(context.Background(), text, rt.spokenTo, pending)
 
 	switch {
 	case err != nil:
@@ -211,7 +216,7 @@ func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, s
 		// что-то положено, это обычный ход (канон меняется валидируемо ядром).
 		if in, ok := rt.game.MatchProbeAs(probe); ok {
 			in.Actor = rt.game.Actor
-			return rt.applyIntentLocked(context.Background(), 0, in, text)
+			return rt.applyIntentLocked(context.Background(), 0, in, text, reply)
 		}
 		// Иначе чистое повествование: мир отвечает, состояние не меняется, ход
 		// не тратится (журнала нет). Эхо действия + отклик пробы в ленту.
@@ -235,7 +240,7 @@ func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, s
 	default:
 		intent := *inp
 		intent.Actor = rt.game.Actor
-		return rt.applyIntentLocked(context.Background(), 0, intent, text)
+		return rt.applyIntentLocked(context.Background(), 0, intent, text, reply)
 	}
 }
 

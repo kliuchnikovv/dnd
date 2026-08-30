@@ -23,10 +23,10 @@ func npcTalkToken(t *testing.T, rt *sessionRuntime) string {
 	return ""
 }
 
-// Разговорный ход даёт два сегмента: обрамление (gm) и прямую речь NPC (npc со
-// speaker). Клиент видит два OpStart с ролями по порядку, а лента хранит обе
-// записи раздельно.
-func TestTalkTurnStreamsFramingThenReply(t *testing.T) {
+// Разговорный ход-вариант (тап по чипу) = прямая речь NPC, и только она:
+// выдумывающее обрамление больше не генерится. Один OpStart[npc] со speaker,
+// в ленте — эхо игрока + реплика NPC.
+func TestTalkTurnStreamsReplyOnly(t *testing.T) {
 	m := narratorManager(t, "реплика")
 	id, _ := m.Create("harbour", 1, "u")
 	rt, _ := m.Get(id)
@@ -54,21 +54,20 @@ func TestTalkTurnStreamsFramingThenReply(t *testing.T) {
 			}
 		}
 	}
-	if len(roles) != 2 || roles[0] != RoleGM || roles[1] != RoleNPC {
-		t.Fatalf("ждали OpStart[gm, npc], получили %v", roles)
+	if len(roles) != 1 || roles[0] != RoleNPC {
+		t.Fatalf("ждали один OpStart[npc], получили %v", roles)
 	}
 	if npcSpeaker == "" {
 		t.Fatalf("реплика NPC без имени говорящего")
 	}
 
-	// Лента: player + обрамление gm + реплика npc.
+	// Лента: player + реплика npc (обрамления gm у разговора больше нет).
 	entries, _ := rt.store.Transcript(context.Background(), store.SessionID(id))
 	var roleSeq []string
 	for _, e := range entries {
 		roleSeq = append(roleSeq, e.Role)
 	}
-	// Последние три записи — этот ход (до них мог лечь опенинг gm).
-	if n := len(roleSeq); n < 3 || roleSeq[n-3] != RolePlayer || roleSeq[n-2] != RoleGM || roleSeq[n-1] != RoleNPC {
-		t.Fatalf("лента хода = %v, ждали ...[player, gm, npc]", roleSeq)
+	if n := len(roleSeq); n < 2 || roleSeq[n-2] != RolePlayer || roleSeq[n-1] != RoleNPC {
+		t.Fatalf("лента хода = %v, ждали ...[player, npc]", roleSeq)
 	}
 }
