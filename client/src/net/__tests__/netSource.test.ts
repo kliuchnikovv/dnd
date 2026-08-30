@@ -131,6 +131,29 @@ test('start op shows a pending (empty streaming) narration block; delta replaces
   expect(net.current().narration?.[0].streaming).toBe(true);
 });
 
+test('talk turn: gm framing then npc reply become two feed blocks', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({}));
+  // Сегмент 1: обрамление Мастера.
+  fake.push({ id: 2, chat_id: 'c', channel: 'chat', kind: 'meta', op: 'start', payload: { role: 'gm' } });
+  fake.push({ id: 3, chat_id: 'c', channel: 'chat', kind: 'data', op: 'message', payload: { type: 'text', delta: 'Берн отводит взгляд.' } });
+  // Сегмент 2: прямая речь NPC.
+  fake.push({ id: 4, chat_id: 'c', channel: 'chat', kind: 'meta', op: 'start', payload: { role: 'npc', speaker: 'Берн' } });
+  fake.push({ id: 5, chat_id: 'c', channel: 'chat', kind: 'data', op: 'message', payload: { type: 'text', delta: '— Не знаю никакого кассира.' } });
+  fake.push({ id: 6, chat_id: 'c', channel: 'chat', kind: 'meta', op: 'done' });
+
+  const n = net.current().narration ?? [];
+  expect(n).toHaveLength(2);
+  expect(n[0].kind).toBe('gm');
+  expect(n[0].text).toBe('Берн отводит взгляд.');
+  expect(n[1].kind).toBe('npc');
+  expect(n[1].text).toBe('— Не знаю никакого кассира.');
+  expect(n[1].speaker?.name).toBe('Берн');
+  expect(n[1].streaming).toBeFalsy();
+});
+
 test('error frame clears a pending loader (no prose generated)', async () => {
   const { net, fake } = makeNet();
   await net.connect();

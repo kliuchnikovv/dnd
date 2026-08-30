@@ -195,14 +195,26 @@ export class NetSource implements TurnViewSource {
           this.emit();
         }
         break;
-      case Op.start: // генерация началась — лоадер до первой дельты
-        this.live = { kind: 'gm', text: '', streaming: true };
+      case Op.start: {
+        // Новый сегмент прозы (обрамление gm или реплика npc). Прошлый сегмент
+        // с текстом фиксируем в ленте, открываем новый нужной роли — так один
+        // ход даёт и прозу Мастера, и прямую речь NPC отдельными блоками.
+        if (this.live && this.live.text.trim() !== '') {
+          this.transcript = [...this.transcript, { ...this.live, streaming: false }];
+        }
+        const role: string = f.payload?.role ?? 'gm';
+        const speaker: string | undefined = f.payload?.speaker;
+        this.live =
+          role === 'npc'
+            ? { kind: 'npc', text: '', streaming: true, speaker: speaker ? { id: '', name: speaker, disposition: 0 } : undefined }
+            : { kind: 'gm', text: '', streaming: true };
         this.emit();
         break;
-      case Op.message: // проза-дельта
+      }
+      case Op.message: // проза-дельта: дополняем текущий сегмент, сохраняя роль/спикера
         if (f.kind === Kind.data && f.payload?.type === 'text') {
-          const text = (this.live?.text ?? '') + (f.payload.delta ?? '');
-          this.live = { kind: 'gm', text, streaming: true };
+          const base: Block = this.live ?? { kind: 'gm', text: '', streaming: true };
+          this.live = { ...base, text: (base.text ?? '') + (f.payload.delta ?? ''), streaming: true };
           this.emit();
         }
         break;
