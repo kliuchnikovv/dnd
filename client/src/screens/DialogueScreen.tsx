@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, Text } from '@genie/ds';
@@ -29,6 +29,7 @@ export const DialogueScreen: React.FC<{
     const insets = useSafeAreaInsets();
     const [echoes, setEchoes] = useState<string[]>([]);
 
+    const scrollRef = useRef<ScrollView>(null);
     const npc: Who | undefined = (view.participants ?? []).find((w) => w.id !== 'pc');
 
     const handleIntent = (intent: Intent) => {
@@ -43,9 +44,12 @@ export const DialogueScreen: React.FC<{
     };
 
     return (
-        <View style={[styles.root, { backgroundColor: c.background }]}>
-            <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: c.hairline }]}>
-                <Pressable onPress={onExit} hitSlop={10} style={styles.back}>
+        <KeyboardAvoidingView
+            style={[styles.root, { backgroundColor: c.background }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+            <View style={[styles.header, { paddingTop: insets.top + 48, borderBottomColor: c.hairline, backgroundColor: c.background }]}>
+                <Pressable onPress={onExit} hitSlop={10} style={styles.back} accessibilityLabel="Назад к сцене">
                     <Icon name="back" size={22} color={c.inkMuted ?? c.textSecondary} />
                 </Pressable>
                 {npc ? <Avatar who={npc} size={34} /> : null}
@@ -62,8 +66,11 @@ export const DialogueScreen: React.FC<{
             </View>
 
             <ScrollView
+                ref={scrollRef}
+                style={styles.feed}
                 contentContainerStyle={styles.thread}
                 showsVerticalScrollIndicator={false}
+                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
                 <ResolutionCard resolution={view.resolution} />
                 <NarrationFeed narration={view.narration} />
@@ -86,7 +93,7 @@ export const DialogueScreen: React.FC<{
                 <OptionsRail options={view.options} onIntent={handleIntent} layout="list" />
                 <Composer onIntent={handleIntent} placeholder="ответить…" />
             </View>
-        </View>
+        </KeyboardAvoidingView>
     );
 };
 
@@ -103,6 +110,7 @@ const styles = StyleSheet.create({
     back: { padding: 2 },
     headTitles: { gap: 2 },
     disp: { fontSize: 9.5, letterSpacing: 1.2 },
+    feed: { flex: 1 },
     thread: { paddingHorizontal: 18, paddingVertical: 14, gap: 12 },
     playerBubble: { alignSelf: 'flex-end', maxWidth: '82%' },
     dock: { paddingHorizontal: 18, paddingTop: 10, borderTopWidth: 1, gap: 10 },

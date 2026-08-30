@@ -37,6 +37,7 @@ export const AppShell: React.FC = () => {
                     onPress={() => setTab('home')}
                     hitSlop={10}
                     style={[styles.exit, { top: insets.top + 8, backgroundColor: c.surfaceAlt, borderColor: c.stroke ?? c.border }]}
+                    accessibilityLabel="Выйти из дела"
                 >
                     <Icon name="back" size={16} color={c.inkMuted ?? c.textSecondary} />
                     <Text theme={theme} variant="mono" style={[styles.exitText, { color: c.inkMuted }]}>
@@ -71,7 +72,7 @@ const styles = StyleSheet.create({
     root: { flex: 1 },
     exit: {
         position: 'absolute',
-        right: 16,
+        left: 16,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
