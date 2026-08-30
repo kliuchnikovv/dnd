@@ -30,6 +30,22 @@ type SessionRecord struct {
 	CreatedAt   time.Time
 }
 
+// Роли записей ленты.
+const (
+	RolePlayer = "player" // эхо действия игрока
+	RoleGM     = "gm"      // проза Мастера
+	RoleNPC    = "npc"     // реплика NPC (прямая речь)
+)
+
+// TranscriptEntry — одна запись ленты хода: реплика Мастера/NPC или эхо действия
+// игрока. Долговечна (в отличие от буфера прозы в памяти): переживает реконнект
+// и рестарт, чтобы клиент показывал всю историю партии, а не только текущий ход.
+type TranscriptEntry struct {
+	Role    string // RolePlayer | RoleGM | RoleNPC
+	Text    string
+	Speaker string // имя NPC для role=RoleNPC; пусто иначе
+}
+
 // Store — долговечный журнал сервера. Форма повторяет store.DB (тот уже «в форме
 // будущей схемы Postgres»): команды append-only с ключом (session_id, seq),
 // интент — сырой JSON. Реализаций две: in-memory (тесты, запуск без БД) и
@@ -50,6 +66,11 @@ type Store interface {
 	MarkApplied(ctx context.Context, session store.SessionID, seq int) error
 	// Commands — команды сессии в порядке seq: вход реплея.
 	Commands(ctx context.Context, session store.SessionID) ([]store.CommandLogEntry, error)
+	// AppendTranscript дописывает запись ленты сессии (append-only, порядок
+	// сохраняется). В отличие от прозы в памяти — переживает рестарт.
+	AppendTranscript(ctx context.Context, session store.SessionID, e TranscriptEntry) error
+	// Transcript — лента сессии в порядке добавления: история для клиента.
+	Transcript(ctx context.Context, session store.SessionID) ([]TranscriptEntry, error)
 	// Close освобождает ресурсы (пул соединений Postgres). Для памяти — no-op.
 	Close(ctx context.Context) error
 
@@ -84,22 +105,24 @@ type memRefresh struct {
 // тестах: рестарт моделируется новым Manager над тем же memStore. Команды
 // делегируются store.DB — ровно той машинерии, что станет Postgres.
 type memStore struct {
-	mu       sync.Mutex
-	db       *store.DB
-	sessions map[string]SessionRecord
-	users    map[string]UserRecord // by ID
-	bySub    map[string]string     // google_sub -> ID
-	refresh  map[string]memRefresh // hash -> {userID, exp}
+	mu          sync.Mutex
+	db          *store.DB
+	sessions    map[string]SessionRecord
+	users       map[string]UserRecord      // by ID
+	bySub       map[string]string          // google_sub -> ID
+	refresh     map[string]memRefresh      // hash -> {userID, exp}
+	transcripts map[string][]TranscriptEntry // chatID -> лента в порядке добавления
 }
 
 // NewMemStore — пустой журнал в памяти.
 func NewMemStore() *memStore {
 	return &memStore{
-		db:       store.NewDB(),
-		sessions: make(map[string]SessionRecord),
-		users:    make(map[string]UserRecord),
-		bySub:    make(map[string]string),
-		refresh:  make(map[string]memRefresh),
+		db:          store.NewDB(),
+		sessions:    make(map[string]SessionRecord),
+		users:       make(map[string]UserRecord),
+		bySub:       make(map[string]string),
+		refresh:     make(map[string]memRefresh),
+		transcripts: make(map[string][]TranscriptEntry),
 	}
 }
 
@@ -149,6 +172,22 @@ func (s *memStore) Commands(_ context.Context, session store.SessionID) ([]store
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.db.Commands(session), nil
+}
+
+func (s *memStore) AppendTranscript(_ context.Context, session store.SessionID, e TranscriptEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.transcripts[string(session)] = append(s.transcripts[string(session)], e)
+	return nil
+}
+
+func (s *memStore) Transcript(_ context.Context, session store.SessionID) ([]TranscriptEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	src := s.transcripts[string(session)]
+	out := make([]TranscriptEntry, len(src))
+	copy(out, src)
+	return out, nil
 }
 
 func (s *memStore) Close(context.Context) error { return nil }

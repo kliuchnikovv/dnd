@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"io"
+	"log"
+	"strings"
 
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // startProseLocked запускает стрим прозы исхода хода. Вызывается под rt.mu из
@@ -118,7 +121,8 @@ func (rt *sessionRuntime) emitDelta(gen int, text string, ix int) bool {
 	return true
 }
 
-// finishProse завершает ход кадром done.
+// finishProse завершает ход кадром done и кладёт готовую прозу в ленту
+// (долговечная история). Роль пока gm: прямая речь NPC — отдельный слайс.
 func (rt *sessionRuntime) finishProse(gen int) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -126,6 +130,13 @@ func (rt *sessionRuntime) finishProse(gen int) {
 		return
 	}
 	rt.narrating = false
+	if text := strings.Join(rt.narration, ""); text != "" {
+		// Не канон — ошибку записи не роняем в игрока, но делаем слышимой.
+		if err := rt.store.AppendTranscript(context.Background(), store.SessionID(rt.chatID),
+			TranscriptEntry{Role: RoleGM, Text: text}); err != nil {
+			log.Printf("лента: проза не записана: %v", err)
+		}
+	}
 	id := rt.nextOutIDLocked()
 	rt.broadcastLocked(newFrame(id, rt.chatID, ChannelChat, KindMeta, OpDone, nil))
 }

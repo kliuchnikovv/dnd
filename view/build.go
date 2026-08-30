@@ -164,6 +164,13 @@ var classWords = map[core.VerbClass]string{
 	core.ClassSkill:       "ловкость",
 }
 
+// AffordanceLabel — тот же лейбл варианта, что видит игрок в Option.Label.
+// Экспортирован для транскрипта: сервер подписывает ход игрока ровно так, как
+// вариант выглядел на экране.
+func AffordanceLabel(g *core.Game, a core.Affordance) string {
+	return affordanceLabel(g, a)
+}
+
 // affordanceLabel — вариант словами. Класс, если он есть, идёт в скобках после
 // действия.
 func affordanceLabel(g *core.Game, a core.Affordance) string {

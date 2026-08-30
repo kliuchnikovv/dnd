@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // drainReady вычитывает всё, что уже лежит в очереди подписчика (без ожидания).
@@ -18,18 +21,33 @@ func drainReady(sub *subscriber) []Frame {
 	}
 }
 
-// Реконнект после завершённой прозы: session_state + history с готовым текстом,
-// без дельт и без done (ход уже кончился).
-func TestAttachFinishedSendsHistory(t *testing.T) {
-	m := NewManager(casesRoot)
+// decodeTranscript находит кадр transcript и разбирает его.
+func decodeTranscript(t *testing.T, frames []Frame) transcriptPayload {
+	t.Helper()
+	for _, f := range frames {
+		if f.Op == OpTranscript {
+			var tp transcriptPayload
+			if err := json.Unmarshal(f.Payload, &tp); err != nil {
+				t.Fatalf("transcript не разобрался: %v", err)
+			}
+			return tp
+		}
+	}
+	t.Fatalf("нет кадра transcript среди %d кадров", len(frames))
+	return transcriptPayload{}
+}
+
+// Реконнект отдаёт всю сохранённую историю кадром transcript (session_state +
+// transcript, без дельт и без done для завершённого хода).
+func TestAttachSendsTranscript(t *testing.T) {
+	m := NewManager(casesRoot) // без narrator: опенинг не пишется, лента чистая
 	id, _ := m.Create("harbour", 1, "test-user")
 	rt, _ := m.Get(id)
 
-	// Имитируем завершённый ход с прозой в буфере.
-	rt.mu.Lock()
-	rt.narration = []string{"Причал ", "тонет ", "в тумане"}
-	rt.narrating = false
-	rt.mu.Unlock()
+	sid := store.SessionID(id)
+	ctx := context.Background()
+	_ = rt.store.AppendTranscript(ctx, sid, TranscriptEntry{Role: RolePlayer, Text: "осмотреть журнал"})
+	_ = rt.store.AppendTranscript(ctx, sid, TranscriptEntry{Role: RoleGM, Text: "Причал тонет в тумане"})
 
 	sub := rt.attach()
 	frames := drainReady(sub)
@@ -37,32 +55,28 @@ func TestAttachFinishedSendsHistory(t *testing.T) {
 	if frames[0].Op != OpSessionState {
 		t.Fatalf("первый кадр %q, ждали session_state", frames[0].Op)
 	}
-	var history *Frame
-	for i := range frames {
-		if frames[i].Op == OpHistory {
-			history = &frames[i]
+	for _, f := range frames {
+		if f.Op == OpMessage && f.Kind == KindData {
+			t.Fatalf("для завершённой истории дельт быть не должно")
 		}
-		if frames[i].Op == OpMessage && frames[i].Kind == KindData {
-			t.Fatalf("завершённый ход прислал дельту вместо history")
-		}
-		if frames[i].Op == OpDone {
-			t.Fatalf("для завершённого хода done не нужен")
+		if f.Op == OpDone {
+			t.Fatalf("done для завершённой истории не нужен")
 		}
 	}
-	if history == nil {
-		t.Fatalf("нет кадра history")
+	tp := decodeTranscript(t, frames)
+	if len(tp.Entries) != 2 {
+		t.Fatalf("записей ленты %d, ждали 2", len(tp.Entries))
 	}
-	var hp historyPayload
-	if err := json.Unmarshal(history.Payload, &hp); err != nil {
-		t.Fatalf("history не разобрался: %v", err)
+	if tp.Entries[0].Role != RolePlayer || tp.Entries[0].Text != "осмотреть журнал" {
+		t.Fatalf("первая запись = %+v", tp.Entries[0])
 	}
-	if hp.Text != "Причал тонет в тумане" {
-		t.Fatalf("history.text = %q", hp.Text)
+	if tp.Entries[1].Role != RoleGM || tp.Entries[1].Text != "Причал тонет в тумане" {
+		t.Fatalf("вторая запись = %+v", tp.Entries[1])
 	}
 }
 
-// Реконнект в середине генерации: session_state + догон буферных дельт, без
-// history и без done (остаток и done доедут живой рассылкой).
+// Реконнект в середине генерации: session_state + OpStart + догон буферных дельт,
+// без done (остаток и done доедут живой рассылкой).
 func TestAttachInflightSendsBufferedDeltas(t *testing.T) {
 	m := NewManager(casesRoot)
 	id, _ := m.Create("harbour", 1, "test-user")
@@ -76,10 +90,10 @@ func TestAttachInflightSendsBufferedDeltas(t *testing.T) {
 	sub := rt.attach()
 	frames := drainReady(sub)
 
-	deltas := 0
+	start, deltas := 0, 0
 	for _, f := range frames {
-		if f.Op == OpHistory {
-			t.Fatalf("в полёте history слать нельзя — придёт дельтами")
+		if f.Op == OpStart {
+			start++
 		}
 		if f.Op == OpDone {
 			t.Fatalf("в полёте done рано: остаток ещё идёт")
@@ -88,12 +102,15 @@ func TestAttachInflightSendsBufferedDeltas(t *testing.T) {
 			deltas++
 		}
 	}
+	if start != 1 {
+		t.Fatalf("ждали один OpStart (лоадер), получили %d", start)
+	}
 	if deltas != 2 {
 		t.Fatalf("догон дельт %d, ждали 2", deltas)
 	}
 }
 
-// Реконнект без прозы (свежая сессия): только session_state.
+// Реконнект без прозы и без истории (свежая сессия): только session_state.
 func TestAttachNoProseOnlyState(t *testing.T) {
 	m := NewManager(casesRoot)
 	id, _ := m.Create("harbour", 1, "test-user")
@@ -107,7 +124,7 @@ func TestAttachNoProseOnlyState(t *testing.T) {
 }
 
 // Сквозь сокет: сыграв ход с прозой на одном соединении, второе (реконнект)
-// получает session_state и history с той же прозой.
+// получает session_state и transcript с эхом действия и той же прозой.
 func TestWSReconnectResumesProse(t *testing.T) {
 	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
 	srv := New(m)
@@ -131,19 +148,25 @@ func TestWSReconnectResumesProse(t *testing.T) {
 	}
 	done1()
 
-	// Реконнект: session_state + history с готовой прозой.
+	// Реконнект: session_state + transcript с прозой хода.
 	c2, done2 := wsDial(t, srv, id, "dev")
 	defer done2()
 	if decodeView(t, readFrame(t, c2)).Version == 0 {
 		t.Fatalf("реконнект без корректного session_state")
 	}
-	h := readFrame(t, c2)
-	if h.Op != OpHistory {
-		t.Fatalf("вторым кадром ждали history, получили %q", h.Op)
+	tf := readFrame(t, c2)
+	if tf.Op != OpTranscript {
+		t.Fatalf("вторым кадром ждали transcript, получили %q", tf.Op)
 	}
-	var hp historyPayload
-	json.Unmarshal(h.Payload, &hp)
-	if hp.Text != first {
-		t.Fatalf("history разошёлся с прозой хода:\nход:    %q\nhistory: %q", first, hp.Text)
+	var tp transcriptPayload
+	json.Unmarshal(tf.Payload, &tp)
+	var gm string
+	for _, e := range tp.Entries {
+		if e.Role == RoleGM {
+			gm = e.Text
+		}
+	}
+	if gm != first {
+		t.Fatalf("проза в ленте разошлась с ходом:\nход:  %q\nлента: %q", first, gm)
 	}
 }

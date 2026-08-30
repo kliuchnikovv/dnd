@@ -18,6 +18,9 @@ var migration0001 string
 //go:embed migrations/0002_auth.sql
 var migration0002 string
 
+//go:embed migrations/0003_transcript.sql
+var migration0003 string
+
 // pgStore — долговечный журнал в Postgres. Форма запросов повторяет memStore:
 // та же семантика append-only и идемпотентности, только за сетью. Пул pgx
 // разделяется всеми сессиями; ходы одной сессии сериализованы rt.mu, поэтому
@@ -53,6 +56,9 @@ func (s *pgStore) migrate(ctx context.Context) error {
 	}
 	if _, err := s.pool.Exec(ctx, migration0002); err != nil {
 		return fmt.Errorf("миграция 0002: %w", err)
+	}
+	if _, err := s.pool.Exec(ctx, migration0003); err != nil {
+		return fmt.Errorf("миграция 0003: %w", err)
 	}
 	return nil
 }
@@ -197,6 +203,34 @@ func (s *pgStore) Commands(ctx context.Context, session store.SessionID) ([]stor
 	for rows.Next() {
 		e, err := scanCommand(rows)
 		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (s *pgStore) AppendTranscript(ctx context.Context, session store.SessionID, e TranscriptEntry) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO transcript (session_id, role, body, speaker)
+		VALUES ($1, $2, $3, $4)`,
+		string(session), e.Role, e.Text, e.Speaker)
+	return err
+}
+
+func (s *pgStore) Transcript(ctx context.Context, session store.SessionID) ([]TranscriptEntry, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT role, body, speaker FROM transcript
+		WHERE session_id = $1 ORDER BY ord`,
+		string(session))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TranscriptEntry
+	for rows.Next() {
+		var e TranscriptEntry
+		if err := rows.Scan(&e.Role, &e.Text, &e.Speaker); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

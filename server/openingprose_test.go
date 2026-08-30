@@ -62,16 +62,20 @@ loop:
 	for {
 		select {
 		case f := <-sub.out:
-			if f.Op == OpHistory {
-				var hp historyPayload
-				if err := json.Unmarshal(f.Payload, &hp); err != nil {
-					t.Fatalf("history payload: %v", err)
+			if f.Op == OpTranscript {
+				var tp transcriptPayload
+				if err := json.Unmarshal(f.Payload, &tp); err != nil {
+					t.Fatalf("transcript payload: %v", err)
 				}
-				text = hp.Text
+				for _, e := range tp.Entries {
+					if e.Role == RoleGM {
+						text = e.Text
+					}
+				}
 				break loop
 			}
 		case <-deadline:
-			t.Fatal("нет history-кадра с опенингом")
+			t.Fatal("нет transcript-кадра с опенингом")
 		}
 	}
 	if !strings.Contains(text, "Причал") {

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
@@ -90,10 +91,13 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 	}
 
 	offered := rt.game.Affordances(rt.spokenTo)
-	intent, ok := expand(offered, in)
+	aff, ok := expand(offered, in)
 	if !ok {
 		return false, "ход не разворачивается в показанный вариант"
 	}
+	// Лейбл действия для ленты — тот же, что игрок видел на кнопке.
+	actionLabel := view.AffordanceLabel(rt.game, aff)
+	intent := aff.Intent
 	intent.Actor = rt.game.Actor
 
 	// Журнал ДО обработки (ADR-0002): команда ложится как pending раньше, чем
@@ -136,6 +140,13 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 	}
 	if frameID != 0 {
 		rt.lastAppliedID = frameID
+	}
+
+	// Эхо действия в ленту. Не канон (источник правды — command_log), поэтому
+	// ошибку записи не эскалируем в отказ применённого хода, но делаем слышимой.
+	if err := rt.store.AppendTranscript(ctx, store.SessionID(rt.chatID),
+		TranscriptEntry{Role: RolePlayer, Text: actionLabel}); err != nil {
+		log.Printf("лента: действие игрока не записано: %v", err)
 	}
 
 	tv := view.Build(rt.game, res, nil, serverRuleset, serverScenario, rt.spokenTo)
@@ -191,21 +202,21 @@ func (rt *sessionRuntime) snapshotViewLocked() Frame {
 // expand сопоставляет ввод с показанным набором: токен — по стабильному
 // OptionToken, текст — по номеру варианта (1..N). Один путь на оба входа, как
 // в CLI: токен и номер разворачиваются в тот же интент.
-func expand(offered []core.Affordance, in inputPayload) (core.Intent, bool) {
+func expand(offered []core.Affordance, in inputPayload) (core.Affordance, bool) {
 	if in.Token != "" {
 		for _, a := range offered {
 			if view.OptionToken(a) == in.Token {
-				return a.Intent, true
+				return a, true
 			}
 		}
-		return core.Intent{}, false
+		return core.Affordance{}, false
 	}
 	if n, ok := parseChoice(in.Text); ok {
 		if n >= 1 && n <= len(offered) {
-			return offered[n-1].Intent, true
+			return offered[n-1], true
 		}
 	}
-	return core.Intent{}, false
+	return core.Affordance{}, false
 }
 
 // parseChoice читает номер варианта из текста. Свободный NL сюда не попадает:
