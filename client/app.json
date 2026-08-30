@@ -9,16 +9,7 @@
     "scheme": "dnd-client",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kliuchnikovv.client",
-      "infoPlist": {
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.41461252724-ffbeded5fihqjpb6im7nchpoggcuq064"
-            ]
-          }
-        ]
-      }
+      "bundleIdentifier": "com.kliuchnikovv.client"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,14 +26,17 @@
     "plugins": [
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.41461252724-ffbeded5fihqjpb6im7nchpoggcuq064"
+        }
+      ]
     ],
     "extra": {
       "googleAuth": {
-        "note": "Реальные ID — через EXPO_PUBLIC_GOOGLE_*_CLIENT_ID в .env (см. .env.example), код читает env, не отсюда. ВАЖНО для iOS: в ios.infoPlist.CFBundleURLTypes выше замените REPLACE_WITH_REVERSED_IOS_CLIENT_ID на ПЕРЕВЁРНУТЫЙ iOS client id (для 123-abc.apps.googleusercontent.com это com.googleusercontent.apps.123-abc), иначе OAuth-редирект не вернётся в приложение; после правки нужен нативный rebuild (npx expo run:ios --device).",
-        "iosClientId": "REPLACE_WITH_IOS_CLIENT_ID.apps.googleusercontent.com",
-        "androidClientId": "REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercontent.com",
-        "webClientId": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com"
+        "note": "Client id'ы читаются из EXPO_PUBLIC_GOOGLE_*_CLIENT_ID (.env, см. .env.example) — не отсюда. iOS URL-схему (перевёрнутый iOS client id) добавляет config-plugin @react-native-google-signin/google-signin через iosUrlScheme выше; для 123-abc.apps.googleusercontent.com это com.googleusercontent.apps.123-abc. После правки нужен нативный rebuild: npx expo prebuild -p ios --clean && npx expo run:ios --device."
       }
     }
   }
