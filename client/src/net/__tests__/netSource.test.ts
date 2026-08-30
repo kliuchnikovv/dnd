@@ -115,6 +115,33 @@ test('prose deltas accumulate into narration; done finalizes', async () => {
   expect(net.current().narration?.[0].streaming).toBe(false);
 });
 
+test('start op shows a pending (empty streaming) narration block; delta replaces it', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({}));
+  fake.push({ id: 2, chat_id: 'c', channel: 'chat', kind: 'meta', op: 'start' });
+  // Лоадер: один streaming-блок с пустым текстом.
+  expect(net.current().narration?.length).toBe(1);
+  expect(net.current().narration?.[0].text).toBe('');
+  expect(net.current().narration?.[0].streaming).toBe(true);
+  // Первая дельта заменяет лоадер текстом.
+  fake.push({ id: 3, chat_id: 'c', channel: 'chat', kind: 'data', op: 'message', payload: { type: 'text', delta: 'Причал', ix: 0 } });
+  expect(net.current().narration?.[0].text).toBe('Причал');
+  expect(net.current().narration?.[0].streaming).toBe(true);
+});
+
+test('error frame clears a pending loader (no prose generated)', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({}));
+  fake.push({ id: 2, chat_id: 'c', channel: 'chat', kind: 'meta', op: 'start' });
+  expect(net.current().narration?.[0].streaming).toBe(true);
+  fake.push({ id: 3, chat_id: 'c', channel: 'chat', kind: 'error', op: 'message', error: { message: 'сбой' } });
+  expect(net.current().narration).toEqual([]);
+});
+
 test('reconnects after unexpected close and re-applies session_state', async () => {
   const sockets: FakeSocket[] = [];
   const net = new NetSource({

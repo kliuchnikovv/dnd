@@ -5,6 +5,7 @@ import { Card, Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
 import { Block } from '../../turnview/types';
 import { StreamingCursor } from './StreamingCursor';
+import { TypingIndicator } from './TypingIndicator';
 
 // NarrationFeed — проза в контейнере, НЕ разметка: клиент по тексту не навигирует.
 // kind различает голос Мастера ("gm", подпись slate) и реплику NPC ("npc", имя amber, курсив).
@@ -20,6 +21,8 @@ export const NarrationFeed: React.FC<{ narration?: Block[] }> = ({ narration }) 
         <View style={styles.feed}>
             {narration.map((b, i) => {
                 const isNpc = b.kind === 'npc';
+                // Проза ещё не пошла (пустой streaming-блок) — «Мастер печатает».
+                const isPending = !!b.streaming && b.text.trim() === '';
                 if (isNpc) {
                     return (
                         <Card
@@ -35,10 +38,14 @@ export const NarrationFeed: React.FC<{ narration?: Block[] }> = ({ narration }) 
                                     {b.speaker.name.toUpperCase()}
                                 </Text>
                             ) : null}
-                            <Text theme={theme} variant="body" style={[styles.reply, { color: c.inkSecondary }]}>
-                                {b.text}
-                                {b.streaming ? <StreamingCursor color={c.accent} /> : null}
-                            </Text>
+                            {isPending ? (
+                                <TypingIndicator color={c.accent} />
+                            ) : (
+                                <Text theme={theme} variant="body" style={[styles.reply, { color: c.inkSecondary }]}>
+                                    {b.text}
+                                    {b.streaming ? <StreamingCursor color={c.accent} /> : null}
+                                </Text>
+                            )}
                         </Card>
                     );
                 }
@@ -48,10 +55,14 @@ export const NarrationFeed: React.FC<{ narration?: Block[] }> = ({ narration }) 
                         <Text theme={theme} variant="mono" style={[styles.speaker, { color: c.slate }]}>
                             МАСТЕР
                         </Text>
-                        <Text theme={theme} variant="body" style={{ color: c.inkSecondary }}>
-                            {b.text}
-                            {b.streaming ? <StreamingCursor color={c.accent} /> : null}
-                        </Text>
+                        {isPending ? (
+                            <TypingIndicator color={c.accent} />
+                        ) : (
+                            <Text theme={theme} variant="body" style={{ color: c.inkSecondary }}>
+                                {b.text}
+                                {b.streaming ? <StreamingCursor color={c.accent} /> : null}
+                            </Text>
+                        )}
                     </View>
                 );
             })}

@@ -14,8 +14,10 @@ export const Kind = { data: 'data', meta: 'meta', signal: 'signal', error: 'erro
 export const Op = {
   message: 'message',
   ping: 'ping',
+  start: 'start',
   done: 'done',
   history: 'history',
+  transcript: 'transcript',
   sessionState: 'session_state',
   stop: 'stop',
 } as const;

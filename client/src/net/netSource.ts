@@ -134,7 +134,10 @@ export class NetSource implements TurnViewSource {
     if (f.kind === Kind.error) {
       // Серверный error-фрейм несёт только {message} (server/frame.go) — реальный 401
       // это HTTP-отказ хэндшейка, который проявляется как onerror/onclose, а не как
-      // фрейм, поэтому здесь нет и не может быть auth-логики.
+      // фрейм, поэтому здесь нет и не может быть auth-логики. Гасим лоадер: если
+      // проза так и не пошла (сбой генерации), снимаем пустой streaming-блок.
+      this.view = { ...this.view, narration: this.prose ? [{ kind: 'gm', text: this.prose, streaming: false }] : [] };
+      this.emit();
       return;
     }
     switch (f.op) {
@@ -147,6 +150,11 @@ export class NetSource implements TurnViewSource {
           this.pending = null;
           r(this.view);
         }
+        break;
+      case Op.start: // генерация началась — лоадер до первой дельты
+        this.prose = '';
+        this.view = { ...this.view, narration: [{ kind: 'gm', text: '', streaming: true }] };
+        this.emit();
         break;
       case Op.message: // проза-дельта
         if (f.kind === Kind.data && f.payload?.type === 'text') {
