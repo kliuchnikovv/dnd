@@ -48,14 +48,21 @@ func (rt *sessionRuntime) startProseLocked(in core.Intent, res core.TurnResult) 
 	rt.launchSegmentsLocked(segs)
 }
 
-// startOpeningProseLocked стримит вводную прозу места при рождении сессии, чтобы
-// первый экран нёс описание, а не только механику — как открытие партии в CLI
-// (Render.Scene). Без narrator — тихо ничего. Под rt.mu.
+// startOpeningProseLocked стримит вводную прозу при рождении сессии, чтобы первый
+// экран нёс контекст, а не только механику — как открытие партии в CLI:
+// брифинг (с чем прислали: кто игрок, что случилось, чего ждут) + описание места.
+// Пустой брифинг (у дела нет авторского введения) сегмент пропускает. Без
+// narrator — тихо ничего. Под rt.mu.
 func (rt *sessionRuntime) startOpeningProseLocked() {
 	if rt.narrator == nil {
 		return
 	}
-	rt.launchSegmentsLocked([]proseSegment{{pr: cli.PlaceProse(rt.game), role: RoleGM}})
+	segs := make([]proseSegment, 0, 2)
+	if br := cli.BriefingProse(rt.game); strings.TrimSpace(br.Frame) != "" {
+		segs = append(segs, proseSegment{pr: br, role: RoleGM})
+	}
+	segs = append(segs, proseSegment{pr: cli.PlaceProse(rt.game), role: RoleGM})
+	rt.launchSegmentsLocked(segs)
 }
 
 // launchSegmentsLocked отменяет незавершённую прозу прошлого поколения, сбрасывает

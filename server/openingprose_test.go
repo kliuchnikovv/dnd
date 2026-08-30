@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/view"
 )
 
@@ -80,6 +81,26 @@ loop:
 	}
 	if !strings.Contains(text, "Причал") {
 		t.Fatalf("опенинг не доставлен: %q", text)
+	}
+}
+
+// Опенинг открывает партию брифингом дела + описанием места: у harbour есть
+// авторский брифинг, поэтому в ленте два gm-сегмента до первого хода.
+func TestOpeningIncludesBriefingThenPlace(t *testing.T) {
+	m := narratorManager(t, "проза")
+	id, _ := m.Create("harbour", 1, "u")
+	rt, _ := m.Get(id)
+	waitOpeningDone(t, rt)
+
+	entries, _ := rt.store.Transcript(context.Background(), store.SessionID(id))
+	var gm int
+	for _, e := range entries {
+		if e.Role == RoleGM {
+			gm++
+		}
+	}
+	if gm < 2 {
+		t.Fatalf("опенинг дал %d gm-сегментов, ждали брифинг + место (2)", gm)
 	}
 }
 
