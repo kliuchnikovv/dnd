@@ -226,6 +226,26 @@ func TestNarrateWithoutSpeakerStaysClean(t *testing.T) {
 	}
 }
 
+// KindReply озвучивает персонажа прямой речью: система — replySystem, тело
+// велит говорить за него, а запрета «не говори за него» здесь нет (он для
+// обрамляющего исхода, а не для самой реплики).
+func TestReplyVoicesTheCharacter(t *testing.T) {
+	m, f := masterWith(t, "— Не знаю никакого кассира.")
+	m.Narrate(context.Background(), KindReply, "Берн уходит от ответа", World{},
+		[]string{"исход: провал"}, "Берн", nil, llm.Request{})
+
+	call := f.Calls()[0]
+	if !strings.Contains(call.Input, "РЕПЛИКА") || !strings.Contains(call.Input, "ты Берн") {
+		t.Errorf("reply-тело не велит говорить за персонажа:\n%s", call.Input)
+	}
+	if strings.Contains(call.Input, "Не говори за него") {
+		t.Errorf("в реплике не должно быть запрета озвучивать персонажа:\n%s", call.Input)
+	}
+	if !strings.Contains(call.System, "прямой речью") {
+		t.Errorf("система реплики не про прямую речь:\n%s", call.System)
+	}
+}
+
 // Вся авторская проза дела обращается к игроку на «вы»; «ты» посреди неё
 // читается как другой голос. Живой прогон дал и то и другое в одном экране.
 func TestNarratePinsTheFormOfAddress(t *testing.T) {

@@ -43,9 +43,10 @@ func (rt *sessionRuntime) attach() *subscriber {
 	}
 
 	if rt.narrating {
-		// Проза в полёте: сперва сигнал «генерю» (лоадер), затем догон уже
-		// сгенерённого. Остаток доедет живой рассылкой.
-		sub.out <- newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpStart, nil)
+		// Проза в полёте: сперва сигнал «генерю» с ролью текущего сегмента
+		// (лоадер/нужный блок), затем догон уже сгенерённого. Остаток доедет
+		// живой рассылкой. Завершённые сегменты уже в transcript — дублей нет.
+		sub.out <- rt.startFrameLocked(rt.narrateRole, rt.narrateSpeaker)
 		for ix, d := range rt.narration {
 			sub.out <- rt.deltaFrameLocked(d, ix)
 		}

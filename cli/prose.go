@@ -23,6 +23,28 @@ func OutcomeProse(g *core.Game, in core.Intent, t core.TurnResult) (Prose, bool)
 	}, true
 }
 
+// ReplyProse — прямая речь NPC в ответ на ход игрока. Второй результат ложен,
+// когда отвечать некому (не разговорный ход) или нет авторской рамки исхода, на
+// которой реплику можно заземлить. Заземляется той же рамкой, что и исход:
+// слова персонажа не должны расходиться с авторским беатом.
+func ReplyProse(g *core.Game, in core.Intent, t core.TurnResult) (Prose, bool) {
+	if t.Refused || t.FlavourKey == "" {
+		return Prose{}, false
+	}
+	who := speakerName(g, in, t)
+	if who == "" {
+		return Prose{}, false
+	}
+	return Prose{
+		Kind:     ProseReply,
+		Frame:    g.Flavour(t.FlavourKey),
+		Scene:    sceneOf(g),
+		Outcome:  outcomeOf(g, t),
+		Speaking: who,
+		State:    core.StateDigest(g, t).Lines(),
+	}, true
+}
+
 // PlaceProse — проза описания места (как Render.Scene).
 func PlaceProse(g *core.Game) Prose {
 	return Prose{

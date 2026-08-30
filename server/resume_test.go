@@ -129,6 +129,10 @@ func TestWSReconnectResumesProse(t *testing.T) {
 	m := narratorManager(t, "Причал тонет в тумане, доски скрипят под ногой")
 	srv := New(m)
 	id, _ := m.Create("harbour", 1, "test-user")
+	// Дожидаемся вводной прозы, иначе первый ход отменит её на полуслове и лента
+	// станет недетерминированной (опенинг то попадёт в неё, то нет).
+	rt, _ := m.Get(id)
+	waitOpeningDone(t, rt)
 
 	// Первое соединение: играем ход, дожидаемся done.
 	c1, done1 := wsDial(t, srv, id, "dev")
@@ -160,13 +164,21 @@ func TestWSReconnectResumesProse(t *testing.T) {
 	}
 	var tp transcriptPayload
 	json.Unmarshal(tf.Payload, &tp)
-	var gm string
+	// Ход мог дать несколько сегментов прозы (обрамление gm + реплика npc);
+	// поток дельт — их конкатенация. Опенинг лежит ДО действия игрока, поэтому
+	// сравниваем только прозу после player-записи.
+	var prose string
+	seenPlayer := false
 	for _, e := range tp.Entries {
-		if e.Role == RoleGM {
-			gm = e.Text
+		if e.Role == RolePlayer {
+			seenPlayer = true
+			continue
+		}
+		if seenPlayer && (e.Role == RoleGM || e.Role == RoleNPC) {
+			prose += e.Text
 		}
 	}
-	if gm != first {
-		t.Fatalf("проза в ленте разошлась с ходом:\nход:  %q\nлента: %q", first, gm)
+	if prose != first {
+		t.Fatalf("проза в ленте разошлась с ходом:\nход:  %q\nлента: %q", first, prose)
 	}
 }
