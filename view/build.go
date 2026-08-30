@@ -188,6 +188,10 @@ func affordanceAction(g *core.Game, a core.Affordance) string {
 		return "заговорить с " + entityName(g, args.Target)
 	case "question":
 		return "расспросить " + entityName(g, args.Target)
+	case "ask_about":
+		return "поговорить о другом"
+	case "threaten_verbally":
+		return "надавить"
 	case "examine":
 		return "осмотреть " + entityName(g, args.Target)
 	case "move_zone":

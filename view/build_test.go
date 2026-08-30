@@ -9,6 +9,25 @@ import (
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 )
 
+// Диалоговые вербы получают человеческий лейбл, а не сырой «глагол цель».
+func TestAffordanceLabelForConversationalVerbs(t *testing.T) {
+	g := buildGame(t)
+	cases := []struct {
+		verb  core.Verb
+		check core.VerbClass
+		want  string
+	}{
+		{"ask_about", core.ClassSocial, "поговорить о другом [общение]"},
+		{"threaten_verbally", core.ClassSocial, "надавить [общение]"},
+	}
+	for _, c := range cases {
+		a := core.Affordance{Intent: core.Intent{Verb: c.verb, Args: core.Args{Target: "e_bern"}}, Check: c.check}
+		if got := AffordanceLabel(g, a); got != c.want {
+			t.Errorf("%s → %q, ждали %q", c.verb, got, c.want)
+		}
+	}
+}
+
 func buildGame(t *testing.T) *core.Game {
 	t.Helper()
 	cfg, err := cases.Load("../cases/testdata/minimal.json")

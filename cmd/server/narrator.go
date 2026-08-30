@@ -49,10 +49,13 @@ func buildNarrator() (*master.Master, *intent.Parser, error) {
 	}
 
 	capDay := envFloat("CAP_DAY", 1.0)
-	// RoleIntentParser — разбор свободного ввода: тот же таргет, что у прозы.
+	// Разбор свободного ввода — тот же таргет, что у прозы. Чат-парсер (один
+	// вызов: разбор + реплика) ходит под RoleChatMaster; RoleIntentParser
+	// зароучен на будущее (нечат-режим), лишним не бывает.
 	router := llm.NewRouter().
 		Route(llm.RoleNarrator, target).
 		Route(llm.RoleCanonGuard, target).
+		Route(llm.RoleChatMaster, target).
 		Route(llm.RoleIntentParser, target)
 	if cheap.Provider != nil && cheap.Model != "" {
 		router.RouteCheap(llm.RoleNarrator, cheap)
