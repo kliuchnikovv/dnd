@@ -28,6 +28,16 @@ test('streaming-блок с текстом рисует прозу, а не ло
     expect(queryByLabelText('Мастер печатает')).toBeNull();
 });
 
+test('resolution-блок рисует карточку броска инлайн в ленте', async () => {
+    const { getByText } = await mount([
+        { kind: 'player', text: 'осмотреть журнал' },
+        { kind: 'resolution', text: '', resolution: { target: 12, margin: 1, outcome: { label: 'провал', tier: 'fail' }, terms: [{ label: 'внимание', value: 2 }] } } as unknown as Block,
+        { kind: 'gm', text: 'В журнале не хватает страницы' },
+    ]);
+    expect(getByText(/ПРОТИВ 12/)).toBeTruthy();
+    expect(getByText(/не хватает страницы/)).toBeTruthy();
+});
+
 test('player-блок рисует эхо действия под подписью ВЫ', async () => {
     const { getByText } = await mount([
         { kind: 'player', text: 'осмотреть журнал' },

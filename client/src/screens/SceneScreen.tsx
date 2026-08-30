@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@genie/ds';
 import { useTheme } from '../theme/ThemeContext';
-import { MeterRow, NarrationFeed, OptionsRail, ResolutionCard, Composer } from '../components/turnview';
+import { MeterRow, NarrationFeed, OptionsRail, Composer } from '../components/turnview';
 import { TurnView } from '../turnview/types';
 import { Intent } from '../turnview/intents';
 import { havenMeterTone } from '../mocks/haven/skin';
@@ -37,7 +37,6 @@ export const SceneScreen: React.FC<{ view: TurnView; onIntent: (i: Intent) => vo
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
-                <ResolutionCard resolution={view.resolution} />
                 <NarrationFeed narration={view.narration} />
             </ScrollView>
 

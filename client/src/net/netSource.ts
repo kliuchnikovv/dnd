@@ -1,4 +1,4 @@
-import { TurnView, Block } from '../turnview/types';
+import { TurnView, Block, Resolution } from '../turnview/types';
 import { Intent } from '../turnview/intents';
 import { TurnViewSource } from '../turnview/source';
 import { Frame, Kind, Op } from './frame';
@@ -44,6 +44,7 @@ export class NetSource implements TurnViewSource {
   private mechanics: TurnView = PLACEHOLDER;
   private transcript: Block[] = []; // история партии; авторитетна с сервера
   private live: Block | null = null; // проза/лоадер текущего, ещё не завершённого хода
+  private awaitingResolution = false; // ждём бросок хода, чтобы вставить его в ленту по порядку
   private listeners = new Set<(v: TurnView) => void>();
   private ws: WebSocketLike | null = null;
   private outId = 0;
@@ -149,6 +150,9 @@ export class NetSource implements TurnViewSource {
       this.transcript = [...this.transcript, { kind: 'player', text: label }];
       this.emit();
     }
+    // Бросок этого хода придёт в session_state — вставим его в ленту сразу после
+    // действия (перед прозой), чтобы порядок был как в игре.
+    this.awaitingResolution = true;
     this.outId += 1;
     const frame: Frame = { id: this.outId, chat_id: this.deps.chatId, channel: 'chat', kind: Kind.data, op: Op.message, payload };
     this.ws.send(JSON.stringify(frame));
@@ -178,9 +182,17 @@ export class NetSource implements TurnViewSource {
       return;
     }
     switch (f.op) {
-      case Op.sessionState:
+      case Op.sessionState: {
         // Механика текущего хода. Лента и живой блок сохраняются.
-        this.mechanics = f.payload as TurnView;
+        const tv = f.payload as TurnView;
+        this.mechanics = tv;
+        // Бросок хода — отдельный элемент ленты сразу после действия игрока.
+        if (this.awaitingResolution) {
+          this.awaitingResolution = false;
+          if (tv.resolution) {
+            this.transcript = [...this.transcript, { kind: 'resolution', text: '', resolution: tv.resolution } as Block & { resolution: Resolution }];
+          }
+        }
         this.emit();
         if (this.pending) {
           const r = this.pending;
@@ -188,6 +200,7 @@ export class NetSource implements TurnViewSource {
           r(this.buildView());
         }
         break;
+      }
       case Op.transcript: // авторитетная история партии при коннекте
         if (f.payload?.type === 'transcript' && Array.isArray(f.payload.entries)) {
           this.transcript = f.payload.entries.map((e: { role: string; text: string; speaker?: string }) => this.toBlock(e));

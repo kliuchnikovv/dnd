@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, Text } from '@genie/ds';
 import { useTheme } from '../theme/ThemeContext';
-import { Avatar, NarrationFeed, OptionsRail, ResolutionCard, Composer } from '../components/turnview';
+import { Avatar, NarrationFeed, OptionsRail, Composer } from '../components/turnview';
 import { Icon } from '../components/Icon';
 import { TurnView, Who } from '../turnview/types';
 import { Intent } from '../turnview/intents';
@@ -72,7 +72,6 @@ export const DialogueScreen: React.FC<{
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
-                <ResolutionCard resolution={view.resolution} />
                 <NarrationFeed narration={view.narration} />
                 {echoes.map((line, i) => (
                     <Card

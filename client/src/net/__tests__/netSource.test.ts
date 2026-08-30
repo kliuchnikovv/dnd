@@ -131,6 +131,36 @@ test('start op shows a pending (empty streaming) narration block; delta replaces
   expect(net.current().narration?.[0].streaming).toBe(true);
 });
 
+test('roll lands in the feed right after the action, in order', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({})); // options: tok1
+  net.send({ kind: 'token', token: 'tok1' }); // эхо действия игрока
+  // Ответ хода с броском.
+  fake.push(
+    sessionStateFrame({
+      resolution: { target: 12, margin: 1, outcome: { label: 'с осложнением', tier: 'partial' }, terms: [{ label: 'внимание', value: 2 }] },
+    }),
+  );
+  const n = net.current().narration ?? [];
+  expect(n).toHaveLength(2);
+  expect(n[0].kind).toBe('player');
+  expect(n[1].kind).toBe('resolution');
+  expect((n[1] as { resolution?: { target: number } }).resolution?.target).toBe(12);
+});
+
+test('no roll on a turn → no resolution block', async () => {
+  const { net, fake } = makeNet();
+  await net.connect();
+  fake.open();
+  fake.push(sessionStateFrame({}));
+  net.send({ kind: 'token', token: 'tok1' });
+  fake.push(sessionStateFrame({})); // без resolution
+  const n = net.current().narration ?? [];
+  expect(n.some((b) => b.kind === 'resolution')).toBe(false);
+});
+
 test('talk turn: gm framing then npc reply become two feed blocks', async () => {
   const { net, fake } = makeNet();
   await net.connect();

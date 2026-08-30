@@ -3,9 +3,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { Card, Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
-import { Block } from '../../turnview/types';
+import { Block, Resolution } from '../../turnview/types';
 import { StreamingCursor } from './StreamingCursor';
 import { TypingIndicator } from './TypingIndicator';
+import { ResolutionCard } from './ResolutionCard';
 
 // NarrationFeed — проза в контейнере, НЕ разметка: клиент по тексту не навигирует.
 // kind различает голос Мастера ("gm", подпись slate) и реплику NPC ("npc", имя amber, курсив).
@@ -22,6 +23,11 @@ export const NarrationFeed: React.FC<{ narration?: Block[] }> = ({ narration }) 
             {narration.map((b, i) => {
                 const isNpc = b.kind === 'npc';
                 const isPlayer = b.kind === 'player';
+                // Бросок хода — инлайн в ленте (в порядке выполнения), не над ней.
+                if (b.kind === 'resolution') {
+                    const res = (b as { resolution?: Resolution }).resolution;
+                    return <ResolutionCard key={i} resolution={res} />;
+                }
                 // Проза ещё не пошла (пустой streaming-блок) — «Мастер печатает».
                 const isPending = !!b.streaming && b.text.trim() === '';
                 if (isPlayer) {
