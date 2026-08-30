@@ -786,6 +786,42 @@ func TestMissingTargetFallsBackToInterlocutor(t *testing.T) {
 	}
 }
 
+// Вопрос к собеседнику без названной цели — ask_about к нему: цель подставляется
+// из текущего разговора. Раньше такой вопрос мог уйти в clarify «к кому
+// обращаетесь», хотя собеседник известен.
+func TestQuestionToInterlocutorFillsTarget(t *testing.T) {
+	p, _ := parserWith(t, `{"outcome":"intent","verb":"ask_about"}`)
+	hint := harbourHint(t)
+	hint.Talk = Talk{With: "e_bern"}
+
+	res, err := p.Parse(context.Background(), "а что тут вообще происходит?", hint, llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Accepted() {
+		t.Fatalf("вопрос к собеседнику не принят: %q", res.Clarify)
+	}
+	if res.Intent.Args.Target != "e_bern" {
+		t.Errorf("цель %q — собеседник не подставился в ask_about", res.Intent.Args.Target)
+	}
+}
+
+// Промпт запрещает уточнять адресата, когда собеседник назван или разговор идёт,
+// и несёт пример вопроса к собеседнику о предмете сцены.
+func TestPromptForbidsClarifyingKnownAddressee(t *testing.T) {
+	p, f := parserWith(t, `{"outcome":"intent","verb":"ask_about","target":"e_bern"}`)
+	if _, err := p.Parse(context.Background(), "что это за бочки?", harbourHint(t), llm.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.Calls()[0].System
+	if !strings.Contains(sys, "Уточняют ДЕЙСТВИЕ, а не адресата") {
+		t.Errorf("промпт не запрещает уточнять адресата:\n%s", sys)
+	}
+	if !strings.Contains(sys, `«а что это за штабель бочек?»`) {
+		t.Errorf("нет примера вопроса к собеседнику о предмете:\n%s", sys)
+	}
+}
+
 // Собеседник подставляется, только если он всё ещё в сцене: иначе игрок
 // обращается к тому, кто ушёл.
 func TestInterlocutorOutsideSceneIsNotSubstituted(t *testing.T) {
