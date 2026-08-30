@@ -60,6 +60,21 @@ func ProbeProse(g *core.Game, probe core.Probe) Prose {
 	}
 }
 
+// clarifyFallback — отклик на неясное обращение, когда Мастера нет: игра без
+// моделей работает как раньше, а молчание игрок читает как поломку.
+const clarifyFallback = "Ваши слова повисли без ответа — непонятно, к кому вы обращаетесь."
+
+// ClarifyProse — диегетический отклик на неясное обращение: мир не понял игрока
+// и ждёт, пока он скажет яснее. Рамка кодовая (авторской под это нет), гвардить
+// нечем — состояние не менялось.
+func ClarifyProse(g *core.Game) Prose {
+	return Prose{
+		Kind:  ProseClarify,
+		Frame: clarifyFallback,
+		Scene: sceneOf(g),
+	}
+}
+
 // PlaceProse — проза описания места (как Render.Scene).
 func PlaceProse(g *core.Game) Prose {
 	return Prose{

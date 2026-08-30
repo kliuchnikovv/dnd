@@ -178,24 +178,6 @@ func (rt *sessionRuntime) persistSegment(gen int, role, speaker string) bool {
 	return true
 }
 
-// emitFixedProseLocked мгновенно кладёт готовый текст (не от LLM — встречный
-// вопрос интерпретатора) в ленту как завершённый gm-блок: start + delta + done.
-// Отменяет незавершённую генерацию, чтобы лоадер сменился текстом. Под rt.mu.
-func (rt *sessionRuntime) emitFixedProseLocked(text string) {
-	if rt.genCancel != nil {
-		rt.genCancel()
-		rt.genCancel = nil
-	}
-	rt.narrateGen++
-	rt.narration = nil
-	rt.narrating = false
-	rt.appendTranscriptLocked(TranscriptEntry{Role: RoleGM, Text: text})
-	rt.broadcastLocked(rt.startFrameLocked(RoleGM, ""))
-	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
-		KindData, OpMessage, textDelta{Type: "text", Delta: text, IX: 0}))
-	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpDone, nil))
-}
-
 // emitDelta кладёт дельту в буфер и рассылает её. false означает, что это
 // поколение устарело (пришёл новый ход) — горутине пора замолчать.
 func (rt *sessionRuntime) emitDelta(gen int, text string, ix int) bool {
@@ -259,6 +241,8 @@ func kindOf(k cli.ProseKind) master.Kind {
 		return master.KindProbe
 	case cli.ProseReply:
 		return master.KindReply
+	case cli.ProseClarify:
+		return master.KindClarify
 	default:
 		return master.KindOutcome
 	}

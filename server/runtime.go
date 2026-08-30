@@ -220,15 +220,17 @@ func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, s
 		rt.launchSegmentsLocked([]proseSegment{{pr: cli.ProbeProse(rt.game, probe), role: RoleGM}})
 		return true, ""
 	case inp == nil:
-		// Уточнение: Мастер задаёт встречный вопрос, ход не состоялся.
+		// Неясное обращение: ход не состоялся. Подсказку интерпретатора держим
+		// внутренним pending (для следующего разбора), а игроку показываем
+		// диегетическую прозу — мир не понял и ждёт, пока скажет яснее.
 		q := clarify
 		if strings.TrimSpace(q) == "" {
-			q = "Уточните, что именно вы делаете."
+			q = "Уточните, к кому вы обращаетесь и что делаете."
 		}
 		rt.pending = q
 		rt.appendTranscriptLocked(TranscriptEntry{Role: RolePlayer, Text: text})
 		rt.broadcastLocked(rt.snapshotViewLocked())
-		rt.emitFixedProseLocked(q)
+		rt.launchSegmentsLocked([]proseSegment{{pr: cli.ClarifyProse(rt.game), role: RoleGM}})
 		return true, ""
 	default:
 		intent := *inp

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/core"
@@ -102,8 +101,9 @@ func TestFreeInputProbeNarrates(t *testing.T) {
 	}
 }
 
-// Неоднозначный текст → уточнение: Мастер задаёт встречный вопрос, ставит
-// pending, ход не состоялся (журнал пуст), вопрос виден дельтой.
+// Неоднозначный текст → уточнение: игроку идёт диегетическая проза (не служебный
+// вопрос), подсказка интерпретатора держится во внутреннем pending, ход не
+// состоялся (журнал пуст), в ленте — эхо игрока + прозаический отклик.
 func TestFreeInputClarifyAsks(t *testing.T) {
 	rt, id := freeSession(t, fakeInterp{clarify: "К кому вы обращаетесь?"})
 
@@ -111,22 +111,26 @@ func TestFreeInputClarifyAsks(t *testing.T) {
 	rt.applyInput(context.Background(), 1, inputPayload{Text: "спросить"})
 	frames := collectUntilDone(t, sub)
 
-	var q string
+	var prose string
 	for _, f := range frames {
 		if f.Op == OpMessage && f.Kind == KindData {
 			var d textDelta
 			_ = json.Unmarshal(f.Payload, &d)
-			q += d.Delta
+			prose += d.Delta
 		}
 	}
-	if !strings.Contains(q, "К кому вы обращаетесь") {
-		t.Fatalf("встречный вопрос не доехал дельтой: %q", q)
+	if prose == "" {
+		t.Fatal("уточнение не дало прозы игроку")
 	}
 	rt.mu.Lock()
 	pending := rt.pending
 	rt.mu.Unlock()
-	if pending == "" {
-		t.Fatal("уточнение не выставило pending")
+	if pending != "К кому вы обращаетесь?" {
+		t.Fatalf("подсказка интерпретатора не легла во внутренний pending: %q", pending)
+	}
+	e := transcriptRoles(t, rt, id)
+	if n := len(e); n < 2 || e[n-2].Role != RolePlayer || e[n-1].Role != RoleGM {
+		t.Fatalf("уточнение не дало [player, gm] в ленте: %+v", e)
 	}
 	cmds, _ := rt.store.Commands(context.Background(), store.SessionID(id))
 	if len(cmds) != 0 {

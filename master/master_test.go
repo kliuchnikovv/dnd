@@ -246,6 +246,21 @@ func TestReplyVoicesTheCharacter(t *testing.T) {
 	}
 }
 
+// KindClarify описывает неясное обращение диегетически: мир не понял игрока,
+// без служебного «уточни» и без разрешения хода.
+func TestClarifyNarratesDiegetically(t *testing.T) {
+	m, f := masterWith(t, "Ваши слова тонут в шуме дождя.")
+	m.Narrate(context.Background(), KindClarify, "слова повисли без ответа", World{},
+		nil, "", nil, llm.Request{})
+	in := f.Calls()[0].Input
+	if !strings.Contains(in, "НЕЯСНОЕ ОБРАЩЕНИЕ") {
+		t.Errorf("clarify-тело не про неясное обращение:\n%s", in)
+	}
+	if strings.Contains(in, "уточни,") {
+		t.Errorf("в clarify не должно быть служебного «уточни»:\n%s", in)
+	}
+}
+
 // Вся авторская проза дела обращается к игроку на «вы»; «ты» посреди неё
 // читается как другой голос. Живой прогон дал и то и другое в одном экране.
 func TestNarratePinsTheFormOfAddress(t *testing.T) {
