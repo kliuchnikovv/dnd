@@ -20,6 +20,7 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/intent"
+	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
@@ -126,7 +127,10 @@ func (m *Manager) newInterp(game *core.Game) chatInterpreter {
 	if m.parser == nil {
 		return nil
 	}
-	return &intent.GameInterpreter{Parser: m.parser, Game: game}
+	// MaxTokens обязателен: без него провайдер резервирует дефолтный максимум
+	// модели (напр. 64k), и OpenRouter отбивает запрос по кредитам (402). Разбор
+	// + короткая реплика в 1024 укладываются с запасом.
+	return &intent.GameInterpreter{Parser: m.parser, Game: game, Req: llm.Request{MaxTokens: 1024}}
 }
 
 // NewManager строит менеджер с журналом в памяти — MVP без БД и основа тестов.
