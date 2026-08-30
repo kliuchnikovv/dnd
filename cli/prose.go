@@ -45,6 +45,21 @@ func ReplyProse(g *core.Game, in core.Intent, t core.TurnResult) (Prose, bool) {
 	}, true
 }
 
+// ProbeProse — отклик мира на свободную пробу (ввод, который словарь не выразил
+// и который не задел авторскую цель). Ход проба не тратит, канон не меняет —
+// чистое повествование. Текст пробы едет Мастеру слотом outcome «Игрок пробует:
+// …» (так же, как cmd/dnd), рамка кодовая (авторской под пробу нет).
+func ProbeProse(g *core.Game, probe core.Probe) Prose {
+	return Prose{
+		Kind:    ProseProbe,
+		Frame:   probeFallback,
+		Probe:   probe.Text,
+		Outcome: []string{"Игрок пробует: " + probe.Text},
+		Scene:   sceneOf(g),
+		State:   core.StateDigest(g, core.TurnResult{}).Lines(),
+	}
+}
+
 // PlaceProse — проза описания места (как Render.Scene).
 func PlaceProse(g *core.Game) Prose {
 	return Prose{

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/kliuchnikovv/dnd/guard"
+	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 )
@@ -24,33 +25,35 @@ import (
 //	PRICE_IN_CHEAP/OUT_CHEAP  то же для дешёвой модели
 //	GUARD_LINES     проверять прозу гвардом (по умолчанию true)
 //	OPENROUTER_API_KEY / ANTHROPIC_API_KEY  читают провайдеры сами
-func buildNarrator() (*master.Master, error) {
+func buildNarrator() (*master.Master, *intent.Parser, error) {
 	model := os.Getenv("MODEL")
 	if model == "" {
 		log.Printf("проза: выключена (MODEL не задан) — сервер отдаёт только механику")
-		return nil, nil
+		return nil, nil, nil
 	}
 	provider := env("PROVIDER", "openrouter")
 	target, err := resolveProvider(provider, model)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := ensurePrice(target.Model, envFloat("PRICE_IN", 0), envFloat("PRICE_OUT", 0)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var cheap llm.Target
 	if mc := os.Getenv("MODEL_CHEAP"); mc != "" {
 		cheap = llm.Target{Provider: target.Provider, Model: mc}
 		if err := ensurePrice(mc, envFloat("PRICE_IN_CHEAP", 0), envFloat("PRICE_OUT_CHEAP", 0)); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	capDay := envFloat("CAP_DAY", 1.0)
+	// RoleIntentParser — разбор свободного ввода: тот же таргет, что у прозы.
 	router := llm.NewRouter().
 		Route(llm.RoleNarrator, target).
-		Route(llm.RoleCanonGuard, target)
+		Route(llm.RoleCanonGuard, target).
+		Route(llm.RoleIntentParser, target)
 	if cheap.Provider != nil && cheap.Model != "" {
 		router.RouteCheap(llm.RoleNarrator, cheap)
 	}
@@ -64,8 +67,11 @@ func buildNarrator() (*master.Master, error) {
 	if envBool("GUARD_LINES", true) {
 		ms = ms.WithGuard(guard.New(gw))
 	}
-	log.Printf("проза: включена (provider=%s model=%s guard=%v)", provider, model, envBool("GUARD_LINES", true))
-	return ms, nil
+	// Чат-парсер: один вызов даёт и разбор текста, и реплику (для свободного ввода).
+	parser := intent.NewChatParser(gw)
+	log.Printf("проза: включена (provider=%s model=%s guard=%v); свободный ввод: включён",
+		provider, model, envBool("GUARD_LINES", true))
+	return ms, parser, nil
 }
 
 // resolveProvider — тот же выбор, что в cmd/dnd. Ключ провайдер читает из

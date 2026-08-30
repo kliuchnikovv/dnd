@@ -19,6 +19,7 @@ import (
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/dice"
+	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
@@ -42,6 +43,9 @@ type sessionRuntime struct {
 	// (сервер без сконфигурированного LLM): ходы применяются, session_state
 	// уходит, прозы просто нет.
 	narrator *master.Master
+	// interp — разбор свободного ввода в интент/пробу/уточнение. nil означает,
+	// что связный текст не разбирается: принимаются только варианты и номера.
+	interp chatInterpreter
 
 	mu   sync.Mutex
 	game *core.Game
@@ -63,6 +67,9 @@ type sessionRuntime struct {
 	// spokenTo — последний адресат: разговор продолжается с тем же NPC, пока
 	// игрок не обратится к другому. Определяет набор аффордансов хода.
 	spokenTo store.EntityID
+	// pending — заданный Мастером встречный вопрос (уточнение): следующий
+	// свободный ввод разбирается как ответ на него. Пусто — вопроса нет.
+	pending string
 	// lastAppliedID — наибольший applied Frame.ID: клиент шлёт монотонный
 	// счётчик, переживающий реконнект, поэтому повтор (id <= lastApplied) —
 	// это дубль доставки, а не новый ход. Идемпотентность хода.
@@ -90,6 +97,8 @@ type Manager struct {
 	// narrator — общий Мастер для стрима прозы, один на все сессии (шлюз и
 	// ledger потокобезопасны). nil означает сервер без прозы.
 	narrator *master.Master
+	// parser — общий интерпретатор свободного ввода. nil — только варианты/номера.
+	parser *intent.Parser
 
 	mu       sync.Mutex
 	sessions map[string]*sessionRuntime
@@ -100,6 +109,24 @@ type Manager struct {
 func (m *Manager) WithNarrator(ms *master.Master) *Manager {
 	m.narrator = ms
 	return m
+}
+
+// WithInterpreter включает разбор свободного ввода: связный текст игрока пойдёт
+// через парсер в интент/пробу/уточнение. Без него принимаются только варианты и
+// номера (как в фазах до чат-режима).
+func (m *Manager) WithInterpreter(p *intent.Parser) *Manager {
+	m.parser = p
+	return m
+}
+
+// newInterp строит интерпретатор свободного ввода для одной сессии: разбору
+// нужна её игра. nil, если парсер не задан (сервер без свободного ввода). Явный
+// nil, а не типизированный: interpretFreeLocked проверяет interp == nil.
+func (m *Manager) newInterp(game *core.Game) chatInterpreter {
+	if m.parser == nil {
+		return nil
+	}
+	return &intent.GameInterpreter{Parser: m.parser, Game: game}
 }
 
 // NewManager строит менеджер с журналом в памяти — MVP без БД и основа тестов.
@@ -146,6 +173,7 @@ func (m *Manager) Create(caseName string, seed int64, userID string) (string, er
 		store:    m.store,
 		userID:   userID,
 		narrator: m.narrator,
+		interp:   m.newInterp(game),
 		game:     game,
 		subs:     make(map[*subscriber]struct{}),
 	}
@@ -209,6 +237,7 @@ func (m *Manager) reconstruct(chatID string) (*sessionRuntime, bool) {
 		store:    m.store,
 		userID:   rec.UserID,
 		narrator: m.narrator,
+		interp:   m.newInterp(game),
 		game:     game,
 		subs:     make(map[*subscriber]struct{}),
 	}

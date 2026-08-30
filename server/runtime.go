@@ -7,12 +7,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/view"
 )
+
+// chatInterpreter — разбор свободного ввода игрока. За ним intent.GameInterpreter
+// (LLM), в тестах — фейк. Отдаёт интент (обычный ход), пробу (мир отвечает без
+// хода), уточнение (встречный вопрос) — ровно то, чем ветвится interpretFreeLocked.
+type chatInterpreter interface {
+	InterpretChat(ctx context.Context, text string, with store.EntityID, pending string) (*core.Intent, string, core.Probe, string, error)
+}
 
 // turnViewVersion — версия формы turn-view, которую отдаёт сервер. Совпадает с
 // той, что проставляет view.Build; сервер лишь пересылает.
@@ -91,15 +99,21 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 	}
 
 	offered := rt.game.Affordances(rt.spokenTo)
-	aff, ok := expand(offered, in)
-	if !ok {
-		return false, "ход не разворачивается в показанный вариант"
+	if aff, ok := expand(offered, in); ok {
+		intent := aff.Intent
+		intent.Actor = rt.game.Actor
+		// Лейбл действия для ленты — тот же, что игрок видел на кнопке.
+		return rt.applyIntentLocked(ctx, frameID, intent, view.AffordanceLabel(rt.game, aff))
 	}
-	// Лейбл действия для ленты — тот же, что игрок видел на кнопке.
-	actionLabel := view.AffordanceLabel(rt.game, aff)
-	intent := aff.Intent
-	intent.Actor = rt.game.Actor
+	// Связный текст: разбираем интерпретатором (интент / проба / уточнение).
+	return rt.interpretFreeLocked(frameID, strings.TrimSpace(in.Text))
+}
 
+// applyIntentLocked проводит один интент через журнал и ядро, рассылает
+// session_state, пишет эхо действия в ленту и запускает прозу. Общий низ для
+// хода-варианта и хода из разобранного текста. actionLabel — подпись действия в
+// ленте. frameID==0 означает, что дедуп уже сделан вызывающим. Под rt.mu.
+func (rt *sessionRuntime) applyIntentLocked(ctx context.Context, frameID int, intent core.Intent, actionLabel string) (bool, string) {
 	// Журнал ДО обработки (ADR-0002): команда ложится как pending раньше, чем
 	// ядро тронуло состояние. Падение между записью и применением лечит реплей
 	// хвоста — команда получит applied, ход не повторится.
@@ -144,10 +158,7 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 
 	// Эхо действия в ленту. Не канон (источник правды — command_log), поэтому
 	// ошибку записи не эскалируем в отказ применённого хода, но делаем слышимой.
-	if err := rt.store.AppendTranscript(ctx, store.SessionID(rt.chatID),
-		TranscriptEntry{Role: RolePlayer, Text: actionLabel}); err != nil {
-		log.Printf("лента: действие игрока не записано: %v", err)
-	}
+	rt.appendTranscriptLocked(TranscriptEntry{Role: RolePlayer, Text: actionLabel})
 
 	tv := view.Build(rt.game, res, nil, serverRuleset, serverScenario, rt.spokenTo)
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
@@ -157,6 +168,81 @@ func (rt *sessionRuntime) applyInput(ctx context.Context, frameID int, in inputP
 	// аргументы Мастеру снимаются со свежего состояния.
 	rt.startProseLocked(intent, res)
 	return true, ""
+}
+
+// interpretFreeLocked разбирает связный текст интерпретатором и разводит по трём
+// исходам: интент (обычный ход), проба (мир отвечает, канон не меняется) и
+// уточнение (Мастер задаёт встречный вопрос). Интерпретация идёт LLM-вызовом ПОД
+// rt.mu — сессия однопользовательская, а лоадер уходит клиенту раньше вызова
+// (broadcast неблокирующий), поэтому «Мастер печатает» виден, пока разбираем.
+// Разбор на detached-контексте: обрыв сокета его не роняет. Под rt.mu.
+func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, string) {
+	if rt.interp == nil || text == "" {
+		return false, "ход не разворачивается в показанный вариант"
+	}
+	if frameID != 0 {
+		rt.lastAppliedID = frameID
+	}
+	// Лоадер до разбора: клиент видит «Мастер печатает», пока идёт LLM.
+	if rt.genCancel != nil {
+		rt.genCancel()
+		rt.genCancel = nil
+	}
+	rt.narrateGen++
+	rt.narrating = true
+	rt.narrateRole = RoleGM
+	rt.narrateSpeaker = ""
+	rt.narration = nil
+	rt.broadcastLocked(rt.startFrameLocked(RoleGM, ""))
+
+	pending := rt.pending
+	rt.pending = "" // вопрос задан один раз: ответ на него уже пришёл
+	inp, _, probe, clarify, err := rt.interp.InterpretChat(context.Background(), text, rt.spokenTo, pending)
+
+	switch {
+	case err != nil:
+		// Сбой переводчика — не отказ мира: сообщаем ошибкой-кадром, лоадер гасим.
+		rt.narrating = false
+		rt.broadcastLocked(errorFrame(rt.nextOutIDLocked(), rt.chatID,
+			"переводчик недоступен: "+err.Error()))
+		return true, ""
+	case probe.Text != "":
+		// Авторский контент достижим словами: если проба назвала цель, за которой
+		// что-то положено, это обычный ход (канон меняется валидируемо ядром).
+		if in, ok := rt.game.MatchProbeAs(probe); ok {
+			in.Actor = rt.game.Actor
+			return rt.applyIntentLocked(context.Background(), 0, in, text)
+		}
+		// Иначе чистое повествование: мир отвечает, состояние не меняется, ход
+		// не тратится (журнала нет). Эхо действия + отклик пробы в ленту.
+		rt.appendTranscriptLocked(TranscriptEntry{Role: RolePlayer, Text: text})
+		rt.broadcastLocked(rt.snapshotViewLocked())
+		rt.launchSegmentsLocked([]proseSegment{{pr: cli.ProbeProse(rt.game, probe), role: RoleGM}})
+		return true, ""
+	case inp == nil:
+		// Уточнение: Мастер задаёт встречный вопрос, ход не состоялся.
+		q := clarify
+		if strings.TrimSpace(q) == "" {
+			q = "Уточните, что именно вы делаете."
+		}
+		rt.pending = q
+		rt.appendTranscriptLocked(TranscriptEntry{Role: RolePlayer, Text: text})
+		rt.broadcastLocked(rt.snapshotViewLocked())
+		rt.emitFixedProseLocked(q)
+		return true, ""
+	default:
+		intent := *inp
+		intent.Actor = rt.game.Actor
+		return rt.applyIntentLocked(context.Background(), 0, intent, text)
+	}
+}
+
+// appendTranscriptLocked пишет запись ленты best-effort: лента не канон, ошибку
+// не эскалируем в отказ хода, но делаем слышимой. Под rt.mu.
+func (rt *sessionRuntime) appendTranscriptLocked(e TranscriptEntry) {
+	if err := rt.store.AppendTranscript(context.Background(), store.SessionID(rt.chatID), e); err != nil {
+		log.Printf("лента: запись не легла: %v", err)
+	}
 }
 
 // advance применяет интент к ядру и доводит состояние до полного: резолв броска
