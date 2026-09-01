@@ -104,6 +104,9 @@ type Game struct {
 	// оценивает и не тратит на них ход: это заметки игрока, а не факты.
 	Theories []string
 
+	// Encounter — состояние боя. nil — бой не идёт.
+	Encounter *Encounter
+
 	truth     accusation.Truth
 	tokens    []TokenGrant
 	flavour   map[string]string
