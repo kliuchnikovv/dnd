@@ -164,6 +164,77 @@ func TestBuildNotEndedAtStart(t *testing.T) {
 	}
 }
 
+// buildAdventureGame — mini_adventure.json (scenario: "adventure") вместо
+// minimal.json: единственный фикстур в репозитории, где g.Scenario.Kind() ==
+// core.ScenarioAdventure, а не дефолтный "deduction" (cases/load.go).
+func buildAdventureGame(t *testing.T) *core.Game {
+	t.Helper()
+	cfg, err := cases.Load("../cases/testdata/mini_adventure.json")
+	if err != nil {
+		t.Fatalf("загрузка дела: %v", err)
+	}
+	cfg.Rules = threshold.New()
+	cfg.Dice = dice.NewSource(1).Stream("resolve")
+	return core.NewGame(*cfg)
+}
+
+// TestBuildRoutesObjectiveToAdventurePanelByScenarioKind — приключение несёт
+// панель прямо в core.Scenario (Task 20: health/map/inventory), и Build обязан
+// взять её оттуда по g.Scenario.Kind(), а не молчать/подсовывать sc.Objective
+// (детективную ось, которую adventure-игра вообще не заполняла бы своим
+// смыслом). sc здесь — заведомо сентинел: если бы Objective просочился из
+// него, а не из ядра, тест поймал бы это по Kind.
+func TestBuildRoutesObjectiveToAdventurePanelByScenarioKind(t *testing.T) {
+	g := buildAdventureGame(t)
+	sc := fakeScenario{panel: &Panel{Kind: "sentinel", Title: "не отсюда"}}
+	tv := Build(g, core.TurnResult{}, nil, noRule, sc, "")
+
+	if tv.Objective == nil {
+		t.Fatal("панель adventure потерялась")
+	}
+	if tv.Objective.Kind != "adventure" {
+		t.Errorf("панель взята не из core.Scenario: Kind=%q", tv.Objective.Kind)
+	}
+	var kinds []string
+	for _, s := range tv.Objective.Sections {
+		kinds = append(kinds, s.Label)
+	}
+	for _, want := range []string{"health", "map", "inventory"} {
+		found := false
+		for _, k := range kinds {
+			if k == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("нет секции %q среди %v", want, kinds)
+		}
+	}
+	if found := func() bool {
+		for _, k := range kinds {
+			if k == "initiative" {
+				return true
+			}
+		}
+		return false
+	}(); found {
+		t.Errorf("вне боя секции initiative быть не должно: %v", kinds)
+	}
+}
+
+// TestBuildDeductionUnaffectedByAdventureRouting — регрессия: деловое досье
+// (harbour/forte_merlo — тоже дефолтный "deduction", как minimal.json) идёт
+// прежним путём sc.Objective(g), а не веткой adventure. Ловит порчу маршрута
+// objectiveOf при рефакторинге условия.
+func TestBuildDeductionUnaffectedByAdventureRouting(t *testing.T) {
+	g := buildGame(t)
+	sc := fakeScenario{panel: &Panel{Kind: "deduction", Title: "Досье"}}
+	tv := Build(g, core.TurnResult{}, nil, noRule, sc, "")
+	if tv.Objective == nil || tv.Objective.Kind != "deduction" {
+		t.Errorf("детективная панель не пришла от sc.Objective: %+v", tv.Objective)
+	}
+}
+
 // TestEndingOf — развязка по состоянию: раскрытое дело важнее висяка, висяк —
 // только у остановившегося прогона с текстом.
 func TestEndingOf(t *testing.T) {

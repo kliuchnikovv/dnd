@@ -44,11 +44,49 @@ func Build(g *core.Game, res core.TurnResult, narration []Block, rs Ruleset, sc 
 		Resolution:   resolutionOf(res),
 		Meters:       rs.Meters(g),
 		Options:      optionsOf(g, with),
-		Objective:    sc.Objective(g),
+		Objective:    objectiveOf(g, sc),
 		Participants: participantsOf(g),
 		Ended:        endingOf(g.Solved(), g.Stalled(), g.ColdCase()),
 	}
 	return tv
+}
+
+// objectiveOf — панель цели: ось выбирается по архетипу ядра (g.Scenario.Kind),
+// не по инъецированному sc. Приключение несёт свою панель прямо в core.Scenario
+// (Task 20: здоровье/карта/инвентарь/инициатива) — она уходит клиенту через
+// panelFromCore, минуя sc. Любой другой архетип (детектив и то, что появится
+// после него) идёт старым путём: sc.Objective(g), т.е. презентационная ось,
+// заданная сервером/CLI отдельно от ядра (cli.Detective). Это позволяет не
+// трогать сигнатуру Build/Scenario и не плодить их по одной на архетип —
+// маршрут только у Objective, единственного места, где core.Scenario уже
+// несёт готовый дескриптор сам.
+func objectiveOf(g *core.Game, sc Scenario) *Panel {
+	if g.Scenario != nil && g.Scenario.Kind() == core.ScenarioAdventure {
+		return panelFromCore(g.Scenario.Panel(g))
+	}
+	return sc.Objective(g)
+}
+
+// panelFromCore — адаптер core.Panel → view.Panel для архетипов, чья панель
+// целиком собрана в ядре (сейчас — только adventure). core.PanelSection.Kind
+// несёт машинное имя секции ("health"/"map"/"inventory"/"initiative"); клиент
+// рисует по нему конкретную форму (HP-бар, список узлов, инициатива), поэтому
+// Kind ложится в Section.Label — единственное поле общей формы, способное
+// пронести машинный идентификатор без изменения формы вида. Каждый
+// core.PanelSlot{Key,Value} — уже готовая пара «что/значение» без confidence
+// или источников детектива, поэтому ложится в Slot{Name,Label} напрямую, без
+// Filled/Options (эта пара — семантика занятой ячейки казебука, приключению
+// она не нужна).
+func panelFromCore(p core.Panel) *Panel {
+	out := &Panel{Kind: "adventure", Title: "Приключение", Surface: true}
+	for _, s := range p.Sections {
+		sec := Section{Label: s.Kind}
+		for _, sl := range s.Slots {
+			sec.Slots = append(sec.Slots, Slot{Name: sl.Key, Label: sl.Value})
+		}
+		out.Sections = append(out.Sections, sec)
+	}
+	return out
 }
 
 // version — версия формы вида. Отдельной константой, а не литералом в Build:
