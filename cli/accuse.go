@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
-	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/core/scenarios/deduction/accusation"
 	"github.com/kliuchnikovv/dnd/store"
 )
 

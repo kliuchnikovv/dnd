@@ -6,8 +6,13 @@ import (
 	"os"
 
 	"github.com/kliuchnikovv/dnd/core"
-	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/core/scenarios/deduction/accusation"
 	"github.com/kliuchnikovv/dnd/store"
+
+	// Дефолт сценария — "deduction". Пакет-загрузчик гарантирует его наличие
+	// в реестре независимо от того, кто вызвал cases.Load: без этого импорта
+	// любое дело без явного поля "scenario" отказывалось бы загружаться.
+	_ "github.com/kliuchnikovv/dnd/core/scenarios/deduction"
 )
 
 // defaultParty — та же строка, которой пользуется ядро для одиночной игры.
@@ -124,7 +129,17 @@ func Parse(raw []byte) (*core.Config, error) {
 		return nil, err
 	}
 
+	kind := f.Scenario
+	if kind == "" {
+		kind = core.ScenarioDeduction
+	}
+	sc, ok := core.LookupScenario(kind)
+	if !ok {
+		return nil, fmt.Errorf("cases: неизвестный сценарий %q (импорт пакета?)", kind)
+	}
+
 	return &core.Config{
+		Scenario:    sc,
 		DB:          db,
 		Truth:       accusation.NewTruth(f.Truth.Who, f.Truth.How, f.Truth.When, f.Truth.Why),
 		Flavour:     f.Flavour,

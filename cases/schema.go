@@ -4,6 +4,7 @@ package cases
 import (
 	"encoding/json"
 
+	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -14,6 +15,10 @@ type File struct {
 	Archetype string       `json:"archetype"`
 	Start     store.NodeID `json:"start"`
 	Actor     string       `json:"actor"`
+
+	// Scenario — какой архетип держит цель и условие победы. Отсутствует —
+	// читается как "deduction" (обратная совместимость с M1a-кейсами).
+	Scenario core.ScenarioKind `json:"scenario"`
 
 	Character struct {
 		ID    string          `json:"id"`

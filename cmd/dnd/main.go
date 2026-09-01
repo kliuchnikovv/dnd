@@ -25,6 +25,8 @@ import (
 	"github.com/kliuchnikovv/dnd/cases"
 	"github.com/kliuchnikovv/dnd/cli"
 	"github.com/kliuchnikovv/dnd/core"
+	// Регистрирует архетип "deduction" в реестре сценариев (см. core/scenario.go).
+	_ "github.com/kliuchnikovv/dnd/core/scenarios/deduction"
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/intent"

@@ -1,7 +1,7 @@
 package core
 
 import (
-	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/core/scenarios/deduction/accusation"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -31,7 +31,10 @@ type Config struct {
 	Party   string
 	Rules   RuleSystem
 	Dice    Dice
-	Truth   accusation.Truth
+	// Scenario — архетип прогона: держит цель, условие победы, панель
+	// клиента и AI монстров. Не должен быть nil к моменту NewGame.
+	Scenario Scenario
+	Truth    accusation.Truth
 	Flavour map[string]string
 	// Setting — сеттинг-библия дела: место, время, уклад, погода, то, что
 	// «все и так знают». Домен её не читает: это материал для слоя над ним.
@@ -61,6 +64,9 @@ type Game struct {
 	Dice  Dice
 	K     *Knowledge
 	C     *Clocks
+	// Scenario — архетип прогона: держит цель, условие победы, панель
+	// клиента и AI монстров.
+	Scenario Scenario
 
 	Node     store.NodeID
 	Actor    store.CharacterID
@@ -122,7 +128,8 @@ func NewGame(cfg Config) *Game {
 	g := &Game{
 		DB: cfg.DB, Rules: cfg.Rules, Dice: cfg.Dice,
 		K: NewKnowledge(cfg.DB), C: NewClocks(cfg.DB),
-		Node: cfg.Start, Actor: cfg.Actor,
+		Scenario: cfg.Scenario,
+		Node:     cfg.Start, Actor: cfg.Actor,
 		party: party(cfg.Party),
 		D:     NewDossiers(cfg.DB, party(cfg.Party)),
 		Debts: map[store.EntityID]int{},
