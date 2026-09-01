@@ -39,48 +39,44 @@ type VerbDef struct {
 	// Просидеть вечер в тени бочек стоит вечера. Это не цена провала, а
 	// свойство действия, поэтому живёт в ядре и от системы правил не зависит.
 	Spends bool
-	// Target — глагол требует цель для действия.
-	Target bool
-	// Node — глагол привязан к узлу сцены.
-	Node bool
 }
 
 var Verbs = map[Verb]VerbDef{
-	"look":    {Verb: "look", Class: ClassNone, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"emote":   {Verb: "emote", Class: ClassNone, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"say":     {Verb: "say", Class: ClassNone, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"talk_to": {Verb: "talk_to", Class: ClassSocial, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
+	"look":    {Verb: "look", Class: ClassNone, Rolls: false, Hard: false, Spends: false},
+	"emote":   {Verb: "emote", Class: ClassNone, Rolls: false, Hard: false, Spends: false},
+	"say":     {Verb: "say", Class: ClassNone, Rolls: false, Hard: false, Spends: false},
+	"talk_to": {Verb: "talk_to", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
 	// present — предъявить предмет. Социальный, потому что цель — человек: к
 	// нему применимы и сдвиг расположения, и социальные гейты. Без броска:
 	// годная бумага — это власть, а не проба навыка, и блеф негодной бумагой
 	// это другой глагол, которого пока нет.
-	"present":           {Verb: "present", Class: ClassSocial, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"ask_about":         {Verb: "ask_about", Class: ClassSocial, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"thank":             {Verb: "thank", Class: ClassSocial, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"threaten_verbally": {Verb: "threaten_verbally", Class: ClassSocial, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"theorize":          {Verb: "theorize", Class: ClassReason, Rolls: false, Hard: false, Spends: false, Target: false, Node: false},
-	"examine":           {Verb: "examine", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"search":            {Verb: "search", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"question":          {Verb: "question", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"stake_out":         {Verb: "stake_out", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: true, Target: false, Node: true},
-	"tail":              {Verb: "tail", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: true, Target: false, Node: true},
-	"compare":           {Verb: "compare", Class: ClassReason, Rolls: false, Hard: true, Spends: false, Target: false, Node: false},
-	"cross_reference":   {Verb: "cross_reference", Class: ClassReason, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"strike":            {Verb: "strike", Class: ClassAttack, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"grapple":           {Verb: "grapple", Class: ClassAttack, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"move_zone":         {Verb: "move_zone", Class: ClassMove, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"take_cover":        {Verb: "take_cover", Class: ClassMove, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"flee":              {Verb: "flee", Class: ClassMove, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"sneak":             {Verb: "sneak", Class: ClassSkill, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"pick":              {Verb: "pick", Class: ClassSkill, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"recall":            {Verb: "recall", Class: ClassSkill, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"persuade":          {Verb: "persuade", Class: ClassSocial, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"intimidate":        {Verb: "intimidate", Class: ClassSocial, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"command":           {Verb: "command", Class: ClassSocial, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"aid":               {Verb: "aid", Class: ClassSupport, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"mend":              {Verb: "mend", Class: ClassSupport, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"use_ability":       {Verb: "use_ability", Class: ClassResource, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
-	"use_item":          {Verb: "use_item", Class: ClassResource, Rolls: true, Hard: true, Spends: false, Target: false, Node: false},
+	"present":           {Verb: "present", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"ask_about":         {Verb: "ask_about", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"thank":             {Verb: "thank", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"threaten_verbally": {Verb: "threaten_verbally", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"theorize":          {Verb: "theorize", Class: ClassReason, Rolls: false, Hard: false, Spends: false},
+	"examine":           {Verb: "examine", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false},
+	"search":            {Verb: "search", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false},
+	"question":          {Verb: "question", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false},
+	"stake_out":         {Verb: "stake_out", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: true},
+	"tail":              {Verb: "tail", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: true},
+	"compare":           {Verb: "compare", Class: ClassReason, Rolls: false, Hard: true, Spends: false},
+	"cross_reference":   {Verb: "cross_reference", Class: ClassReason, Rolls: true, Hard: true, Spends: false},
+	"strike":            {Verb: "strike", Class: ClassAttack, Rolls: true, Hard: true, Spends: false},
+	"grapple":           {Verb: "grapple", Class: ClassAttack, Rolls: true, Hard: true, Spends: false},
+	"move_zone":         {Verb: "move_zone", Class: ClassMove, Rolls: true, Hard: true, Spends: false},
+	"take_cover":        {Verb: "take_cover", Class: ClassMove, Rolls: true, Hard: true, Spends: false},
+	"flee":              {Verb: "flee", Class: ClassMove, Rolls: true, Hard: true, Spends: false},
+	"sneak":             {Verb: "sneak", Class: ClassSkill, Rolls: true, Hard: true, Spends: false},
+	"pick":              {Verb: "pick", Class: ClassSkill, Rolls: true, Hard: true, Spends: false},
+	"recall":            {Verb: "recall", Class: ClassSkill, Rolls: true, Hard: true, Spends: false},
+	"persuade":          {Verb: "persuade", Class: ClassSocial, Rolls: true, Hard: true, Spends: false},
+	"intimidate":        {Verb: "intimidate", Class: ClassSocial, Rolls: true, Hard: true, Spends: false},
+	"command":           {Verb: "command", Class: ClassSocial, Rolls: true, Hard: true, Spends: false},
+	"aid":               {Verb: "aid", Class: ClassSupport, Rolls: true, Hard: true, Spends: false},
+	"mend":              {Verb: "mend", Class: ClassSupport, Rolls: true, Hard: true, Spends: false},
+	"use_ability":       {Verb: "use_ability", Class: ClassResource, Rolls: true, Hard: true, Spends: false},
+	"use_item":          {Verb: "use_item", Class: ClassResource, Rolls: true, Hard: true, Spends: false},
 }
 
 // classes — закрытый реестр классов. Существует потому, что класс приходит

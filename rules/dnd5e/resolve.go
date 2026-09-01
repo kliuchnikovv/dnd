@@ -90,11 +90,13 @@ func SkillOfVerb(v core.Verb) string {
 
 // DCOfIntent — сложность проверки для данного интента. Явно проставленный
 // SceneView.DC приоритетнее: это то, что авторство кейса уже решило.
-// Иначе — заглушка CheckDC (данные "checks:" ещё не подключены, задача
-// авторства кейса вне этой задачи).
+// Иначе — CheckDC (данные "checks:" из case.json), потом DefaultDC.
 func DCOfIntent(in core.Intent, view core.SceneView) int {
 	if view.DC != 0 {
 		return view.DC
 	}
-	return view.CheckDC(string(in.Verb), string(in.Args.Target))
+	if dc := view.CheckDC(string(in.Verb), string(in.Args.Target)); dc > 0 {
+		return dc
+	}
+	return DefaultDC
 }
