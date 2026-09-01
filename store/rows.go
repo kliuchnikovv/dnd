@@ -72,6 +72,15 @@ type Entity struct {
 	Kind  EntityKind `json:"kind"`
 	Voice string     `json:"voice"`
 	Node  NodeID     `json:"node"`
+
+	// HP/MaxHP — здоровье в D&D-механике. Ноль у сущности, не участвующей
+	// в HP-модели (детективные NPC). Разница между HP и MaxHP — необходима
+	// для rest_short/long и лечения; хранить только текущее было бы одним
+	// местом правды меньше.
+	HP    int `json:"hp,omitempty"`
+	MaxHP int `json:"max_hp,omitempty"`
+	// AC — броня в D&D. Ноль — «нельзя атаковать» (у детективных NPC).
+	AC    int `json:"ac,omitempty"`
 }
 
 type Location struct {
