@@ -33,8 +33,58 @@ func (g *Game) applyMutations(ms []Mutation) {
 			g.D.Adjust(store.EntityID(m.Target), m.Delta)
 		case MutPosition:
 			g.Detected = m.Delta < 0
+		case MutHPDelta:
+			id := store.EntityID(m.Target)
+			e := g.DB.Entities[id]
+			hp := e.HP + m.Amount
+			if hp < 0 {
+				hp = 0
+			}
+			if e.MaxHP > 0 && hp > e.MaxHP {
+				hp = e.MaxHP
+			}
+			e.HP = hp
+			g.DB.Entities[id] = e
+		case MutSetCondition:
+			setCondition(g, m.Target, m.Condition, m.Amount)
+		case MutEncounterStart:
+			g.Encounter = &Encounter{Order: append([]store.EntityID(nil), m.Order...)}
+		case MutEncounterEnd:
+			g.Encounter = nil
+		case MutAdvanceInitiative:
+			if g.Encounter != nil {
+				g.Encounter.Advance()
+			}
 		}
 	}
+}
+
+// apply — точка входа одиночной мутации боевого пути. Обёртка над
+// applyMutations: боевые виды идут тем же доверенным путём, что и
+// resource/harm/clock — их источник система правил, а не недоверенный
+// предложитель.
+func apply(g *Game, m Mutation) {
+	g.applyMutations([]Mutation{m})
+}
+
+// setCondition — состояние-тег на сущности с TTL в раундах. Хранится в
+// store.DB.Conditions: EntityID → (метка → раундов осталось). Amount == 0
+// снимает условие; иначе выставляет/перезаписывает TTL.
+func setCondition(g *Game, target, condition string, amount int) {
+	id := store.EntityID(target)
+	if amount == 0 {
+		if g.DB.Conditions != nil {
+			delete(g.DB.Conditions[id], condition)
+		}
+		return
+	}
+	if g.DB.Conditions == nil {
+		g.DB.Conditions = map[store.EntityID]map[string]int{}
+	}
+	if g.DB.Conditions[id] == nil {
+		g.DB.Conditions[id] = map[string]int{}
+	}
+	g.DB.Conditions[id][condition] = amount
 }
 
 // executeCosts исполняет выбранную правилами цену. Возвращает последствия

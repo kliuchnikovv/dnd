@@ -27,6 +27,12 @@ type DB struct {
 	// место не улика (см. store/places.go).
 	KnownPlaces map[PlaceKey]bool
 
+	// Conditions — боевые состояния-теги на сущностях: EntityID → (метка
+	// условия → сколько раундов осталось). Отсутствие ключа или значение 0 —
+	// условие снято/никогда не было. TTL считает и списывает вызывающий слой
+	// (ход по раунду боя); домен здесь хранит факт, а не тикает его сам.
+	Conditions map[EntityID]map[string]int
+
 	// Пустые до M2. См. store/future.go: пустая таблица стоит ноль, миграция
 	// потом стоит дорого.
 	Cases       map[CaseID]*Case
@@ -58,6 +64,7 @@ func NewDB() *DB {
 		Inventory:   map[InventoryKey]bool{},
 		Canon:       map[CanonKey]CanonFact{},
 		KnownPlaces: map[PlaceKey]bool{},
+		Conditions:  map[EntityID]map[string]int{},
 		Cases:       map[CaseID]*Case{},
 		Regions:     map[RegionID]Region{},
 	}

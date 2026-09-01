@@ -1,5 +1,7 @@
 package core
 
+import "github.com/kliuchnikovv/dnd/store"
+
 // Outcome — класс исхода. Порядок значений задаёт ступени: нат-20 поднимает
 // на ступень, нат-1 опускает.
 type Outcome int
@@ -89,6 +91,21 @@ const (
 	// MutWorldEvent — событие слоя мира. Объявлен формой; обработчика нет и
 	// не будет до серверного слоя с воркером мира.
 	MutWorldEvent MutationKind = "world_event"
+
+	// MutHPDelta — изменение HP сущности. Target — сущность, Amount — дельта
+	// (отрицательная — урон, положительная — лечение). Клампится в apply по
+	// [0, MaxHP], если MaxHP задан.
+	MutHPDelta MutationKind = "hp_delta"
+	// MutSetCondition — состояние-тег на сущности (prone, poisoned, restrained).
+	// Target — сущность, Condition — метка, Amount — TTL в раундах; Amount == 0
+	// снимает условие.
+	MutSetCondition MutationKind = "set_condition"
+	// MutEncounterStart — вход в бой. Order задаёт порядок ходов на весь бой.
+	MutEncounterStart MutationKind = "encounter_start"
+	// MutEncounterEnd — выход из боя: Game.Encounter обнуляется.
+	MutEncounterEnd MutationKind = "encounter_end"
+	// MutAdvanceInitiative — конец такта текущей сущности: следующий ход.
+	MutAdvanceInitiative MutationKind = "advance_initiative"
 )
 
 // Mutation обобщена намеренно: «слот 3 уровня» — это {resource, "slot_3", -1},
@@ -100,6 +117,15 @@ type Mutation struct {
 	// Text — текстовый payload для видов, которые меняют не число, а слово:
 	// канон мира. Числовые виды его не читают.
 	Text string
+	// Amount — числовой параметр боевых видов: HP-дельта, длительность
+	// условия в раундах. Отдельно от Delta: Delta — язык ресурсов/часов/урона
+	// по общей таксономии, Amount — язык боя, введённый позже и другой
+	// семантикой (TTL, а не «плюс-минус против нуля»).
+	Amount int
+	// Condition — метка условия для MutSetCondition (prone, poisoned, ...).
+	Condition string
+	// Order — порядок ходов при MutEncounterStart.
+	Order []store.EntityID
 }
 
 type RollTerm struct {
