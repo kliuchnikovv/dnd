@@ -53,13 +53,6 @@ func (s *scenario) NPCTurn(g *core.Game, id store.EntityID) (core.Intent, bool) 
 	return npcTurn(g, id)
 }
 
-// npcTurn — заглушка хода NPC. Реальная реализация (attack/move_zone по BFS)
-// появляется в ai.go (Task 18).
-func npcTurn(g *core.Game, id store.EntityID) (core.Intent, bool) {
-	_, _ = g, id
-	return core.Intent{}, false
-}
-
 // SetVictoryOn настраивает victory-спецификацию на уже созданном экземпляре
 // сценария adventure. Нужен пакету cases: LookupScenario отдаёт core.Scenario
 // без доступа к внутренностям, а раскрывать конкретный тип scenario наружу
