@@ -519,8 +519,8 @@ func (n *narrator) Narrate(ctx context.Context, p cli.Prose) (string, error) {
 		return "", nil
 	}
 	return n.master.Narrate(ctx, what, p.Frame,
-		master.World{Setting: n.game.Setting, Scene: p.Scene}, outcome, p.Speaking,
-		p.State, llm.Request{})
+		master.World{Setting: n.game.Setting, Scene: p.Scene, Speaker: p.Speaker},
+		outcome, p.Speaking, p.State, llm.Request{})
 }
 
 // Refuse произносит отказ мира. Тот же Мастер и тот же мир, что у прозы:

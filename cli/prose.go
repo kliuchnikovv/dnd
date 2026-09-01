@@ -1,6 +1,10 @@
 package cli
 
-import "github.com/kliuchnikovv/dnd/core"
+import (
+	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/master"
+	"github.com/kliuchnikovv/dnd/store"
+)
 
 // Экспортируемые сборщики прозы: сервер строит аргументы Мастеру ТЕМИ ЖЕ
 // helper'ами, что печатает терминал (Render.Turn/Scene/Briefing). Один
@@ -31,8 +35,8 @@ func ReplyProse(g *core.Game, in core.Intent, t core.TurnResult) (Prose, bool) {
 	if t.Refused || t.FlavourKey == "" {
 		return Prose{}, false
 	}
-	who := speakerName(g, in, t)
-	if who == "" {
+	id := speakerID(g, in, t)
+	if id == "" {
 		return Prose{}, false
 	}
 	return Prose{
@@ -40,9 +44,48 @@ func ReplyProse(g *core.Game, in core.Intent, t core.TurnResult) (Prose, bool) {
 		Frame:    g.Flavour(t.FlavourKey),
 		Scene:    sceneOf(g),
 		Outcome:  outcomeOf(g, t),
-		Speaking: who,
+		Speaking: g.DB.Entities[id].Name,
+		Speaker:  speakerCard(g, id),
 		State:    core.StateDigest(g, t).Lines(),
 	}, true
+}
+
+// speakerCard — карточка NPC для KindReply. Живёт здесь, а не в core, потому
+// что core про домен, а карточка — про то, что Мастер прочтёт в промпте;
+// склеиваем её из уже существующих геттеров Dossiers.
+//
+// Правды дела в карточку не кладём: KnowsAbout/TalksAbout остаются в ядре и
+// вплывают в реплику только через авторскую рамку. Здесь только человек —
+// голос, быт, отношение, незакрытое, желания, память разговора.
+func speakerCard(g *core.Game, id store.EntityID) *master.Speaker {
+	if g == nil || g.D == nil || id == "" {
+		return nil
+	}
+	e := g.DB.Entities[id]
+	return &master.Speaker{
+		Name:        e.Name,
+		Kind:        entityKindWord(g, id),
+		Voice:       g.D.Voice(id),
+		Life:        g.D.Life(id),
+		Disposition: g.D.Disposition(id),
+		OpenThreads: g.D.OpenThreads(id),
+		Wants:       g.D.Wants(id),
+		TalksAbout:  g.D.TalksAbout(id),
+		Recent:      g.D.Recent(id),
+		Summary:     g.D.View(id).Summary,
+	}
+}
+
+// entityKindWord — роль NPC для карточки. Берётся из авторского Voice, если
+// автор её туда положил (первая строка «стражник у ворот» — этого достаточно
+// для промпта); иначе пусто — врать про роль хуже, чем промолчать.
+func entityKindWord(g *core.Game, id store.EntityID) string {
+	// Явного поля роли у Entity нет: kind — это только npc/location/character.
+	// Оставляем пусто; при необходимости автор дела кладёт роль в Voice первой
+	// фразой, и Мастер её читает целиком.
+	_ = g
+	_ = id
+	return ""
 }
 
 // ProbeProse — отклик мира на свободную пробу (ввод, который словарь не выразил

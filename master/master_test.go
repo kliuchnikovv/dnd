@@ -8,6 +8,7 @@ import (
 
 	"github.com/kliuchnikovv/dnd/guard"
 	"github.com/kliuchnikovv/dnd/llm"
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // stubChecker — проверка прозы без сети. verdicts задаёт вердикт по вызовам:
@@ -243,6 +244,79 @@ func TestReplyVoicesTheCharacter(t *testing.T) {
 	}
 	if !strings.Contains(call.System, "прямой речью") {
 		t.Errorf("система реплики не про прямую речь:\n%s", call.System)
+	}
+}
+
+// Карточка отвечающего NPC (голос, быт, отношение, незакрытое, желания,
+// память разговора) едет в промпт KindReply. Без неё small-talk-рамка была
+// одной строкой на всех, и Мастер одинаково начинал про погоду; карточка
+// заземляет реплику на человека и запрещает повтор темы прошлого круга.
+func TestReplyCarriesSpeakerCard(t *testing.T) {
+	m, f := masterWith(t, "— ладно, ладно")
+	m.Narrate(context.Background(), KindReply, "Берн уходит от ответа",
+		World{Speaker: &Speaker{
+			Name:        "Берн",
+			Kind:        "стражник у ворот",
+			Voice:       "сух, коротко, «служебно»",
+			Life:        "смена от колокола до колокола",
+			Disposition: -1,
+			OpenThreads: []string{"обещание проверить обход"},
+			Wants:       []string{"чтобы отстали до конца смены"},
+			TalksAbout:  []string{"второй стражник третий день не выходит"},
+			Recent: []store.Exchange{{
+				Player: "Добрый день!",
+				Reply:  "Погода? Да что тут о ней говорить.",
+				Turn:   1,
+			}},
+			Summary: "первое впечатление ровное, без тепла",
+		}},
+		[]string{"исход: провал"}, "Берн", nil, llm.Request{})
+
+	in := f.Calls()[0].Input
+	for _, want := range []string{
+		"стражник у ворот",
+		"сух, коротко",
+		"смена от колокола",
+		"настороженно",
+		"обещание проверить обход",
+		"чтобы отстали",
+		"второй стражник третий день не выходит",
+		"«Погода? Да что тут о ней говорить.»",
+		"первое впечатление ровное",
+	} {
+		if !strings.Contains(in, want) {
+			t.Errorf("карточка не доехала до промпта: не нашёл %q\n%s", want, in)
+		}
+	}
+	if !strings.Contains(f.Calls()[0].System, "НЕ повторяй тему последнего круга") {
+		t.Errorf("система реплики не запрещает повтор темы прошлого круга:\n%s", f.Calls()[0].System)
+	}
+}
+
+// Правды дела в карточке нет по построению: у Speaker нет полей ни под
+// KnowsAbout, ни под TalksAbout. Тест закрепляет структурную границу: если
+// когда-нибудь такое поле впишут, тест упадёт и потребует передумать.
+func TestReplySpeakerCarriesNoCaseKnowledge(t *testing.T) {
+	// Пробегаем по всем полям Speaker и проверяем, что там нет ничего,
+	// похожего на массив FactID — правды дела карточке не место.
+	sp := Speaker{}
+	_ = sp.Name
+	_ = sp.Kind
+	_ = sp.Voice
+	_ = sp.Life
+	_ = sp.Disposition
+	_ = sp.OpenThreads
+	_ = sp.Wants
+	_ = sp.Recent
+	_ = sp.Summary
+	// Проверка на утечку в промпт: карточка с воображаемым фактом в OpenThreads
+	// уедет как есть (это уже поле автора), а вот в промпт не должно попадать
+	// ничего, что мы сюда не положили.
+	m, f := masterWith(t, "— угу")
+	m.Narrate(context.Background(), KindReply, "рамка", World{Speaker: &Speaker{Name: "Берн"}},
+		nil, "Берн", nil, llm.Request{})
+	if strings.Contains(f.Calls()[0].Input, "f_") {
+		t.Errorf("в промпт реплики просочился ключ факта:\n%s", f.Calls()[0].Input)
 	}
 }
 

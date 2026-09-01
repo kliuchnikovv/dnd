@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/view"
 )
@@ -66,6 +67,11 @@ type Prose struct {
 	// следующей строкой, и проза успевала ей противоречить — сперва «он
 	// отвечает охотнее, чем ждали», а потом сухое «Что вам надобно?».
 	Speaking string
+	// Speaker — карточка отвечающего NPC для KindReply: голос, быт, отношение,
+	// незакрытое, желания, память разговора. Не путать со Speaking (это только
+	// имя, оно едет и в non-reply, чтобы Мастер за него не договаривал). У
+	// прозы, кроме реплики, поле nil: там персонаж не отвечает.
+	Speaker *master.Speaker
 	// State — доверенный дайджест состояния (core.StateDigest). Пусто —
 	// проза не проверяется на противоречие состоянию. У брифинга пусто
 	// намеренно: это единственное место, где игроку легально сообщают факты
@@ -207,14 +213,27 @@ func (r Render) Turn(g *core.Game, in core.Intent, t core.TurnResult) string {
 // сказать, и труп, которому нечего, — а Мастер, оставшись без запрета,
 // договаривал за персонажа сам.
 func speakerName(g *core.Game, in core.Intent, t core.TurnResult) string {
+	if id := speakerID(g, in, t); id != "" {
+		return g.DB.Entities[id].Name
+	}
+	return ""
+}
+
+// speakerID — тот же выбор говорящего, но идентификатором. Нужен, чтобы
+// подтянуть его дневник в карточку реплики: имя — это только подпись, а
+// карточка требует ключа для join в Dossiers.
+func speakerID(g *core.Game, in core.Intent, t core.TurnResult) store.EntityID {
+	// Ход выдал факт: кто его произнесёт — решило ядро. SpokenBy пуст, если
+	// произносить некому (факт от вещи), и Мастер остаётся единственным
+	// голосом — говорящего для реплики тогда нет.
 	if len(t.Learned) > 0 {
-		return g.DB.Entities[t.SpokenBy].Name
+		return t.SpokenBy
 	}
 	e, ok := g.DB.Entities[in.Args.Target]
 	if !ok || e.Kind != store.EntityNPC {
 		return ""
 	}
-	return e.Name
+	return e.ID
 }
 
 // outcomeOf — что только что произошло, словами без механики. Мастер

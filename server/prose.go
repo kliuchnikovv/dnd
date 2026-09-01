@@ -124,7 +124,7 @@ func (rt *sessionRuntime) streamSegments(ctx context.Context, gen int, segs []pr
 			st = llm.NewTextStream(seg.fixed)
 		} else {
 			st, err = rt.narrator.NarrateStream(ctx, kindOf(seg.pr.Kind), seg.pr.Frame,
-				master.World{Setting: setting, Scene: seg.pr.Scene},
+				master.World{Setting: setting, Scene: seg.pr.Scene, Speaker: seg.pr.Speaker},
 				seg.pr.Outcome, seg.pr.Speaking, seg.pr.State, llm.Request{})
 		}
 		if err != nil {

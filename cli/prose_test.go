@@ -82,3 +82,26 @@ func TestReplyProse(t *testing.T) {
 		t.Fatal("у отказанного хода реплики нет")
 	}
 }
+
+// Карточка отвечающего NPC доезжает вместе с рамкой: без неё Мастер видел
+// только строку small-talk и одинаково начинал про погоду. Проверяем, что
+// голос и быт из дневника подтянуты, а память последнего круга — присутствует.
+func TestReplyProseCarriesSpeakerCard(t *testing.T) {
+	g := proseGame(t)
+	// Один круг разговора в дневнике: реплика следующего хода обязана видеть
+	// прошлый, иначе повторит его дословно (живой прогон так и повторял).
+	g.D.Remember("e_bern", "Добрый день!",
+		"Погода? Да что тут о ней говорить.", 1)
+
+	p, ok := ReplyProse(g, core.Intent{Args: core.Args{Target: "e_bern"}},
+		core.TurnResult{FlavourKey: "talk.e_bern"})
+	if !ok || p.Speaker == nil {
+		t.Fatal("у реплики нет карточки говорящего")
+	}
+	if p.Speaker.Name == "" || p.Speaker.Voice == "" || p.Speaker.Life == "" {
+		t.Fatalf("карточка без голоса/быта: %+v", p.Speaker)
+	}
+	if len(p.Speaker.Recent) == 0 {
+		t.Fatal("в карточке нет памяти прошлого круга — Мастер повторит его дословно")
+	}
+}
