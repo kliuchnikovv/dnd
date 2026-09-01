@@ -44,9 +44,77 @@ func (s *scenario) Defeat(g *core.Game) (bool, string) {
 	return false, ""
 }
 
-// Panel — заглушка одной секции; наполнение реального содержимого — Task 20.
+// Panel — рабочая панель клиента: здоровье, карта смежных узлов, инвентарь,
+// а в бою — ещё и инициатива. Секция initiative опускается вне боя целиком,
+// а не отдаётся пустой: клиенту незачем гадать, значит ли пустой список
+// «бой без участников» или «боя нет».
 func (s *scenario) Panel(g *core.Game) core.Panel {
-	return core.Panel{Sections: []core.PanelSection{{Kind: "adventure_stub"}}}
+	p := core.Panel{Sections: []core.PanelSection{
+		s.healthSection(g),
+		s.mapSection(g),
+		s.inventorySection(g),
+	}}
+	if g.Encounter != nil {
+		p.Sections = append(p.Sections, s.initiativeSection(g))
+	}
+	return p
+}
+
+// healthSection — HP/MaxHP героя. Источник правды — сущность актёра, та же,
+// что читает Defeat: другого места, где хранится HP в D&D-механике, нет.
+func (s *scenario) healthSection(g *core.Game) core.PanelSection {
+	ent := g.DB.Entities[store.EntityID(g.Actor)]
+	return core.PanelSection{Kind: "health", Slots: []core.PanelSlot{
+		{Key: "hp", Value: fmt.Sprintf("%d/%d", ent.HP, ent.MaxHP)},
+	}}
+}
+
+// mapSection — текущий узел и узлы, куда можно шагнуть отсюда прямо сейчас.
+func (s *scenario) mapSection(g *core.Game) core.PanelSection {
+	slots := []core.PanelSlot{{Key: "here", Value: g.DB.Locations[g.Node].Name}}
+	for _, n := range g.DB.Locations[g.Node].Adjacent {
+		slots = append(slots, core.PanelSlot{Key: string(n), Value: g.DB.Locations[n].Name})
+	}
+	return core.PanelSection{Kind: "map", Slots: slots}
+}
+
+// inventorySection — что парти несёт при себе, по одному слоту на предмет.
+func (s *scenario) inventorySection(g *core.Game) core.PanelSection {
+	var slots []core.PanelSlot
+	for _, it := range g.Carried() {
+		slots = append(slots, core.PanelSlot{Key: string(it.ID), Value: it.Name})
+	}
+	return core.PanelSection{Kind: "inventory", Slots: slots}
+}
+
+// initiativeSection — чей сейчас ход, номер раунда и остаток действий у
+// текущего держателя хода. Вызывается только когда g.Encounter не nil.
+func (s *scenario) initiativeSection(g *core.Game) core.PanelSection {
+	enc := g.Encounter
+	slots := []core.PanelSlot{
+		{Key: "round", Value: fmt.Sprintf("%d", enc.Round)},
+	}
+	if cur := enc.Current(); cur != "" {
+		slots = append(slots, core.PanelSlot{Key: "current", Value: entityName(g, cur)})
+	}
+	slots = append(slots,
+		core.PanelSlot{Key: "action", Value: fmt.Sprintf("%t", !enc.Actions.Action)},
+		core.PanelSlot{Key: "bonus", Value: fmt.Sprintf("%t", !enc.Actions.Bonus)},
+	)
+	return core.PanelSection{Kind: "initiative", Slots: slots}
+}
+
+// entityName — имя сущности для панели; для актёра-персонажа сущности может
+// не быть в store.Entities под тем же ID отдельно от Character, поэтому
+// свой ID выводим отдельным лейблом, а не пытаемся угадать имя.
+func entityName(g *core.Game, id store.EntityID) string {
+	if ent, ok := g.DB.Entities[id]; ok && ent.Name != "" {
+		return ent.Name
+	}
+	if id == store.EntityID(g.Actor) {
+		return "герой"
+	}
+	return string(id)
 }
 
 func (s *scenario) NPCTurn(g *core.Game, id store.EntityID) (core.Intent, bool) {
