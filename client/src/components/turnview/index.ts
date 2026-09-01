@@ -8,6 +8,7 @@ export { ResolutionCard } from './ResolutionCard';
 export { OptionsRail } from './OptionsRail';
 export type { OptionsLayout } from './OptionsRail';
 export { Panel } from './Panel';
+export { AdventureSectionView, ADVENTURE_SECTION_KINDS } from './AdventurePanel';
 export { MapGraph } from './MapGraph';
 export { Participants, Avatar } from './Participants';
 export { Composer } from './Composer';
