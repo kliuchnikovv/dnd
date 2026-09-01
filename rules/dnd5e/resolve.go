@@ -65,15 +65,20 @@ func resolveSave(s Sheet, in core.Intent, view core.SceneView, d core.Dice) core
 // называет его явно. Таблица закрыта и намеренно небольшая: расширять её —
 // задача данных дела (case.json), а не резолвера.
 var verbSkill = map[core.Verb]string{
-	"sneak":      "stealth",
-	"pick":       "sleight_of_hand",
-	"recall":     "history",
-	"persuade":   "persuasion",
-	"intimidate": "intimidation",
-	"command":    "intimidation",
-	"search":     "investigation",
-	"examine":    "investigation",
-	"question":   "insight",
+	"sneak":        "stealth",
+	"hide":         "stealth",
+	"pick":         "sleight_of_hand",
+	"pick_lock":    "thieves_tools",
+	"disarm_trap":  "thieves_tools",
+	"detect_trap":  "perception",
+	"flee":         "acrobatics",
+	"recall":       "history",
+	"persuade":     "persuasion",
+	"intimidate":   "intimidation",
+	"command":      "intimidation",
+	"search":       "investigation",
+	"examine":      "investigation",
+	"question":     "insight",
 }
 
 // SkillOfVerb возвращает skill, связанный с глаголом по умолчанию.
