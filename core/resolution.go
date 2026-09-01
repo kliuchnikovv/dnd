@@ -148,6 +148,9 @@ type Resolution struct {
 	Costs     []CostKind
 	Mutations []Mutation
 	Log       RollLog
+	// Damage — урон, нанесённый попаданием. Заполняет только боевая система
+	// правил (dnd5e.attack); прочие резолверы оставляют его нулём.
+	Damage int
 }
 
 // Dice объявлен здесь, но реализован в пакете dice: core обязан оставаться

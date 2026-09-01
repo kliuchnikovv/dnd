@@ -19,6 +19,11 @@ const (
 	ClassSupport     VerbClass = "support"
 	ClassResource    VerbClass = "resource"
 	ClassSkill       VerbClass = "skill"
+	// ClassSave — спасбросок: атрибут защищающегося против DC, а не проверка
+	// навыка атакующего. Пока ни один глагол реестра её не носит — класс
+	// назначает система правил (dnd5e) сама себе на резолве save-эффектов;
+	// данные дела получат явные save-глаголы позже.
+	ClassSave VerbClass = "save"
 )
 
 type VerbDef struct {
@@ -80,6 +85,7 @@ var classes = map[VerbClass]bool{
 	ClassNone: true, ClassInvestigate: true, ClassReason: true,
 	ClassSocial: true, ClassMove: true, ClassAttack: true,
 	ClassSupport: true, ClassResource: true, ClassSkill: true,
+	ClassSave: true,
 }
 
 // LookupClass проверяет недоверенную подсказку класса по реестру ядра.
