@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/kliuchnikovv/dnd/core"
+	"github.com/kliuchnikovv/dnd/core/scenarios/adventure"
 	"github.com/kliuchnikovv/dnd/core/scenarios/deduction/accusation"
 	"github.com/kliuchnikovv/dnd/store"
 
@@ -136,6 +137,16 @@ func Parse(raw []byte) (*core.Config, error) {
 	sc, ok := core.LookupScenario(kind)
 	if !ok {
 		return nil, fmt.Errorf("cases: неизвестный сценарий %q (импорт пакета?)", kind)
+	}
+	// victory: в case.json имеет смысл только для adventure — у deduction
+	// своё условие победы через Truth/Accuse. Пустой Type у File.Victory
+	// (поле отсутствует в JSON) SetVictoryOn кладёт как есть: VictorySpec.check
+	// без типа победы не объявляет.
+	if kind == core.ScenarioAdventure {
+		spec := adventure.VictorySpec{Type: f.Victory.Type, Item: f.Victory.Item, Node: f.Victory.Node}
+		if err := adventure.SetVictoryOn(sc, spec); err != nil {
+			return nil, fmt.Errorf("cases: %w", err)
+		}
 	}
 
 	return &core.Config{

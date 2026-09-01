@@ -20,6 +20,15 @@ type File struct {
 	// читается как "deduction" (обратная совместимость с M1a-кейсами).
 	Scenario core.ScenarioKind `json:"scenario"`
 
+	// Victory — условие победы архетипа adventure: "вернись в узел с
+	// предметом". Для других архетипов поле не читается — у них своё условие
+	// победы (deduction решает через Truth/Accuse).
+	Victory struct {
+		Type string       `json:"type"`
+		Item store.ItemID `json:"item"`
+		Node store.NodeID `json:"node"`
+	} `json:"victory"`
+
 	Character struct {
 		ID    string          `json:"id"`
 		Grit  int             `json:"grit"`

@@ -28,14 +28,6 @@ func (s *scenario) Kind() core.ScenarioKind { return core.ScenarioAdventure }
 // disarm_trap, detect_trap и другие из rules/dnd5e.
 func (s *scenario) ExtraVerbs() []core.VerbDef { return dnd5e.Verbs() }
 
-// VictorySpec — условие победы приключения, задаётся полем victory: в
-// case.json. Заглушка: реальная реализация check — в victory.go (Task 17).
-type VictorySpec struct {
-	Type string       `json:"type"`
-	Item store.ItemID `json:"item"`
-	Node store.NodeID `json:"node"`
-}
-
 // Victory — определяется case.json → victory: {type,item,node}. Спецификация
 // без типа (кейс без поля victory) победу не объявляет никогда.
 func (s *scenario) Victory(g *core.Game) (bool, string) {
@@ -59,13 +51,6 @@ func (s *scenario) Panel(g *core.Game) core.Panel {
 
 func (s *scenario) NPCTurn(g *core.Game, id store.EntityID) (core.Intent, bool) {
 	return npcTurn(g, id)
-}
-
-// check — заглушка условия победы: без типа победы не бывает. Реальный
-// свитч по v.Type ("return_with") появляется в victory.go (Task 17).
-func (v VictorySpec) check(g *core.Game) (bool, string) {
-	_ = g
-	return false, ""
 }
 
 // npcTurn — заглушка хода NPC. Реальная реализация (attack/move_zone по BFS)
