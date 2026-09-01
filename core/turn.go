@@ -391,6 +391,12 @@ func (g *Game) SceneView(in Intent) SceneView {
 	if h, ok := g.holderFor(in); ok {
 		view.GateThreshold = h.Gate.Threshold
 	}
+	// TargetAC — класс доспеха цели attack-резолва. Ставится из сущности:
+	// без этого dnd5e.resolveAttack всегда бил бы по AC=0, и бой на Apply
+	// не отличался бы от гарантированного попадания.
+	if e, ok := g.DB.Entities[in.Args.Target]; ok {
+		view.TargetAC = e.AC
+	}
 	view.Opposed = g.opposes(in.Args.Target)
 	// Exposed остаётся false: состояния, выражающего беспомощность цели
 	// (оглушена, связана, не защищается), в M1a ещё нет — боя нет. Канал

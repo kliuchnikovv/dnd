@@ -46,7 +46,7 @@ func resolveAttack(s Sheet, in core.Intent, view core.SceneView, d core.Dice) co
 	w := s.Weapons[0]
 	dmgSpec, _ := ParseDice(w.Damage)
 	ac := view.TargetAC
-	return attack(s, w.Attack, ac, rollD20(d), dmgSpec, func(sp DiceSpec, crit bool) int {
+	res := attack(s, w.Attack, ac, rollD20(d), dmgSpec, func(sp DiceSpec, crit bool) int {
 		n := sp.N
 		if crit {
 			n *= 2
@@ -55,6 +55,16 @@ func resolveAttack(s Sheet, in core.Intent, view core.SceneView, d core.Dice) co
 		total += d.Roll(n, sp.Sides)
 		return total
 	})
+	// Урон сам себя не применяет: Damage — витрина для показа, а фактическое
+	// изменение HP идёт мутацией по общему доверенному пути (applyMutations),
+	// как и всё остальное состояние боя. Без неё Apply(attack) никогда не
+	// трогал бы HP цели.
+	if res.Damage > 0 && in.Args.Target != "" {
+		res.Mutations = append(res.Mutations, core.Mutation{
+			Kind: core.MutHPDelta, Target: string(in.Args.Target), Amount: -res.Damage,
+		})
+	}
+	return res
 }
 
 func resolveSave(s Sheet, in core.Intent, view core.SceneView, d core.Dice) core.Resolution {

@@ -1,0 +1,88 @@
+{
+  "id": "mini_adventure",
+  "scenario": "adventure",
+  "start": "n_start",
+  "actor": "chr_hero",
+  "character": {
+    "id": "chr_hero",
+    "sheet": {
+      "str": 14,
+      "dex": 14,
+      "prof": 2,
+      "skills": [],
+      "saves": [],
+      "max_hp": 10,
+      "ac": 10,
+      "speed": 30,
+      "weapons": [
+        {"name": "sword", "reach": "melee", "attack": "str", "damage": "1d6+str"}
+      ]
+    }
+  },
+  "locations": [
+    {"id": "n_start", "name": "Лагерь", "adjacent": ["n_end"]},
+    {"id": "n_end", "name": "Логово орка", "adjacent": ["n_start"]}
+  ],
+  "entities": [
+    {"id": "chr_hero", "name": "Герой", "kind": "npc", "node": "n_start", "hp": 10, "max_hp": 10, "ac": 10},
+    {"id": "e_orc", "name": "Орк", "kind": "npc", "node": "n_end", "hp": 4, "max_hp": 4, "ac": 10},
+    {"id": "e_gem_body", "name": "Тело орка", "kind": "thing", "node": "n_end"}
+  ],
+  "facts": [
+    {
+      "id": "f_lore",
+      "key": "Слух о самоцвете",
+      "kind": "concept",
+      "summation_clause": "…и в логове орка лежит самоцвет, добытый сталью на закате."
+    },
+    {
+      "id": "f_gem",
+      "key": "Самоцвет на теле орка",
+      "kind": "concept",
+      "grants_item": "i_gem"
+    }
+  ],
+  "fact_holders": [
+    {
+      "fact_id": "f_lore",
+      "holder_id": "chr_hero",
+      "mandatory": true,
+      "gate": {"verbs": ["examine"], "threshold": "easy"}
+    },
+    {
+      "fact_id": "f_gem",
+      "holder_id": "e_gem_body",
+      "mandatory": true,
+      "gate": {"verbs": ["examine"], "threshold": "easy"}
+    }
+  ],
+  "items": [
+    {"id": "i_gem", "kind": "evidence", "name": "Самоцвет", "text": "Тускло светится самоцвет размером с кулак."}
+  ],
+  "accusation_tokens": [
+    {"slot": "who", "token": "hero", "fact": "f_lore"},
+    {"slot": "how", "token": "steel", "fact": "f_lore"},
+    {"slot": "when", "token": "dusk", "fact": "f_lore"},
+    {"slot": "why", "token": "glory", "fact": "f_lore"}
+  ],
+  "truth": {"who": "hero", "how": "steel", "when": "dusk", "why": "glory"},
+  "start_facts": [
+    {"fact": "f_lore", "from": "chr_hero"}
+  ],
+  "start_places": ["n_end"],
+  "hints": {
+    "f_gem": "Осмотри тело орка — при нём должно быть что-то ценное."
+  },
+  "briefing": "Тебе шепнули: в логове орка неподалёку лежит самоцвет. Возьми его и вернись.",
+  "aftermath": "Самоцвет лёг в мешок, орк — в землю. Лагерь вздохнул спокойно.",
+  "cold_case_text": "Орк остался жить в своём логове, а самоцвет — при нём.",
+  "victory": {"type": "return_with", "item": "i_gem", "node": "n_start"},
+  "flavour": {
+    "examine": "Ты осматриваешь внимательно.",
+    "examine.chr_hero.f_lore": "Ты вспоминаешь слух о самоцвете в логове орка.",
+    "examine.e_gem_body.f_gem": "На теле орка находится тускло светящийся самоцвет.",
+    "attack.e_orc": "Клинок идёт на орка.",
+    "move_zone.n_end": "Ты входишь в логово орка.",
+    "move_zone.n_start": "Ты возвращаешься в лагерь."
+  }
+}
