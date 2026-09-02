@@ -4,19 +4,45 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, Card, Text } from '@genie/ds';
 import { useTheme } from '../theme/ThemeContext';
-import { Archetype, RulesetCreation, thresholdCreation } from '../mocks/app';
+import { Archetype, RulesetCreation, dnd5eCreation, rulesets } from '../mocks/app';
+import { Ruleset, useCharacters } from '../state/characters';
 
-// Создание персонажа (14a, визард) — тёплый онбординг, не «лист D&D». Ruleset-driven: карточки
-// архетипов и статы приходят дескрипторами из правила «Порог» (label от правила, не хардкод).
-export const CharacterCreateScreen: React.FC<{ ruleset?: RulesetCreation }> = ({ ruleset = thresholdCreation }) => {
+// Создание персонажа (14a, визард) — тёплый онбординг, не «лист D&D». Теперь трёхшаговый:
+// сперва правила (thresholdCreation / dnd5eCreation из rulesets — mocks/app.ts), затем архетип
+// из каталога выбранного правила, затем имя. Сохраняем через useCharacters().add — персонаж
+// оседает в локальном сторе (zustand + async-storage), а не только в этом экране.
+export const CharacterCreateScreen: React.FC = () => {
     const { descriptor: theme } = useTheme();
     const c = theme.colors;
     const insets = useSafeAreaInsets();
-    const [step, setStep] = useState(0);
-    const [picked, setPicked] = useState<string | undefined>();
-    const [name, setName] = useState('');
+    const add = useCharacters((s) => s.add);
 
-    const canNext = step === 0 ? picked !== undefined : step === 1 ? name.trim().length > 0 : true;
+    const [pickedRuleset, setPickedRuleset] = useState<RulesetCreation | null>(null);
+    const [pickedArchetype, setPickedArchetype] = useState<string | null>(null);
+    const [name, setName] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    // step выводится из выбора, а не хранится отдельно — картой нельзя провалиться
+    // в рассинхрон «шаг сам по себе, выбор сам по себе».
+    const step = pickedRuleset === null ? 0 : pickedArchetype === null ? 1 : 2;
+
+    const back = () => {
+        if (step === 2) setPickedArchetype(null);
+        else if (step === 1) setPickedRuleset(null);
+    };
+
+    const onSave = async () => {
+        if (!pickedRuleset || !pickedArchetype || name.trim().length === 0) return;
+        setSaving(true);
+        try {
+            // RulesetCreation не несёт машинный код правила (только витринное ruleName) —
+            // код выводим по ссылке на сам объект каталога, без парсинга текста.
+            const rulesetCode: Ruleset = pickedRuleset === dnd5eCreation ? 'dnd5e' : 'threshold';
+            await add(name.trim(), rulesetCode, pickedArchetype);
+        } finally {
+            setSaving(false);
+        }
+    };
 
     return (
         <View style={[styles.root, { backgroundColor: c.background }]}>
@@ -39,15 +65,31 @@ export const CharacterCreateScreen: React.FC<{ ruleset?: RulesetCreation }> = ({
                 {step === 0 ? (
                     <>
                         <Text theme={theme} variant="title" style={{ color: c.text }}>
-                            Кто вы в этом порту?
+                            По каким правилам играем?
                         </Text>
-                        {ruleset.archetypes.map((a) => (
-                            <ArchetypeCard key={a.id} archetype={a} selected={picked === a.id} onPick={() => setPicked(a.id)} />
+                        {rulesets.map((r) => (
+                            <RulesetCard key={r.ruleName} ruleset={r} onPick={() => setPickedRuleset(r)} />
                         ))}
                     </>
                 ) : null}
 
-                {step === 1 ? (
+                {step === 1 && pickedRuleset ? (
+                    <>
+                        <Text theme={theme} variant="title" style={{ color: c.text }}>
+                            Кто вы в этом порту?
+                        </Text>
+                        {pickedRuleset.archetypes.map((a) => (
+                            <ArchetypeCard
+                                key={a.id}
+                                archetype={a}
+                                selected={pickedArchetype === a.id}
+                                onPick={() => setPickedArchetype(a.id)}
+                            />
+                        ))}
+                    </>
+                ) : null}
+
+                {step === 2 ? (
                     <>
                         <Text theme={theme} variant="title" style={{ color: c.text }}>
                             Как вас звать?
@@ -61,30 +103,42 @@ export const CharacterCreateScreen: React.FC<{ ruleset?: RulesetCreation }> = ({
                         />
                     </>
                 ) : null}
-
-                {step === 2 ? (
-                    <View style={styles.done}>
-                        <Text theme={theme} variant="title" style={{ color: c.text }}>
-                            {name.trim()} · {ruleset.archetypes.find((a) => a.id === picked)?.name}
-                        </Text>
-                        <Text theme={theme} variant="body" style={[styles.doneNote, { color: c.inkSecondary }]}>
-                            Магистрат внёс вас в списки. Первое дело уже ждёт на пристани.
-                        </Text>
-                    </View>
-                ) : null}
             </ScrollView>
 
-            <View style={[styles.footer, { backgroundColor: c.background, borderTopColor: c.hairline, paddingBottom: insets.bottom + 8 }]}>
-                <Button
-                    theme={theme}
-                    label={step < 2 ? 'дальше' : 'создать'}
-                    variant="primary"
-                    fullWidth
-                    disabled={!canNext}
-                    onPress={() => setStep((s) => Math.min(2, s + 1))}
-                />
-            </View>
+            {step > 0 ? (
+                <View style={[styles.footer, { backgroundColor: c.background, borderTopColor: c.hairline, paddingBottom: insets.bottom + 8 }]}>
+                    <Button theme={theme} label="назад" variant="secondary" style={styles.backBtn} onPress={back} />
+                    {step === 2 ? (
+                        <Button
+                            theme={theme}
+                            label="создать"
+                            variant="primary"
+                            style={styles.saveBtn}
+                            loading={saving}
+                            disabled={name.trim().length === 0}
+                            onPress={onSave}
+                        />
+                    ) : null}
+                </View>
+            ) : null}
         </View>
+    );
+};
+
+const RulesetCard: React.FC<{ ruleset: RulesetCreation; onPick: () => void }> = ({ ruleset, onPick }) => {
+    const { descriptor: theme } = useTheme();
+    const c = theme.colors;
+    return (
+        <Pressable onPress={onPick}>
+            <Card theme={theme} surface="surface" radius="lg" bordered style={[styles.arch, { borderColor: c.hairline }]}>
+                <Text theme={theme} variant="title" style={{ color: c.text }}>
+                    {ruleset.ruleName}
+                </Text>
+                <Text theme={theme} variant="body" style={[styles.archBlurb, { color: c.inkSecondary }]}>
+                    {ruleset.archetypes.length} архетипа · бюджет статов {ruleset.statBudget}, максимум {ruleset.statMax}
+                </Text>
+            </Card>
+        </Pressable>
     );
 };
 
@@ -149,7 +203,7 @@ const styles = StyleSheet.create({
     tag: { borderRadius: 999, paddingVertical: 3, paddingHorizontal: 9 },
     tagText: { fontSize: 9, letterSpacing: 0.4 },
     nameInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
-    done: { gap: 10 },
-    doneNote: { fontStyle: 'italic' },
-    footer: { paddingHorizontal: 18, paddingTop: 10, borderTopWidth: 1 },
+    footer: { flexDirection: 'row', gap: 10, paddingHorizontal: 18, paddingTop: 10, borderTopWidth: 1 },
+    backBtn: { flex: 1 },
+    saveBtn: { flex: 2 },
 });
