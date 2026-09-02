@@ -501,6 +501,32 @@ func topicGuessableFromText(v core.Verb) bool {
 	return false
 }
 
+// looksLikeQuestion — фраза выглядит как вопрос: знак «?» или начинается с
+// одного из вопросительных слов. Дешёвая эвристика для сейфа посреди
+// разговора: пропустить вопрос игрока к текущему собеседнику мимо clarify.
+func looksLikeQuestion(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	if t == "" {
+		return false
+	}
+	if strings.Contains(t, "?") {
+		return true
+	}
+	// Слово в начале — с учётом того, что игрок может начать с многоточия,
+	// восклицания или кавычки. Берём первое «настоящее» слово.
+	t = strings.TrimLeft(t, ".!,«\"' \t\n\r-—–")
+	first := t
+	if i := strings.IndexAny(t, " \t\n\r,.!?"); i > 0 {
+		first = t[:i]
+	}
+	switch first {
+	case "почему", "зачем", "что", "чего", "как", "где", "куда", "откуда",
+		"когда", "кто", "чей", "чья", "чьё", "сколько", "разве", "неужели":
+		return true
+	}
+	return false
+}
+
 // bareName — ввод целиком, называющий одного из присутствующих. Строго одно
 // слово: «Берн, что слышно?» это уже фраза, и разбирать её должна модель.
 func bareName(text string, entities []Named) (string, bool) {
@@ -565,6 +591,19 @@ func (gi *GameInterpreter) interpret(ctx context.Context, text string, with stor
 	res, err := gi.Parser.Parse(ctx, text, hint, gi.Req)
 	if err != nil {
 		return nil, "", core.Probe{}, "", err
+	}
+	// Сейф от «повисло без ответа» посреди разговора: модель на ломаной
+	// вопросительной фразе иногда возвращает clarify, хотя правило в промпте
+	// прямо говорит «разговор идёт — это ask_about к нему». Правило в коде
+	// надёжнее: если разговор идёт и в тексте есть вопрос, ход не clarify —
+	// это вопрос текущему собеседнику. Живой прогон: «Дамба.. Почему не
+	// строить?» после ответа Берна уходил в поэтичное «ваши слова повисли».
+	if res.Clarify != "" && with != "" && looksLikeQuestion(text) &&
+		gi.Game.DB.Entities[with].Kind == store.EntityNPC {
+		return &core.Intent{
+			Verb: "ask_about", Actor: gi.Game.Actor,
+			Args: core.Args{Target: with, Text: text},
+		}, "", core.Probe{}, "", nil
 	}
 	switch {
 	case res.Accepted():
