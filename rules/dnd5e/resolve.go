@@ -110,3 +110,7 @@ func DCOfIntent(in core.Intent, view core.SceneView) int {
 	}
 	return DefaultDC
 }
+
+func init() {
+	core.RegisterRuleset(core.RulesetDND5e, func() core.RuleSystem { return New() })
+}

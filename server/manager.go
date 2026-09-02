@@ -150,9 +150,21 @@ func NewManagerWithStore(casesRoot string, st Store) *Manager {
 
 // Create грузит дело, строит игру на данном seed, записывает паспорт сессии в
 // журнал и регистрирует её, возвращая chat_id. Ошибка — про дело (не нашли/не
-// разобрали) или про журнал.
+// разобрали) или про журнал. Система правил — threshold (легаси-путь без
+// персонажа; см. CreateWithRuleset для сессий с явным character_id).
 func (m *Manager) Create(caseName string, seed int64, userID string) (string, error) {
-	game, caseID, snapshot, err := m.buildGame(caseName, seed)
+	return m.create(caseName, seed, userID, threshold.New())
+}
+
+// CreateWithRuleset — как Create, но система правил задаётся вызывающим явно.
+// Сервер сверяет ruleset персонажа с полем "rules" дела ДО вызова (см.
+// server.handleCreateSession) и передаёт сюда уже проверенную систему правил.
+func (m *Manager) CreateWithRuleset(caseName string, seed int64, userID string, rules core.RuleSystem) (string, error) {
+	return m.create(caseName, seed, userID, rules)
+}
+
+func (m *Manager) create(caseName string, seed int64, userID string, rules core.RuleSystem) (string, error) {
+	game, caseID, snapshot, err := m.buildGame(caseName, seed, rules)
 	if err != nil {
 		return "", err
 	}
@@ -229,7 +241,12 @@ func (m *Manager) reconstruct(chatID string) (*sessionRuntime, bool) {
 		return nil, false
 	}
 
-	game, caseID, snapshot, err := m.buildGame(rec.CaseID, rec.Seed)
+	// Реконструкция не знает, какой ruleset персонажа выбрал сессию при
+	// создании: SessionRecord его не хранит (персистентность character_id —
+	// вне scope этого плана, придёт с login-flow). Пока — threshold, как и
+	// было до character-owned ruleset; не регрессия, а сохранение старого
+	// поведения для восстановленных после рестарта сессий.
+	game, caseID, snapshot, err := m.buildGame(rec.CaseID, rec.Seed, threshold.New())
 	if err != nil {
 		return nil, false
 	}
@@ -292,9 +309,9 @@ func (m *Manager) WarmCache(ctx context.Context) error {
 	return nil
 }
 
-// buildGame собирает игру из (дело, seed) — общий путь для Create и реплея.
-// Возвращает игру, её caseID и снепшот начального состояния.
-func (m *Manager) buildGame(caseName string, seed int64) (*core.Game, store.CaseID, string, error) {
+// buildGame собирает игру из (дело, seed, система правил) — общий путь для
+// Create и реплея. Возвращает игру, её caseID и снепшот начального состояния.
+func (m *Manager) buildGame(caseName string, seed int64, rules core.RuleSystem) (*core.Game, store.CaseID, string, error) {
 	if caseName == "" {
 		return nil, "", "", fmt.Errorf("дело не указано")
 	}
@@ -309,9 +326,30 @@ func (m *Manager) buildGame(caseName string, seed int64) (*core.Game, store.Case
 	if err != nil {
 		return nil, "", "", fmt.Errorf("дело %q: %w", caseName, err)
 	}
-	cfg.Rules = threshold.New()
+	cfg.Rules = rules
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
 	return core.NewGame(*cfg), cfg.CaseID, snapshotID(cfg.CaseID, raw, seed), nil
+}
+
+// CaseRulesKind читает поле "rules" из case.json дела caseName, не разбирая
+// дело целиком — сверке ruleset персонажа (см. server.handleCreateSession)
+// нужно только имя системы правил. Правило по умолчанию то же, что у
+// LoadCatalog: пустое поле — "threshold" (обратная совместимость с делами без
+// явного rules).
+func (m *Manager) CaseRulesKind(caseName string) (string, error) {
+	path := filepath.Join(m.casesRoot, caseName, "case.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("дело %q: %w", caseName, err)
+	}
+	var rr rawRules
+	if err := json.Unmarshal(raw, &rr); err != nil {
+		return "", fmt.Errorf("дело %q: %w", caseName, err)
+	}
+	if rr.Rules == "" {
+		return defaultRulesKind, nil
+	}
+	return rr.Rules, nil
 }
 
 // randToken — короткий случайный суффикс chat_id. Разводит две сессии одного

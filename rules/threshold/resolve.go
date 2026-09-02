@@ -85,3 +85,7 @@ func classify(margin int) core.Outcome {
 		return core.OutcomeFail
 	}
 }
+
+func init() {
+	core.RegisterRuleset(core.RulesetThreshold, func() core.RuleSystem { return New() })
+}

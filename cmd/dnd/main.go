@@ -33,6 +33,8 @@ import (
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	// Регистрирует системы правил в реестре (см. core/ruleset.go).
+	_ "github.com/kliuchnikovv/dnd/rules/dnd5e"
 	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/tui"
 	"golang.org/x/term"

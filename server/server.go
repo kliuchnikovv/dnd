@@ -2,10 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/kliuchnikovv/dnd/auth"
+	"github.com/kliuchnikovv/dnd/core"
 )
 
 // Server — HTTP-грань транспорта: health для Railway и старт сессии. Всё
@@ -17,6 +19,10 @@ type Server struct {
 	auth    *auth.Service
 	devAuth bool
 	catalog *CaseCatalog
+	// characters — сервер-уровневое хранилище персонажей (MVP: in-memory, см.
+	// CharacterStore). nil — POST /sessions работает по легаси-пути без
+	// character_id (только case).
+	characters *CharacterStore
 }
 
 // Option настраивает Server при создании (New). Опционально — сервер без
@@ -33,6 +39,14 @@ func WithAuth(a *auth.Service, devAuth bool) Option {
 // эндпоинт не регистрируется — сервер работает как раньше.
 func WithCatalog(c *CaseCatalog) Option {
 	return func(s *Server) { s.catalog = c }
+}
+
+// WithCharacters подключает хранилище персонажей: POST /sessions начинает
+// принимать character_id и сверять ruleset персонажа с ruleset дела. Без
+// опции работает легаси-путь: character_id игнорируется, если пришёл, дело
+// стартует как раньше — с системой правил threshold (см. handleCreateSession).
+func WithCharacters(c *CharacterStore) Option {
+	return func(s *Server) { s.characters = c }
 }
 
 // New собирает маршруты. Хендлер отдаётся через Handler(), а жизненный цикл
@@ -77,10 +91,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 // createSessionRequest — тело POST /sessions. Seed необязателен: ноль
-// означает «по умолчанию», а не «сессия без броска».
+// означает «по умолчанию», а не «сессия без броска». CaseID — новое имя поля
+// по контракту ({case_id, character_id}); Case остаётся для обратной
+// совместимости со старым клиентом ({case}) — см. caseName().
+// CharacterID необязателен: пусто — легаси-путь без проверки ruleset (мост до
+// Task 6, который уберёт авторского character из case.json).
 type createSessionRequest struct {
-	Case string `json:"case"`
-	Seed *int64 `json:"seed"`
+	Case        string `json:"case"`
+	CaseID      string `json:"case_id"`
+	CharacterID string `json:"character_id"`
+	Seed        *int64 `json:"seed"`
+}
+
+// caseName — имя дела из запроса: case_id приоритетнее старого case.
+func (req createSessionRequest) caseName() string {
+	if req.CaseID != "" {
+		return req.CaseID
+	}
+	return req.Case
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +121,53 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if req.Seed != nil {
 		seed = *req.Seed
 	}
-	chatID, err := s.mgr.Create(req.Case, seed, userIDFrom(r.Context()))
+	caseName := req.caseName()
+	userID := userIDFrom(r.Context())
+
+	// Легаси-путь: без character_id ruleset не проверяем — дело стартует как
+	// раньше (system threshold), с авторским character из case.json. Это
+	// временный мост: Task 6 уберёт секцию character из case.json целиком, и
+	// character_id станет обязательным.
+	if req.CharacterID == "" || s.characters == nil {
+		chatID, err := s.mgr.Create(caseName, seed, userID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"chat_id": chatID})
+		return
+	}
+
+	character, ok := s.characters.ByID(req.CharacterID)
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("персонаж %q не найден", req.CharacterID))
+		return
+	}
+	caseRules, err := s.mgr.CaseRulesKind(caseName)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Пустой Ruleset у персонажа — легаси-запись до character-owned ruleset,
+	// читается как threshold (см. store.Character.Ruleset).
+	characterRules := character.Ruleset
+	if characterRules == "" {
+		characterRules = string(core.RulesetThreshold)
+	}
+	if characterRules != caseRules {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf(
+			"ruleset несовместим: персонаж %q — %q, дело %q — %q",
+			req.CharacterID, characterRules, caseName, caseRules,
+		))
+		return
+	}
+	rules, ok := core.LookupRuleset(core.RulesetKind(characterRules))
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("неизвестная система правил %q", characterRules))
+		return
+	}
+
+	chatID, err := s.mgr.CreateWithRuleset(caseName, seed, userID, rules)
 	if err != nil {
 		// Единственная ошибка Create — про дело: не нашли или не разобрали.
 		// Это ошибка запроса, не сервера.

@@ -18,6 +18,9 @@ import (
 
 	// Регистрирует архетип "deduction" в реестре сценариев (см. core/scenario.go).
 	_ "github.com/kliuchnikovv/dnd/core/scenarios/deduction"
+	// Регистрирует системы правил в реестре (см. core/ruleset.go).
+	_ "github.com/kliuchnikovv/dnd/rules/threshold"
+	_ "github.com/kliuchnikovv/dnd/rules/dnd5e"
 	"github.com/kliuchnikovv/dnd/server"
 )
 
@@ -43,7 +46,13 @@ func main() {
 		log.Fatalf("каталог дел: %v", err)
 	}
 
-	srv := server.New(mgr, server.WithAuth(svc, devAuth), server.WithCatalog(catalog))
+	// Character-store — пока in-memory и пустой: персонажи появляются через
+	// Save (нет ещё HTTP-заливки/login-flow, см. server/characters.go). Без
+	// сохранённых персонажей POST /sessions работает легаси-путём (без
+	// character_id), пока Task 6 не уберёт авторского character из case.json.
+	characters := server.NewCharacterStore()
+
+	srv := server.New(mgr, server.WithAuth(svc, devAuth), server.WithCatalog(catalog), server.WithCharacters(characters))
 	httpSrv := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Handler(),
