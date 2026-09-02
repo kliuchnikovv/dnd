@@ -135,3 +135,78 @@ export const thresholdCreation: RulesetCreation = {
         },
     ],
 };
+
+// ── Создание персонажа (ruleset-driven: правило «D&D 5e») ─────────────────────
+// Статы архетипов — полный набор из шести характеристик D&D 5e (Str/Dex/Con/Int/Wis/Cha),
+// в отличие от «Порога», где стат-лист собирается из ролевых дескрипторов.
+export const dnd5eCreation: RulesetCreation = {
+    ruleName: 'D&D 5e',
+    statBudget: 72,
+    statMax: 16,
+    archetypes: [
+        {
+            id: 'fighter',
+            name: 'Файтер',
+            blurb: 'Тяжёлая броня и твёрдая рука. Там, где план рушится, вы держите строй.',
+            stats: [
+                { label: 'Str', value: 16 },
+                { label: 'Dex', value: 12 },
+                { label: 'Con', value: 14 },
+                { label: 'Int', value: 8 },
+                { label: 'Wis', value: 10 },
+                { label: 'Cha', value: 10 },
+            ],
+            tags: ['броня', 'меч'],
+            token: 'archetype_fighter',
+        },
+        {
+            id: 'rogue',
+            name: 'Рог',
+            blurb: 'Тень между тенями. Кинжал решает то, что не решил разговор.',
+            stats: [
+                { label: 'Str', value: 10 },
+                { label: 'Dex', value: 16 },
+                { label: 'Con', value: 12 },
+                { label: 'Int', value: 12 },
+                { label: 'Wis', value: 10 },
+                { label: 'Cha', value: 8 },
+            ],
+            tags: ['скрытность', 'кинжал'],
+            token: 'archetype_rogue',
+        },
+        {
+            id: 'ranger',
+            name: 'Рейнджер',
+            blurb: 'Дикие тропы читаются, как чужие письма. Лук бьёт раньше, чем вас заметят.',
+            stats: [
+                { label: 'Str', value: 10 },
+                { label: 'Dex', value: 15 },
+                { label: 'Con', value: 12 },
+                { label: 'Int', value: 10 },
+                { label: 'Wis', value: 14 },
+                { label: 'Cha', value: 8 },
+            ],
+            tags: ['лук', 'следопыт'],
+            token: 'archetype_ranger',
+        },
+        {
+            id: 'cleric',
+            name: 'Клерик',
+            blurb: 'Слово бога тяжелее булавы. Щит держит удар, молитва — исход.',
+            stats: [
+                { label: 'Str', value: 12 },
+                { label: 'Dex', value: 8 },
+                { label: 'Con', value: 14 },
+                { label: 'Int', value: 10 },
+                { label: 'Wis', value: 16 },
+                { label: 'Cha', value: 12 },
+            ],
+            tags: ['божественное', 'щит'],
+            token: 'archetype_cleric',
+        },
+    ],
+};
+
+// rulesets — каталог правил, доступных при создании персонажа (шаг выбора
+// ruleset перед архетипом). Порядок — в порядке появления в продукте.
+export const rulesets = [thresholdCreation, dnd5eCreation];
