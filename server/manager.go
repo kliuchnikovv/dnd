@@ -150,21 +150,27 @@ func NewManagerWithStore(casesRoot string, st Store) *Manager {
 
 // Create грузит дело, строит игру на данном seed, записывает паспорт сессии в
 // журнал и регистрирует её, возвращая chat_id. Ошибка — про дело (не нашли/не
-// разобрали) или про журнал. Система правил — threshold (легаси-путь без
-// персонажа; см. CreateWithRuleset для сессий с явным character_id).
+// разобрали) или про журнал. Система правил — threshold, персонаж —
+// минимальный дефолт (низкоуровневый путь без character_id: тесты и
+// реконструкция после рестарта; см. CreateWithRuleset для сессий с явным
+// character_id и настоящим листом).
 func (m *Manager) Create(caseName string, seed int64, userID string) (string, error) {
-	return m.create(caseName, seed, userID, threshold.New())
+	return m.create(caseName, seed, userID, threshold.New(), nil)
 }
 
-// CreateWithRuleset — как Create, но система правил задаётся вызывающим явно.
-// Сервер сверяет ruleset персонажа с полем "rules" дела ДО вызова (см.
-// server.handleCreateSession) и передаёт сюда уже проверенную систему правил.
-func (m *Manager) CreateWithRuleset(caseName string, seed int64, userID string, rules core.RuleSystem) (string, error) {
-	return m.create(caseName, seed, userID, rules)
+// CreateWithRuleset — как Create, но система правил и персонаж задаются
+// вызывающим явно. Сервер сверяет ruleset персонажа с полем "rules" дела ДО
+// вызова (см. server.handleCreateSession) и передаёт сюда уже проверенную
+// систему правил вместе с самим персонажем — иначе его лист (Sheet) неоткуда
+// взять внутри buildGame, и игра стартовала бы на дефолтной заглушке вместо
+// настоящего листа (найдено ревью Task 6: character.Ruleset сверялся, но сам
+// character в игру не попадал).
+func (m *Manager) CreateWithRuleset(caseName string, seed int64, userID string, rules core.RuleSystem, character *store.Character) (string, error) {
+	return m.create(caseName, seed, userID, rules, character)
 }
 
-func (m *Manager) create(caseName string, seed int64, userID string, rules core.RuleSystem) (string, error) {
-	game, caseID, snapshot, err := m.buildGame(caseName, seed, rules)
+func (m *Manager) create(caseName string, seed int64, userID string, rules core.RuleSystem, character *store.Character) (string, error) {
+	game, caseID, snapshot, err := m.buildGame(caseName, seed, rules, character)
 	if err != nil {
 		return "", err
 	}
@@ -241,12 +247,12 @@ func (m *Manager) reconstruct(chatID string) (*sessionRuntime, bool) {
 		return nil, false
 	}
 
-	// Реконструкция не знает, какой ruleset персонажа выбрал сессию при
-	// создании: SessionRecord его не хранит (персистентность character_id —
-	// вне scope этого плана, придёт с login-flow). Пока — threshold, как и
-	// было до character-owned ruleset; не регрессия, а сохранение старого
-	// поведения для восстановленных после рестарта сессий.
-	game, caseID, snapshot, err := m.buildGame(rec.CaseID, rec.Seed, threshold.New())
+	// Реконструкция не знает, какой ruleset и какого персонажа выбрала сессия
+	// при создании: SessionRecord их не хранит (персистентность character_id —
+	// вне scope этого плана, придёт с login-flow). Пока — threshold и
+	// дефолтный персонаж, как и было до character-owned ruleset; не регрессия,
+	// а сохранение старого поведения для восстановленных после рестарта сессий.
+	game, caseID, snapshot, err := m.buildGame(rec.CaseID, rec.Seed, threshold.New(), nil)
 	if err != nil {
 		return nil, false
 	}
@@ -309,9 +315,26 @@ func (m *Manager) WarmCache(ctx context.Context) error {
 	return nil
 }
 
-// buildGame собирает игру из (дело, seed, система правил) — общий путь для
-// Create и реплея. Возвращает игру, её caseID и снепшот начального состояния.
-func (m *Manager) buildGame(caseName string, seed int64, rules core.RuleSystem) (*core.Game, store.CaseID, string, error) {
+// buildGame собирает игру из (дело, seed, система правил, персонаж) — общий
+// путь для Create/CreateWithRuleset и реплея. Возвращает игру, её caseID и
+// снепшот начального состояния.
+//
+// character — настоящий лист персонажа-актёра (character_id пришёл через
+// server.handleCreateSession и был провалидирован там на совместимость
+// ruleset ДО этого вызова). nil — низкоуровневый путь без character_id
+// (Manager.Create, реконструкция после рестарта): заводим минимального
+// персонажа по умолчанию, как раньше делал загрузчик кейсов, чтобы игра
+// оставалась играбельной без обязательной завязки на HTTP-слой.
+//
+// Персонаж кладётся в базу ПОД КЛЮЧОМ cfg.Actor, а не под своим собственным
+// ID: cfg.Actor — это ключ, под которым дело ждёт актёра в остальных таблицах
+// (в т.ч. db.Entities для сценария adventure — движок хода и Defeat() читают
+// db.Entities[EntityID(g.Actor)], и подмена g.Actor на произвольный
+// character.ID без парного Entity увела бы actor-сущность в нулевой HP,
+// то есть в мгновенное поражение). ID персонажа в собственном CharacterStore
+// остаётся его настоящим паспортом; здесь берётся только его Sheet/Ruleset/
+// Grit/Harm.
+func (m *Manager) buildGame(caseName string, seed int64, rules core.RuleSystem, character *store.Character) (*core.Game, store.CaseID, string, error) {
 	if caseName == "" {
 		return nil, "", "", fmt.Errorf("дело не указано")
 	}
@@ -328,12 +351,11 @@ func (m *Manager) buildGame(caseName string, seed int64, rules core.RuleSystem) 
 	}
 	cfg.Rules = rules
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
-	// Character в case.json больше не живёт (Task 6): его лист негде взять,
-	// кроме отдельного CharacterStore, а этот низкоуровневый путь (Create,
-	// тесты, реконструкция после рестарта) его не знает. Заводим минимального
-	// персонажа по умолчанию — как раньше делал загрузчик кейсов, — чтобы
-	// игра оставалась играбельной без плотной завязки на HTTP-слой.
-	if _, ok := cfg.DB.CharacterByID(cfg.Actor); !ok {
+	if character != nil {
+		actor := *character
+		actor.ID = cfg.Actor
+		cfg.DB.SaveCharacter(&actor)
+	} else if _, ok := cfg.DB.CharacterByID(cfg.Actor); !ok {
 		cfg.DB.SaveCharacter(&store.Character{ID: cfg.Actor, Grit: 3})
 	}
 	return core.NewGame(*cfg), cfg.CaseID, snapshotID(cfg.CaseID, raw, seed), nil
