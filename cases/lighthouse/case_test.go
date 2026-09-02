@@ -33,7 +33,7 @@ func TestLighthouseLoads(t *testing.T) {
 		t.Fatal("Rules не должен быть nil после подстановки dnd5e")
 	}
 
-	if _, ok := cfg.DB.CharactersMap()[store.CharacterID(cfg.Actor)]; !ok {
+	if _, ok := cfg.DB.Characters[store.CharacterID(cfg.Actor)]; !ok {
 		t.Fatalf("персонаж-актёр %q не найден", cfg.Actor)
 	}
 

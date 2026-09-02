@@ -50,7 +50,7 @@ func TestSheetSurvivesAsRawBytes(t *testing.T) {
 	var probe struct {
 		Attrs map[string]int `json:"attrs"`
 	}
-	if err := json.Unmarshal(cfg.DB.CharactersMap()["pc"].Sheet, &probe); err != nil {
+	if err := json.Unmarshal(cfg.DB.Characters["pc"].Sheet, &probe); err != nil {
 		t.Fatalf("лист не разобрался: %v", err)
 	}
 	if probe.Attrs["mind"] != 3 {

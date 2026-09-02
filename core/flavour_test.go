@@ -12,7 +12,7 @@ func flavourGame(texts map[string]string) *Game {
 	db.Locations["n_quay"] = store.Location{ID: "n_quay"}
 	db.Locations["n_forge"] = store.Location{ID: "n_forge", Adjacent: []store.NodeID{"n_quay"}}
 	db.Entities["e_bern"] = store.Entity{ID: "e_bern", Kind: store.EntityNPC, Node: "n_quay"}
-	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
 	return NewGame(Config{
 		DB: db, Rules: nilRules{}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("a", "b", "c", "d"),

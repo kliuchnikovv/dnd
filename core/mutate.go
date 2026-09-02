@@ -11,7 +11,7 @@ import (
 // Всё прочее приходит от системы правил и молча игнорируется, если ядру
 // незнакомо: это не ошибка, а граница ответственности.
 func (g *Game) applyMutations(ms []Mutation) {
-	ch := g.DB.CharactersMap()[g.Actor]
+	ch := g.DB.Characters[g.Actor]
 	for _, m := range ms {
 		switch m.Kind {
 		case MutResource:
@@ -24,7 +24,7 @@ func (g *Game) applyMutations(ms []Mutation) {
 				ch.Grit = cur
 			}
 		case MutHarm:
-			if c, ok := g.DB.CharactersMap()[store.CharacterID(m.Target)]; ok {
+			if c, ok := g.DB.Characters[store.CharacterID(m.Target)]; ok {
 				c.Harm = clampHarm(c.Harm + m.Delta)
 			}
 		case MutClock:
@@ -91,7 +91,7 @@ func setCondition(g *Game, target, condition string, amount int) {
 // заполнившихся часов.
 func (g *Game) executeCosts(cs []CostKind, in Intent) []store.Consequence {
 	var fired []store.Consequence
-	ch := g.DB.CharactersMap()[g.Actor]
+	ch := g.DB.Characters[g.Actor]
 	for _, c := range cs {
 		switch c {
 		case CostTickClock:

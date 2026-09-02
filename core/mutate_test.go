@@ -19,7 +19,7 @@ func (nilDice) Roll(int, int) int { return 3 }
 func testGame() *Game {
 	db := store.NewDB()
 	db.Entities["e_toke"] = store.Entity{ID: "e_toke", Kind: store.EntityNPC, Node: "n_quay"}
-	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3, Harm: 0}
+	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3, Harm: 0}
 	db.Clocks["c_suspicion"] = &store.Clock{
 		ID: "c_suspicion", Segments: 2, TickPolicy: "on_cost",
 		OnFill: store.Consequence{FlavourKey: "clock.filled", HostileTo: []store.EntityID{"e_toke"}},
@@ -43,10 +43,10 @@ func TestMutationsAreAppliedByName(t *testing.T) {
 		{Kind: MutHarm, Target: "pc", Delta: 1},
 		{Kind: MutDisposition, Target: "e_toke", Delta: -1},
 	})
-	if got := g.DB.CharactersMap()["pc"].Grit; got != 2 {
+	if got := g.DB.Characters["pc"].Grit; got != 2 {
 		t.Errorf("grit = %d, ожидалось 2", got)
 	}
-	if got := g.DB.CharactersMap()["pc"].Harm; got != 1 {
+	if got := g.DB.Characters["pc"].Harm; got != 1 {
 		t.Errorf("harm = %d, ожидалось 1", got)
 	}
 	if got := g.D.Disposition("e_toke"); got != -1 {
@@ -59,7 +59,7 @@ func TestUnknownResourceIsIgnoredNotPanicked(t *testing.T) {
 	// обязано знать: незнакомое имя не должно ронять прогон.
 	g := testGame()
 	g.applyMutations([]Mutation{{Kind: MutResource, Target: "slot_3", Delta: -1}})
-	if g.DB.CharactersMap()["pc"].Grit != 3 {
+	if g.DB.Characters["pc"].Grit != 3 {
 		t.Error("незнакомый ресурс задел grit")
 	}
 }
@@ -109,7 +109,7 @@ func TestFlavourFallsBackToKey(t *testing.T) {
 }
 
 func snapshot(g *Game) [4]int {
-	c := g.DB.CharactersMap()["pc"]
+	c := g.DB.Characters["pc"]
 	return [4]int{c.Grit, c.Harm, g.D.Disposition("e_toke") + g.Debts["e_toke"],
 		g.DB.Clocks["c_suspicion"].Filled + boolInt(g.Detected)}
 }

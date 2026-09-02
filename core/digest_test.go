@@ -18,7 +18,7 @@ func digestGame() *Game {
 		Adjacent: []store.NodeID{"n_forge"}}
 	db.Locations["n_forge"] = store.Location{ID: "n_forge", Name: "Кузница"}
 	db.Entities["e_body"] = store.Entity{ID: "e_body", Kind: store.EntityThing, Node: "n_quay"}
-	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Harm: 1, Grit: 2}
+	db.Characters["pc"] = &store.Character{ID: "pc", Harm: 1, Grit: 2}
 
 	db.Facts["f_ligature"] = store.Fact{ID: "f_ligature", Key: "тело на складе"}
 	db.Facts["f_seal"] = store.Fact{ID: "f_seal", Key: "шнур от печати"}

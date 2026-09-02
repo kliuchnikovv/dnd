@@ -10,7 +10,7 @@ import (
 func accuseGame() *Game {
 	db := store.NewDB()
 	db.Locations["n_quay"] = store.Location{ID: "n_quay"}
-	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
 	db.Clocks["c_suspicion"] = &store.Clock{ID: "c_suspicion", Segments: 6, TickPolicy: "on_cost"}
 	for _, f := range []store.FactID{"f_who", "f_how", "f_when", "f_why", "f_wrong"} {
 		db.Facts[f] = store.Fact{ID: f}

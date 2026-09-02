@@ -64,7 +64,7 @@ func StateDigest(g *Game, res TurnResult) Digest {
 	for _, it := range g.Carried() {
 		d.Carried = append(d.Carried, it.Name)
 	}
-	if ch := g.DB.CharactersMap()[g.Actor]; ch != nil {
+	if ch := g.DB.Characters[g.Actor]; ch != nil {
 		d.Harm, d.Grit = ch.Harm, ch.Grit
 	}
 	// Известное — только ключи фактов, которые парти УЖЕ знает (party_knowledge).

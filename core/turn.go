@@ -372,7 +372,7 @@ func (g *Game) itemsPresented(h store.FactHolder) bool {
 // SceneView собирает срез сцены для правил. Здесь нет и не может быть графа
 // фактов и truth: типа SceneView для них просто нет полей.
 func (g *Game) SceneView(in Intent) SceneView {
-	ch := g.DB.CharactersMap()[g.Actor]
+	ch := g.DB.Characters[g.Actor]
 	view := SceneView{
 		Node:       g.Node,
 		NodeTags:   g.nodeTags(g.Node),

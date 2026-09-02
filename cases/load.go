@@ -78,7 +78,7 @@ func Parse(raw []byte) (*core.Config, error) {
 		c := f.Clocks[i]
 		db.Clocks[c.ID] = &c
 	}
-	db.CharactersMap()[store.CharacterID(f.Character.ID)] = &store.Character{
+	db.Characters[store.CharacterID(f.Character.ID)] = &store.Character{
 		ID:    store.CharacterID(f.Character.ID),
 		Sheet: f.Character.Sheet,
 		Grit:  f.Character.Grit,
