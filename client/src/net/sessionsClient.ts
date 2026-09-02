@@ -23,8 +23,11 @@ export async function listSessions(token: string): Promise<SessionSummary[]> {
   return (raw ?? []).map((s) => ({ chatId: s.chat_id, caseId: s.case_id, seed: s.seed, createdAt: s.created_at }));
 }
 
-export async function createSession(token: string, caseName: string, seed?: number): Promise<{ chatId: string }> {
-  const body: Record<string, unknown> = { case: caseName };
+// createSession — POST /sessions. character_id обязателен на сервере (см.
+// server/server.go: createSessionRequest) — без него неоткуда взять лист
+// персонажа и систему правил дела.
+export async function createSession(token: string, caseId: string, characterId: string, seed?: number): Promise<{ chatId: string }> {
+  const body: Record<string, unknown> = { case_id: caseId, character_id: characterId };
   if (seed !== undefined) body.seed = seed;
   const raw = await req<{ chat_id: string }>('/sessions', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

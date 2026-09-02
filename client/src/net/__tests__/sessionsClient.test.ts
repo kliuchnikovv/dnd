@@ -16,11 +16,12 @@ test('listSessions maps snake_case and sends Bearer', async () => {
   expect(out).toEqual([{ chatId: 'c1', caseId: 'harbour', seed: 1, createdAt: 1000 }]);
 });
 
-test('createSession posts case and returns chatId', async () => {
+test('createSession posts case_id + character_id and returns chatId', async () => {
   let body: any;
   mockFetch(200, { chat_id: 'c2' }, (_u, o) => { body = JSON.parse(o.body); });
-  const out = await createSession('tok', 'harbour');
-  expect(body.case).toBe('harbour');
+  const out = await createSession('tok', 'harbour', 'chr_1');
+  expect(body.case_id).toBe('harbour');
+  expect(body.character_id).toBe('chr_1');
   expect(out).toEqual({ chatId: 'c2' });
 });
 

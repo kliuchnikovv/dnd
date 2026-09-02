@@ -2,30 +2,37 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, ListItem, Spinner, Text } from '@genie/ds';
+import { Button, Chip, ListItem, Spinner, Text } from '@genie/ds';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAuth } from '../../state/useAuth';
 import { secureTokenStore } from '../../auth/tokenStore';
 import { listSessions, createSession } from '../../net/sessionsClient';
+import { listCases, CaseSummary } from '../../net/cases';
+import { CharacterRecord, useCharacters } from '../../state/characters';
 import { toSessionRows, SessionRow } from './sessionSelect';
 
-// SessionSelectScreen — выбор существующей сессии или старт новой. Вся vm-
-// логика (маппинг в строки, относительное время) — в sessionSelect.ts и
-// юнит-тестируется отдельно; экран лишь грузит список, рендерит и зовёт
-// onPick(chatId) по тапу на строку или после создания новой игры.
-//
-// useAuth() отдаёт только status/user/error — сам access-токен наружу не
-// торчит (см. AuthState), он лежит в secureTokenStore, тем же хранилищем,
-// которым пользуются restore()/refresh() внутри useAuth.ts. Экран читает его
-// оттуда напрямую вместо расширения публичного интерфейса стора.
+// SessionSelectScreen — продолжить старое дело или начать новое. Старый
+// список сессий (resume по chatId) остаётся как был; новизна — старт нового
+// дела теперь двухшаговый: «Кто идёт?» (персонаж из локального стора, Task 7)
+// → «Куда?» (дела из GET /cases, отфильтрованные по совпадению
+// character.ruleset === case.rules — персонаж-D&D5e не полезет в дело под
+// «Порог», и наоборот). useAuth() отдаёт только status/user/error — сам
+// access-токен наружу не торчит (см. AuthState), он лежит в
+// secureTokenStore, тем же хранилищем, которым пользуются restore()/refresh()
+// внутри useAuth.ts. Экран читает его оттуда напрямую вместо расширения
+// публичного интерфейса стора.
 export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }> = ({ onPick }) => {
     const { descriptor: theme } = useTheme();
     const c = theme.colors;
     const insets = useSafeAreaInsets();
     const { status } = useAuth();
+    const characters = useCharacters((s) => s.characters);
 
     const [rows, setRows] = useState<SessionRow[]>([]);
+    const [cases, setCases] = useState<CaseSummary[]>([]);
     const [loading, setLoading] = useState(true);
+    const [pickedCharacter, setPickedCharacter] = useState<CharacterRecord | null>(null);
+    const [pickedCase, setPickedCase] = useState<CaseSummary | null>(null);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -41,10 +48,12 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
             const token = await getToken();
             if (!token) {
                 setRows([]);
+                setCases([]);
                 return;
             }
-            const list = await listSessions(token);
-            setRows(toSessionRows(list, Math.floor(Date.now() / 1000)));
+            const [sessions, caseList] = await Promise.all([listSessions(token), listCases(token)]);
+            setRows(toSessionRows(sessions, Math.floor(Date.now() / 1000)));
+            setCases(caseList);
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -60,7 +69,18 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
         }
     }, [status, load]);
 
-    const onNewGame = useCallback(async () => {
+    // Совместимые дела — только те, чья система правил совпадает с ruleset'ом
+    // выбранного персонажа. Несовместимые просто не показываем: список и так
+    // короткий, а "серый недоступный пункт" не добавляет ценности здесь.
+    const compatibleCases = pickedCharacter ? cases.filter((cs) => cs.rules === pickedCharacter.ruleset) : [];
+
+    const pickCharacter = useCallback((ch: CharacterRecord) => {
+        setPickedCharacter(ch);
+        setPickedCase(null); // прошлый выбор дела мог быть несовместим с новым персонажем
+    }, []);
+
+    const onStart = useCallback(async () => {
+        if (!pickedCharacter || !pickedCase) return;
         const token = await getToken();
         if (!token) {
             setError('нет токена — войдите заново');
@@ -69,14 +89,14 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
         setCreating(true);
         setError(null);
         try {
-            const { chatId } = await createSession(token, 'harbour');
+            const { chatId } = await createSession(token, pickedCase.id, pickedCharacter.id);
             onPick(chatId);
         } catch (e) {
             setError((e as Error).message);
         } finally {
             setCreating(false);
         }
-    }, [getToken, onPick]);
+    }, [getToken, onPick, pickedCase, pickedCharacter]);
 
     return (
         <View style={[styles.root, { backgroundColor: c.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
@@ -99,6 +119,53 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
                             onPress={() => onPick(row.chatId)}
                         />
                     ))}
+
+                    <Text theme={theme} variant="title" style={[styles.sectionTitle, { color: c.text }]}>
+                        Новое дело
+                    </Text>
+                    <Text theme={theme} variant="mono" style={[styles.stepLabel, { color: c.inkMuted }]}>
+                        КТО ИДЁТ?
+                    </Text>
+                    {characters.length === 0 ? (
+                        <Text theme={theme} variant="body" style={[styles.hint, { color: c.inkMuted }]}>
+                            Персонажей ещё нет — создайте на вкладке «Герой».
+                        </Text>
+                    ) : (
+                        characters.map((ch) => (
+                            <ListItem
+                                key={ch.id}
+                                theme={theme}
+                                title={ch.name}
+                                selected={pickedCharacter?.id === ch.id}
+                                rightContent={<Chip theme={theme} label={ch.ruleset} size="sm" />}
+                                onPress={() => pickCharacter(ch)}
+                            />
+                        ))
+                    )}
+
+                    {pickedCharacter ? (
+                        <>
+                            <Text theme={theme} variant="mono" style={[styles.stepLabel, { color: c.inkMuted }]}>
+                                КУДА?
+                            </Text>
+                            {compatibleCases.length === 0 ? (
+                                <Text theme={theme} variant="body" style={[styles.hint, { color: c.inkMuted }]}>
+                                    Нет дел под правила «{pickedCharacter.ruleset}».
+                                </Text>
+                            ) : (
+                                compatibleCases.map((cs) => (
+                                    <ListItem
+                                        key={cs.id}
+                                        theme={theme}
+                                        title={cs.name}
+                                        subtitle={cs.blurb}
+                                        selected={pickedCase?.id === cs.id}
+                                        onPress={() => setPickedCase(cs)}
+                                    />
+                                ))
+                            )}
+                        </>
+                    ) : null}
                 </ScrollView>
             )}
 
@@ -110,12 +177,13 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
 
             <Button
                 theme={theme}
-                label="Новая игра"
+                label="Начать"
                 variant="primary"
                 size="lg"
                 fullWidth
                 loading={creating}
-                onPress={onNewGame}
+                disabled={!pickedCharacter || !pickedCase}
+                onPress={onStart}
             />
         </View>
     );
@@ -134,6 +202,16 @@ const styles = StyleSheet.create({
     },
     list: {
         flex: 1,
+    },
+    sectionTitle: {
+        marginTop: 8,
+    },
+    stepLabel: {
+        fontSize: 9.5,
+        letterSpacing: 1.2,
+    },
+    hint: {
+        fontStyle: 'italic',
     },
     error: {
         textAlign: 'center',
