@@ -132,6 +132,10 @@ type Character struct {
 	Sheet json.RawMessage `json:"sheet"` // непрозрачен для ядра
 	Harm  int             `json:"harm"`
 	Grit  int             `json:"grit"`
+	// Ruleset — правила, в которых создан герой ("threshold" | "dnd5e").
+	// Пустая строка при загрузке читается как "threshold" — обратная
+	// совместимость с прогонами до character-owned ruleset.
+	Ruleset string `json:"ruleset,omitempty"`
 }
 
 // Contradiction — пара фактов, чьё сопоставление открывает третий факт.
