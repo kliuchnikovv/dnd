@@ -19,7 +19,7 @@ func probeGame() *Game {
 	db.Props["n_quay"] = []store.SceneProp{
 		{ID: "p_coils", Node: "n_quay", Name: "Бухты каната", Kind: "clutter"},
 	}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	db.Facts["f_ligature"] = store.Fact{ID: "f_ligature", Key: "борозда от шнура"}
 	db.Facts["f_watch"] = store.Fact{ID: "f_watch", Key: "ночной обход"}
 	db.Holders["f_ligature"] = []store.FactHolder{{

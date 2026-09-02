@@ -12,7 +12,7 @@ func unlockGame() *Game {
 	db.Locations["n_quay"] = store.Location{ID: "n_quay", Adjacent: []store.NodeID{"n_cellar"}}
 	db.Locations["n_cellar"] = store.Location{ID: "n_cellar", Adjacent: []store.NodeID{"n_quay"}}
 	db.Entities["e_toke"] = store.Entity{ID: "e_toke", Kind: store.EntityNPC, Node: "n_quay"}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	db.Facts["f_key"] = store.Fact{ID: "f_key"}
 	db.Facts["f_deep"] = store.Fact{ID: "f_deep"}
 	// Спящий держатель: факт у Токе есть, но темы нет, пока не открыт f_key.

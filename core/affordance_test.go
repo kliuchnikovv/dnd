@@ -23,7 +23,7 @@ func affordGame() *Game {
 		{ID: "p_nets", Node: "n_quay", Name: "Ворох сетей", Kind: "clutter"},
 		{ID: "p_crates", Node: "n_quay", Name: "Ящики у стены", Kind: "furniture"},
 	}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	db.Facts["f_known"] = store.Fact{ID: "f_known", Key: "тело нашли на складе"}
 	db.Facts["f_secret"] = store.Fact{ID: "f_secret", Key: "гильдейская печать на шнуре"}
 	db.Holders["f_secret"] = []store.FactHolder{{
@@ -142,7 +142,7 @@ func TestEveryAffordanceIsAccepted(t *testing.T) {
 func TestPoorNodeGivesFewerAffordances(t *testing.T) {
 	db := store.NewDB()
 	db.Locations["n_empty"] = store.Location{ID: "n_empty", Name: "Пустырь"}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	g := NewGame(Config{
 		DB: db, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("a", "b", "c", "d"),

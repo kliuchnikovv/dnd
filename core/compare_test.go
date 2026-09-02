@@ -10,7 +10,7 @@ import (
 func compareGame() *Game {
 	db := store.NewDB()
 	db.Locations["n_quay"] = store.Location{ID: "n_quay", Tags: []string{"dark", "rain"}}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	for _, id := range []store.FactID{"f_alibi", "f_seen_at_quay", "f_lie", "f_unrelated"} {
 		db.Facts[id] = store.Fact{ID: id, Key: string(id)}
 	}

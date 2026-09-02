@@ -12,7 +12,7 @@ type DB struct {
 	Locations  map[NodeID]Location
 	Relations  []Relation
 	Clocks     map[ClockID]*Clock
-	Characters map[CharacterID]*Character
+	characters map[CharacterID]*Character
 	Knowledge  []Knowledge
 	Dossiers   map[DossierKey]*Dossier
 	Props      map[NodeID][]SceneProp
@@ -57,7 +57,7 @@ func NewDB() *DB {
 		Entities:    map[EntityID]Entity{},
 		Locations:   map[NodeID]Location{},
 		Clocks:      map[ClockID]*Clock{},
-		Characters:  map[CharacterID]*Character{},
+		characters:  map[CharacterID]*Character{},
 		Dossiers:    map[DossierKey]*Dossier{},
 		Props:       map[NodeID][]SceneProp{},
 		Items:       map[ItemID]Item{},
@@ -160,4 +160,32 @@ func (db *DB) PropAt(n NodeID, id PropID) (SceneProp, bool) {
 		}
 	}
 	return SceneProp{}, false
+}
+
+// SaveCharacter сохраняет персонажа в хранилище по его ID.
+func (db *DB) SaveCharacter(c *Character) {
+	db.CharactersMap()[c.ID] = c
+}
+
+// Characters возвращает всех персонажей в стабильном порядке по ID.
+// Итерация по map в Go случайна, а список персонажей обязан быть воспроизводимым.
+func (db *DB) Characters() []*Character {
+	var out []*Character
+	for _, c := range db.characters {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// CharacterByID возвращает персонажа по ID. Безопасный поиск с индикатором успеха.
+func (db *DB) CharacterByID(id CharacterID) (*Character, bool) {
+	c, ok := db.CharactersMap()[id]
+	return c, ok
+}
+
+// CharactersMap возвращает базовую карту персонажей для прямого доступа.
+// Deprecated: используйте SaveCharacter, Characters, CharacterByID вместо прямого доступа к карте.
+func (db *DB) CharactersMap() map[CharacterID]*Character {
+	return db.characters
 }

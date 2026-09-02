@@ -21,7 +21,7 @@ const HarmMax = 3
 
 // Incapacitated — все ячейки ранений заполнены.
 func (g *Game) Incapacitated() bool {
-	ch := g.DB.Characters[g.Actor]
+	ch := g.DB.CharactersMap()[g.Actor]
 	return ch != nil && ch.Harm >= HarmMax
 }
 
@@ -42,7 +42,7 @@ func (g *Game) RestPreview(kind RestKind) []store.ClockID {
 
 // Rest — короткий возвращает grit, длинный снимает ячейку ранений ценой тика.
 func (g *Game) Rest(kind RestKind) TurnResult {
-	ch := g.DB.Characters[g.Actor]
+	ch := g.DB.CharactersMap()[g.Actor]
 	if ch == nil {
 		return refuse("некому отдыхать")
 	}

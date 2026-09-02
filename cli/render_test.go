@@ -73,7 +73,7 @@ func TestStateSurfacesHarmOnlyWhenWounded(t *testing.T) {
 	if strings.Contains(Render{}.State(g), "ранения") {
 		t.Errorf("на полном здоровье state показал раны: %q", Render{}.State(g))
 	}
-	g.DB.Characters[g.Actor].Harm = 1
+	g.DB.CharactersMap()[g.Actor].Harm = 1
 	if !strings.Contains(Render{}.State(g), "ранения: 1/3") {
 		t.Errorf("ранение не всплыло в state: %q", Render{}.State(g))
 	}

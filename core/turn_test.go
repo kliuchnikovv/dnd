@@ -24,7 +24,7 @@ func turnGame(out Outcome) *Game {
 	db.Locations["n_forge"] = store.Location{ID: "n_forge", Adjacent: []store.NodeID{"n_quay"}}
 	db.Entities["e_toke"] = store.Entity{ID: "e_toke", Kind: store.EntityNPC, Node: "n_quay"}
 	db.Entities["e_ivar"] = store.Entity{ID: "e_ivar", Kind: store.EntityNPC, Node: "n_forge"}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	db.Facts["f_open"] = store.Fact{ID: "f_open", Key: "open"}
 	db.Facts["f_gated"] = store.Fact{ID: "f_gated", Key: "gated"}
 	db.Holders["f_open"] = []store.FactHolder{{

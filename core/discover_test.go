@@ -15,7 +15,7 @@ func discoverGame(out Outcome) *Game {
 	db.Locations["n_quay"] = store.Location{ID: "n_quay", Adjacent: []store.NodeID{"n_forge"}}
 	db.Locations["n_forge"] = store.Location{ID: "n_forge", Adjacent: []store.NodeID{"n_quay"}}
 	db.Entities["e_body"] = store.Entity{ID: "e_body", Kind: store.EntityThing, Node: "n_quay"}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 
 	db.Facts["f_ligature"] = store.Fact{ID: "f_ligature", Key: "ligature"}
 	db.Facts["f_seal_cord"] = store.Fact{ID: "f_seal_cord", Key: "seal_cord"}
@@ -150,7 +150,7 @@ func factHolderGame(holder store.EntityID, kind store.EntityKind, node store.Nod
 	db.Locations["n_quay"] = store.Location{ID: "n_quay", Adjacent: []store.NodeID{"n_forge"}}
 	db.Locations["n_forge"] = store.Location{ID: "n_forge", Adjacent: []store.NodeID{"n_quay"}}
 	db.Entities[holder] = store.Entity{ID: holder, Kind: kind, Node: node}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3}
 	db.Facts["f_ligature"] = store.Fact{ID: "f_ligature", Key: "ligature"}
 	db.Holders["f_ligature"] = []store.FactHolder{{
 		FactID: "f_ligature", HolderID: holder, Mandatory: true,

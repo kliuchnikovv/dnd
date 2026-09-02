@@ -39,7 +39,7 @@ var harmMax = core.HarmMax
 // grit и далёкими часами не видит ни одной меры — и это минимализм, заданный
 // правилом, а не эвристикой клиента.
 func (RefRuleset) Meters(g *core.Game) []view.Meter {
-	ch := g.DB.Characters[g.Actor]
+	ch := g.DB.CharactersMap()[g.Actor]
 	out := []view.Meter{
 		{Label: "ранения", Kind: "harm", Value: ch.Harm, Max: &harmMax, Surface: ch.Harm > 0},
 		{Label: "grit", Kind: "grit", Value: ch.Grit, Surface: ch.Grit > 0},

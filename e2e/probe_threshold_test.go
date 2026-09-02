@@ -25,7 +25,7 @@ func probeThresholdGame(t *testing.T) *core.Game {
 	db.Locations["n_quay"] = store.Location{ID: "n_quay"}
 	db.Entities["e_body"] = store.Entity{ID: "e_body", Name: "Тело Халдена",
 		Kind: store.EntityThing, Node: "n_quay"}
-	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3,
+	db.CharactersMap()["pc"] = &store.Character{ID: "pc", Grit: 3,
 		Sheet: []byte(`{"attrs":{"mind":0},"tags":[]}`)}
 	db.Facts["f_ligature"] = store.Fact{ID: "f_ligature", Key: "борозда"}
 	db.Facts["f_wound"] = store.Fact{ID: "f_wound", Key: "рана"}

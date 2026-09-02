@@ -35,7 +35,7 @@ func TestRulesetHidesHarmAtFullHealth(t *testing.T) {
 // surfacing: мера всплывает, когда стала важна сейчас.
 func TestRulesetSurfacesHarmWhenWounded(t *testing.T) {
 	g := renderGame(t)
-	g.DB.Characters[g.Actor].Harm = 1
+	g.DB.CharactersMap()[g.Actor].Harm = 1
 	harm, _ := meterByKind(RefRuleset{}.Meters(g), "harm")
 	if !harm.Surface || harm.Value != 1 {
 		t.Errorf("ранение не подняло меру: %+v", harm)
