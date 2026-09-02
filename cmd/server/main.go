@@ -35,7 +35,15 @@ func main() {
 	svc, devAuth := buildAuth(authCtx, mgr)
 	cancelAuth()
 
-	srv := server.New(mgr, server.WithAuth(svc, devAuth))
+	// Каталог дел — витрина для GET /cases. Ошибка здесь про дело, которое не
+	// проходит собственную валидацию: останавливаем старт, а не отдаём
+	// недогруженный каталог.
+	catalog, err := server.LoadCatalog(casesDir)
+	if err != nil {
+		log.Fatalf("каталог дел: %v", err)
+	}
+
+	srv := server.New(mgr, server.WithAuth(svc, devAuth), server.WithCatalog(catalog))
 	httpSrv := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Handler(),

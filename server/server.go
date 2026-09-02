@@ -16,6 +16,7 @@ type Server struct {
 	mux     *http.ServeMux
 	auth    *auth.Service
 	devAuth bool
+	catalog *CaseCatalog
 }
 
 // Option настраивает Server при создании (New). Опционально — сервер без
@@ -26,6 +27,12 @@ type Option func(*Server)
 // devAuth разрешает POST /auth/dev (вход без Google — для локали и тестов).
 func WithAuth(a *auth.Service, devAuth bool) Option {
 	return func(s *Server) { s.auth = a; s.devAuth = devAuth }
+}
+
+// WithCatalog подключает каталог дел и включает GET /cases. Без опции
+// эндпоинт не регистрируется — сервер работает как раньше.
+func WithCatalog(c *CaseCatalog) Option {
+	return func(s *Server) { s.catalog = c }
 }
 
 // New собирает маршруты. Хендлер отдаётся через Handler(), а жизненный цикл
@@ -48,6 +55,9 @@ func New(mgr *Manager, opts ...Option) *Server {
 		s.mux.HandleFunc("POST /auth/dev", s.handleDevLogin)
 	} else {
 		s.mux.HandleFunc("POST /sessions", s.handleCreateSession)
+	}
+	if s.catalog != nil {
+		s.mux.HandleFunc("GET /cases", s.catalog.HandleList)
 	}
 	return s
 }
