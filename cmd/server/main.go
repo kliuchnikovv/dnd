@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	// Регистрирует архетип "deduction" в реестре сценариев (см. core/scenario.go).
+	_ "github.com/kliuchnikovv/dnd/core/scenarios/deduction"
 	"github.com/kliuchnikovv/dnd/server"
 )
 

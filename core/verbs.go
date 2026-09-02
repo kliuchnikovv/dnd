@@ -19,6 +19,13 @@ const (
 	ClassSupport     VerbClass = "support"
 	ClassResource    VerbClass = "resource"
 	ClassSkill       VerbClass = "skill"
+	// ClassSave — спасбросок: атрибут защищающегося против DC, а не проверка
+	// навыка атакующего. Пока ни один глагол реестра её не носит — класс
+	// назначает система правил (dnd5e) сама себе на резолве save-эффектов;
+	// данные дела получат явные save-глаголы позже.
+	ClassSave     VerbClass = "save"
+	ClassCheck    VerbClass = "check"
+	ClassRecover  VerbClass = "recover"
 )
 
 type VerbDef struct {
@@ -35,41 +42,41 @@ type VerbDef struct {
 }
 
 var Verbs = map[Verb]VerbDef{
-	"look":    {"look", ClassNone, false, false, false},
-	"emote":   {"emote", ClassNone, false, false, false},
-	"say":     {"say", ClassNone, false, false, false},
-	"talk_to": {"talk_to", ClassSocial, false, false, false},
+	"look":    {Verb: "look", Class: ClassNone, Rolls: false, Hard: false, Spends: false},
+	"emote":   {Verb: "emote", Class: ClassNone, Rolls: false, Hard: false, Spends: false},
+	"say":     {Verb: "say", Class: ClassNone, Rolls: false, Hard: false, Spends: false},
+	"talk_to": {Verb: "talk_to", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
 	// present — предъявить предмет. Социальный, потому что цель — человек: к
 	// нему применимы и сдвиг расположения, и социальные гейты. Без броска:
 	// годная бумага — это власть, а не проба навыка, и блеф негодной бумагой
 	// это другой глагол, которого пока нет.
-	"present":           {"present", ClassSocial, false, false, false},
-	"ask_about":         {"ask_about", ClassSocial, false, false, false},
-	"thank":             {"thank", ClassSocial, false, false, false},
-	"threaten_verbally": {"threaten_verbally", ClassSocial, false, false, false},
-	"theorize":          {"theorize", ClassReason, false, false, false},
-	"examine":           {"examine", ClassInvestigate, true, true, false},
-	"search":            {"search", ClassInvestigate, true, true, false},
-	"question":          {"question", ClassInvestigate, true, true, false},
-	"stake_out":         {"stake_out", ClassInvestigate, true, true, true},
-	"tail":              {"tail", ClassInvestigate, true, true, true},
-	"compare":           {"compare", ClassReason, false, true, false},
-	"cross_reference":   {"cross_reference", ClassReason, true, true, false},
-	"strike":            {"strike", ClassAttack, true, true, false},
-	"grapple":           {"grapple", ClassAttack, true, true, false},
-	"move_zone":         {"move_zone", ClassMove, true, true, false},
-	"take_cover":        {"take_cover", ClassMove, true, true, false},
-	"flee":              {"flee", ClassMove, true, true, false},
-	"sneak":             {"sneak", ClassSkill, true, true, false},
-	"pick":              {"pick", ClassSkill, true, true, false},
-	"recall":            {"recall", ClassSkill, true, true, false},
-	"persuade":          {"persuade", ClassSocial, true, true, false},
-	"intimidate":        {"intimidate", ClassSocial, true, true, false},
-	"command":           {"command", ClassSocial, true, true, false},
-	"aid":               {"aid", ClassSupport, true, true, false},
-	"mend":              {"mend", ClassSupport, true, true, false},
-	"use_ability":       {"use_ability", ClassResource, true, true, false},
-	"use_item":          {"use_item", ClassResource, true, true, false},
+	"present":           {Verb: "present", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"ask_about":         {Verb: "ask_about", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"thank":             {Verb: "thank", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"threaten_verbally": {Verb: "threaten_verbally", Class: ClassSocial, Rolls: false, Hard: false, Spends: false},
+	"theorize":          {Verb: "theorize", Class: ClassReason, Rolls: false, Hard: false, Spends: false},
+	"examine":           {Verb: "examine", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false},
+	"search":            {Verb: "search", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false},
+	"question":          {Verb: "question", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: false},
+	"stake_out":         {Verb: "stake_out", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: true},
+	"tail":              {Verb: "tail", Class: ClassInvestigate, Rolls: true, Hard: true, Spends: true},
+	"compare":           {Verb: "compare", Class: ClassReason, Rolls: false, Hard: true, Spends: false},
+	"cross_reference":   {Verb: "cross_reference", Class: ClassReason, Rolls: true, Hard: true, Spends: false},
+	"strike":            {Verb: "strike", Class: ClassAttack, Rolls: true, Hard: true, Spends: false},
+	"grapple":           {Verb: "grapple", Class: ClassAttack, Rolls: true, Hard: true, Spends: false},
+	"move_zone":         {Verb: "move_zone", Class: ClassMove, Rolls: true, Hard: true, Spends: false},
+	"take_cover":        {Verb: "take_cover", Class: ClassMove, Rolls: true, Hard: true, Spends: false},
+	"flee":              {Verb: "flee", Class: ClassMove, Rolls: true, Hard: true, Spends: false},
+	"sneak":             {Verb: "sneak", Class: ClassSkill, Rolls: true, Hard: true, Spends: false},
+	"pick":              {Verb: "pick", Class: ClassSkill, Rolls: true, Hard: true, Spends: false},
+	"recall":            {Verb: "recall", Class: ClassSkill, Rolls: true, Hard: true, Spends: false},
+	"persuade":          {Verb: "persuade", Class: ClassSocial, Rolls: true, Hard: true, Spends: false},
+	"intimidate":        {Verb: "intimidate", Class: ClassSocial, Rolls: true, Hard: true, Spends: false},
+	"command":           {Verb: "command", Class: ClassSocial, Rolls: true, Hard: true, Spends: false},
+	"aid":               {Verb: "aid", Class: ClassSupport, Rolls: true, Hard: true, Spends: false},
+	"mend":              {Verb: "mend", Class: ClassSupport, Rolls: true, Hard: true, Spends: false},
+	"use_ability":       {Verb: "use_ability", Class: ClassResource, Rolls: true, Hard: true, Spends: false},
+	"use_item":          {Verb: "use_item", Class: ClassResource, Rolls: true, Hard: true, Spends: false},
 }
 
 // classes — закрытый реестр классов. Существует потому, что класс приходит
@@ -80,6 +87,7 @@ var classes = map[VerbClass]bool{
 	ClassNone: true, ClassInvestigate: true, ClassReason: true,
 	ClassSocial: true, ClassMove: true, ClassAttack: true,
 	ClassSupport: true, ClassResource: true, ClassSkill: true,
+	ClassSave: true, ClassCheck: true, ClassRecover: true,
 }
 
 // LookupClass проверяет недоверенную подсказку класса по реестру ядра.

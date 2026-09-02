@@ -1,7 +1,7 @@
 package core
 
 import (
-	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/core/scenarios/deduction/accusation"
 	"github.com/kliuchnikovv/dnd/store"
 )
 
@@ -31,7 +31,10 @@ type Config struct {
 	Party   string
 	Rules   RuleSystem
 	Dice    Dice
-	Truth   accusation.Truth
+	// Scenario — архетип прогона: держит цель, условие победы, панель
+	// клиента и AI монстров. Не должен быть nil к моменту NewGame.
+	Scenario Scenario
+	Truth    accusation.Truth
 	Flavour map[string]string
 	// Setting — сеттинг-библия дела: место, время, уклад, погода, то, что
 	// «все и так знают». Домен её не читает: это материал для слоя над ним.
@@ -61,6 +64,9 @@ type Game struct {
 	Dice  Dice
 	K     *Knowledge
 	C     *Clocks
+	// Scenario — архетип прогона: держит цель, условие победы, панель
+	// клиента и AI монстров.
+	Scenario Scenario
 
 	Node     store.NodeID
 	Actor    store.CharacterID
@@ -98,6 +104,9 @@ type Game struct {
 	// оценивает и не тратит на них ход: это заметки игрока, а не факты.
 	Theories []string
 
+	// Encounter — состояние боя. nil — бой не идёт.
+	Encounter *Encounter
+
 	truth     accusation.Truth
 	tokens    []TokenGrant
 	flavour   map[string]string
@@ -122,7 +131,8 @@ func NewGame(cfg Config) *Game {
 	g := &Game{
 		DB: cfg.DB, Rules: cfg.Rules, Dice: cfg.Dice,
 		K: NewKnowledge(cfg.DB), C: NewClocks(cfg.DB),
-		Node: cfg.Start, Actor: cfg.Actor,
+		Scenario: cfg.Scenario,
+		Node:     cfg.Start, Actor: cfg.Actor,
 		party: party(cfg.Party),
 		D:     NewDossiers(cfg.DB, party(cfg.Party)),
 		Debts: map[store.EntityID]int{},
@@ -137,6 +147,16 @@ func NewGame(cfg Config) *Game {
 		// подсказка про его держателей законна с первого хода.
 		visited: map[store.NodeID]bool{cfg.Start: true},
 	}
+	// Глаголы архетипа — в общий реестр. Без этого регистрация Scenario
+	// ничего не даёт игре: Apply ищет глагол в core.Verbs, а не спрашивает
+	// сценарий напрямую, и attack/hide/... из adventure оставались бы
+	// «неизвестным действием» до конца прогона.
+	if cfg.Scenario != nil {
+		for _, def := range cfg.Scenario.ExtraVerbs() {
+			Verbs[def.Verb] = def
+		}
+	}
+
 	// Где стоишь — то знаешь. Дальше добавляется только объявленное автором:
 	// смежность сама по себе места не открывает, иначе рассказ персонажа
 	// ничего бы не решал.

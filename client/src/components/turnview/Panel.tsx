@@ -6,6 +6,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { Panel as PanelData, PanelItem, Section, Slot } from '../../turnview/types';
 import { Intent, tokenIntent } from '../../turnview/intents';
 import { listKey } from './keys';
+import { ADVENTURE_SECTION_KINDS, AdventureSectionView } from './AdventurePanel';
 
 // Panel — обобщённая панель цели от СЦЕНАРИЯ (kind "deduction" — досье, но клиент этого слова
 // не знает: рисует секции, факты и слоты по данным). Анти-спойлер: ничего не красим «верным/
@@ -32,6 +33,11 @@ export const Panel: React.FC<{ panel?: PanelData; onIntent: (intent: Intent) => 
 const SectionView: React.FC<{ section: Section; onIntent: (intent: Intent) => void }> = ({ section, onIntent }) => {
     const { descriptor: theme } = useTheme();
     const c = theme.colors;
+    // Секции приключения (health/map/inventory/initiative) несут готовые key/value слоты, не
+    // факты/обвинение детектива — рисуем их отдельным дескриптором, не через FactRow/SlotCard.
+    if (ADVENTURE_SECTION_KINDS.has(section.label)) {
+        return <AdventureSectionView section={section} />;
+    }
     return (
         <View style={styles.section}>
             <Text theme={theme} variant="mono" style={[styles.sectionLabel, { color: c.inkMuted }]}>

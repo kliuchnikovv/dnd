@@ -67,9 +67,58 @@ func (g *Game) Check(in Intent) TurnResult {
 	return TurnResult{}
 }
 
-// Apply — пятишаговый ход: валидация, ветка без броска, сборка SceneView,
-// Resolve, применение. Ядро никогда не видит кости: они уходят внутрь Resolve.
+// Apply — вход хода снаружи. Вокруг пятишагового тела (applyOne) обёрнуты
+// два крючка боя: отказ, если сейчас не такт этого актёра, и прокрутка
+// тактов NPC после applyOne — до возврата хода игроку.
+//
+// Крючки живут в Apply, а не в applyOne, по одной причине: applyOne зовёт
+// себя же для ходов NPC (через Scenario.NPCTurn), и если бы крючок сидел
+// внутри, каждый такт NPC заново отказывал бы сам себе («не твой ход») или
+// уходил в бесконечную рекурсию, гоняя по кругу тех же NPC.
 func (g *Game) Apply(in Intent) TurnResult {
+	// Крючок 1: вне своего такта ход не проходит вовсе — ни один шаг
+	// applyOne не должен увидеть чужую заявку.
+	if g.Encounter != nil && in.Actor != "" {
+		if store.EntityID(in.Actor) != g.Encounter.Current() {
+			return TurnResult{Refused: true, Refusal: "не ваш ход"}
+		}
+	}
+
+	res := g.applyOne(in)
+
+	// Крючок 2: такт кончился независимо от исхода applyOne (отказ тоже
+	// заканчивает такт — в бою нельзя пробовать раз за разом, пока не
+	// повезёт). Дальше крутим NPC, пока ход не вернётся к игроку.
+	if g.Encounter != nil {
+		g.Encounter.Advance()
+		// Прокрутить NPC-такты до возврата игроку. Ограничитель —
+		// len(Order)+1, потому что за один круг Turn обязан вернуться.
+		guard := len(g.Encounter.Order) + 1
+		for guard > 0 && g.Encounter != nil &&
+			g.Encounter.Current() != store.EntityID(g.Actor) {
+			npc := g.Encounter.Current()
+			if g.Scenario == nil {
+				break
+			}
+			npcIntent, ok := g.Scenario.NPCTurn(g, npc)
+			if !ok {
+				g.Encounter.Advance()
+				guard--
+				continue
+			}
+			npcIntent.Actor = store.CharacterID(npc)
+			_ = g.applyOne(npcIntent) // без рекурсии в Apply — applyOne крючков не знает
+			g.Encounter.Advance()
+			guard--
+		}
+	}
+
+	return res
+}
+
+// applyOne — пятишаговый ход: валидация, ветка без броска, сборка SceneView,
+// Resolve, применение. Ядро никогда не видит кости: они уходят внутрь Resolve.
+func (g *Game) applyOne(in Intent) TurnResult {
 	def, ok := Verbs[in.Verb]
 	if !ok {
 		return refuse("неизвестное действие")
@@ -341,6 +390,12 @@ func (g *Game) SceneView(in Intent) SceneView {
 	}
 	if h, ok := g.holderFor(in); ok {
 		view.GateThreshold = h.Gate.Threshold
+	}
+	// TargetAC — класс доспеха цели attack-резолва. Ставится из сущности:
+	// без этого dnd5e.resolveAttack всегда бил бы по AC=0, и бой на Apply
+	// не отличался бы от гарантированного попадания.
+	if e, ok := g.DB.Entities[in.Args.Target]; ok {
+		view.TargetAC = e.AC
 	}
 	view.Opposed = g.opposes(in.Args.Target)
 	// Exposed остаётся false: состояния, выражающего беспомощность цели

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/core"
-	"github.com/kliuchnikovv/dnd/core/accusation"
+	"github.com/kliuchnikovv/dnd/core/scenarios/deduction/accusation"
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
