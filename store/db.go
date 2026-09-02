@@ -161,3 +161,25 @@ func (db *DB) PropAt(n NodeID, id PropID) (SceneProp, bool) {
 	}
 	return SceneProp{}, false
 }
+
+// SaveCharacter сохраняет персонажа в хранилище по его ID.
+func (db *DB) SaveCharacter(c *Character) {
+	db.Characters[c.ID] = c
+}
+
+// AllCharacters возвращает всех персонажей в стабильном порядке по ID.
+// Итерация по map в Go случайна, а список персонажей обязан быть воспроизводимым.
+func (db *DB) AllCharacters() []*Character {
+	var out []*Character
+	for _, c := range db.Characters {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// CharacterByID возвращает персонажа по ID. Безопасный поиск с индикатором успеха.
+func (db *DB) CharacterByID(id CharacterID) (*Character, bool) {
+	c, ok := db.Characters[id]
+	return c, ok
+}
