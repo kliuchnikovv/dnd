@@ -22,7 +22,7 @@ func fileRun(t *testing.T, script string) (*bytes.Buffer, *core.Game) {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(3).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	var file, out bytes.Buffer
 	j := NewJournal(g.DB, "s1", "minimal@test", 3).WithWriter(&file)

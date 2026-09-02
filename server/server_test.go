@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 // casesRoot — дела лежат на уровень выше пакета server.
@@ -13,7 +15,9 @@ const casesRoot = "../cases"
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return New(NewManager(casesRoot))
+	cs := NewCharacterStore()
+	cs.Save(&store.Character{ID: testCharacterID, Ruleset: "threshold"})
+	return New(NewManager(casesRoot), WithCharacters(cs))
 }
 
 func TestHealthz(t *testing.T) {
@@ -28,7 +32,7 @@ func TestHealthz(t *testing.T) {
 func TestCreateSession(t *testing.T) {
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	body := strings.NewReader(`{"case":"harbour","seed":1}`)
+	body := strings.NewReader(`{"case":"harbour","seed":1,"character_id":"` + testCharacterID + `"}`)
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/sessions", body))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("создание сессии: код %d, тело %q", rec.Code, rec.Body.String())
@@ -53,7 +57,7 @@ func TestCreateSessionDefaultSeed(t *testing.T) {
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/sessions",
-		strings.NewReader(`{"case":"harbour"}`)))
+		strings.NewReader(`{"case":"harbour","character_id":"`+testCharacterID+`"}`)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("сессия без seed: код %d, тело %q", rec.Code, rec.Body.String())
 	}

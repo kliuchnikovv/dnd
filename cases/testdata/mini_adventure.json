@@ -3,22 +3,6 @@
   "scenario": "adventure",
   "start": "n_start",
   "actor": "chr_hero",
-  "character": {
-    "id": "chr_hero",
-    "sheet": {
-      "str": 14,
-      "dex": 14,
-      "prof": 2,
-      "skills": [],
-      "saves": [],
-      "max_hp": 10,
-      "ac": 10,
-      "speed": 30,
-      "weapons": [
-        {"name": "sword", "reach": "melee", "attack": "str", "damage": "1d6+str"}
-      ]
-    }
-  },
   "locations": [
     {"id": "n_start", "name": "Лагерь", "adjacent": ["n_end"]},
     {"id": "n_end", "name": "Логово орка", "adjacent": ["n_start"]}

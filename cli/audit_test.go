@@ -24,7 +24,7 @@ func auditSession(t *testing.T, script string, tune func(*Session)) *store.DB {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(3).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	var out bytes.Buffer
 	s := NewSession(g, strings.NewReader(script), &out).

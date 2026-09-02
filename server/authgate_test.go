@@ -15,7 +15,8 @@ import (
 // createSessionAs делает POST /sessions с Bearer-токеном и возвращает chat_id.
 func createSessionAs(t *testing.T, srv *Server, token, caseName string) string {
 	t.Helper()
-	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(`{"case":"`+caseName+`"}`))
+	req := httptest.NewRequest("POST", "/sessions",
+		strings.NewReader(`{"case":"`+caseName+`","character_id":"`+testCharacterID+`"}`))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, req)

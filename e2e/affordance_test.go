@@ -214,6 +214,16 @@ func readScopeOf(g *core.Game) map[string]bool {
 	return out
 }
 
+// withActorCharacter — character в case.json больше не живёт: лист
+// персонажа-актёра кладёт вызывающий. Не перетирает уже сохранённого
+// персонажа: некоторые тесты продолжают игру на уже отыгранной базе.
+func withActorCharacter(cfg *core.Config) *core.Config {
+	if _, ok := cfg.DB.CharacterByID(cfg.Actor); !ok {
+		cfg.DB.SaveCharacter(&store.Character{ID: cfg.Actor, Grit: 3})
+	}
+	return cfg
+}
+
 func affordanceGame(t *testing.T, path string) *core.Game {
 	t.Helper()
 	cfg, err := cases.Load(path)
@@ -222,5 +232,5 @@ func affordanceGame(t *testing.T, path string) *core.Game {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(7).Stream("resolve")
-	return core.NewGame(*cfg)
+	return core.NewGame(*withActorCharacter(cfg))
 }

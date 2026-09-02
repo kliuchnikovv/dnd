@@ -60,15 +60,15 @@ func TestSessionStartCharacterNotFound(t *testing.T) {
 	}
 }
 
-// TestSessionStartWithoutCharacterIDIsLegacy — регрессия моста: запрос без
-// character_id продолжает работать (case.json несёт авторского персонажа),
-// даже когда character-store подключён.
-func TestSessionStartWithoutCharacterIDIsLegacy(t *testing.T) {
+// TestSessionStartWithoutCharacterIDIsRejected — легаси-мост снесён (Task 6):
+// character в case.json больше не живёт, и без character_id серверу неоткуда
+// взять лист персонажа. 400, а не тихий фолбэк.
+func TestSessionStartWithoutCharacterIDIsRejected(t *testing.T) {
 	srv := New(NewManager(casesRoot), WithCharacters(NewCharacterStore()))
 
 	rec := postSession(t, srv, map[string]string{"case_id": "harbour"})
-	if rec.Code != 200 {
-		t.Fatalf("code = %d, тело: %s", rec.Code, rec.Body.String())
+	if rec.Code != 400 {
+		t.Fatalf("code = %d, ждали 400, тело: %s", rec.Code, rec.Body.String())
 	}
 }
 

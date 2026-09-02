@@ -14,6 +14,18 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 )
 
+// withActorCharacter — character в case.json больше не живёт: лист
+// персонажа-актёра кладёт вызывающий. Тестам, поднимающим дело через
+// cases.Load, эту заботу берёт на себя этот помощник. Не перетирает уже
+// сохранённого персонажа: sessionOver вызывает его поверх базы, отыгранной
+// прошлым ходом, где Harm и прочее состояние уже не стартовое.
+func withActorCharacter(cfg *core.Config) *core.Config {
+	if _, ok := cfg.DB.CharacterByID(cfg.Actor); !ok {
+		cfg.DB.SaveCharacter(&store.Character{ID: cfg.Actor, Grit: 3})
+	}
+	return cfg
+}
+
 func renderGame(t *testing.T) *core.Game {
 	t.Helper()
 	cfg, err := cases.Load("../cases/testdata/minimal.json")
@@ -22,7 +34,7 @@ func renderGame(t *testing.T) *core.Game {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(1).Stream("resolve")
-	return core.NewGame(*cfg)
+	return core.NewGame(*withActorCharacter(cfg))
 }
 
 func refusedResult(msg string) core.TurnResult {

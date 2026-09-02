@@ -7,7 +7,13 @@ import (
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/auth"
+	"github.com/kliuchnikovv/dnd/store"
 )
+
+// testCharacterID — персонаж-threshold, которым тесты этого файла заходят в
+// "harbour" (тоже threshold). Character в case.json больше не живёт: без
+// character_id серверу неоткуда взять лист персонажа (см. server.go).
+const testCharacterID = "chr_test"
 
 func testServerWithAuth(t *testing.T) (*Server, *auth.Service) {
 	t.Helper()
@@ -16,7 +22,9 @@ func testServerWithAuth(t *testing.T) (*Server, *auth.Service) {
 	seq := 0
 	svc := auth.NewService(&auth.FakeVerifier{ID: auth.Identity{Sub: "g1", Email: "a@b.c", Name: "Ann"}},
 		auth.NewTokens("secret", nil), adapter, func() string { seq++; return "u" + string(rune('0'+seq)) })
-	srv := New(mgr, WithAuth(svc, true)) // devAuth=true
+	cs := NewCharacterStore()
+	cs.Save(&store.Character{ID: testCharacterID, Ruleset: "threshold"})
+	srv := New(mgr, WithAuth(svc, true), WithCharacters(cs)) // devAuth=true
 	return srv, svc
 }
 

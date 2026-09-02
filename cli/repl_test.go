@@ -23,7 +23,7 @@ func transcript(t *testing.T, seed int64, script string) string {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	in := strings.NewReader(script)
 	var out bytes.Buffer
@@ -733,7 +733,7 @@ func harbourGame(t *testing.T) *core.Game {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(1).Stream("resolve")
-	return core.NewGame(*cfg)
+	return core.NewGame(*withActorCharacter(cfg))
 }
 
 // Служебные команды модель не трогают: запирать игрока в диалоге без справки
@@ -834,7 +834,7 @@ func addressGame(t *testing.T) *core.Game {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(1).Stream("resolve")
-	return core.NewGame(*cfg)
+	return core.NewGame(*withActorCharacter(cfg))
 }
 
 // Осмотреться — не обращение. Живой прогон под -chat получал на «Осмотреться»

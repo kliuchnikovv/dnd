@@ -78,12 +78,6 @@ func Parse(raw []byte) (*core.Config, error) {
 		c := f.Clocks[i]
 		db.Clocks[c.ID] = &c
 	}
-	db.Characters[store.CharacterID(f.Character.ID)] = &store.Character{
-		ID:    store.CharacterID(f.Character.ID),
-		Sheet: f.Character.Sheet,
-		Grit:  f.Character.Grit,
-		Harm:  f.Character.Harm,
-	}
 	// Стартовые факты пишутся прямо в party_knowledge: расследование начинается
 	// не с пустого листа, иначе первый ход некуда сделать.
 	for i, s := range f.StartFacts {

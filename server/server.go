@@ -41,10 +41,10 @@ func WithCatalog(c *CaseCatalog) Option {
 	return func(s *Server) { s.catalog = c }
 }
 
-// WithCharacters подключает хранилище персонажей: POST /sessions начинает
-// принимать character_id и сверять ruleset персонажа с ruleset дела. Без
-// опции работает легаси-путь: character_id игнорируется, если пришёл, дело
-// стартует как раньше — с системой правил threshold (см. handleCreateSession).
+// WithCharacters подключает хранилище персонажей: POST /sessions принимает
+// character_id и сверяет ruleset персонажа с ruleset дела (см.
+// handleCreateSession). character_id обязателен — character в case.json
+// не живёт, взять лист персонажа неоткуда, кроме как из этого хранилища.
 func WithCharacters(c *CharacterStore) Option {
 	return func(s *Server) { s.characters = c }
 }
@@ -94,8 +94,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // означает «по умолчанию», а не «сессия без броска». CaseID — новое имя поля
 // по контракту ({case_id, character_id}); Case остаётся для обратной
 // совместимости со старым клиентом ({case}) — см. caseName().
-// CharacterID необязателен: пусто — легаси-путь без проверки ruleset (мост до
-// Task 6, который уберёт авторского character из case.json).
+// CharacterID обязателен: character в case.json больше не живёт, и без него
+// неоткуда взять лист персонажа и систему правил для сессии.
 type createSessionRequest struct {
 	Case        string `json:"case"`
 	CaseID      string `json:"case_id"`
@@ -124,17 +124,12 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	caseName := req.caseName()
 	userID := userIDFrom(r.Context())
 
-	// Легаси-путь: без character_id ruleset не проверяем — дело стартует как
-	// раньше (system threshold), с авторским character из case.json. Это
-	// временный мост: Task 6 уберёт секцию character из case.json целиком, и
-	// character_id станет обязательным.
-	if req.CharacterID == "" || s.characters == nil {
-		chatID, err := s.mgr.Create(caseName, seed, userID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"chat_id": chatID})
+	if req.CharacterID == "" {
+		writeError(w, http.StatusBadRequest, "character_id обязателен")
+		return
+	}
+	if s.characters == nil {
+		writeError(w, http.StatusBadRequest, "хранилище персонажей не подключено")
 		return
 	}
 

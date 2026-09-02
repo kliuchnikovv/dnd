@@ -5,29 +5,6 @@
   "rules": "dnd5e",
   "start": "n_shore",
   "actor": "chr_kay",
-  "character": {
-    "id": "chr_kay",
-    "grit": 3,
-    "harm": 0,
-    "sheet": {
-      "str": 12,
-      "dex": 16,
-      "con": 13,
-      "int": 11,
-      "wis": 12,
-      "cha": 10,
-      "prof": 2,
-      "skills": ["stealth", "perception", "thieves_tools"],
-      "saves": ["dex", "con"],
-      "max_hp": 12,
-      "ac": 14,
-      "speed": 30,
-      "weapons": [
-        {"name": "короткий меч", "reach": "melee", "attack": "dex", "damage": "1d6+dex"},
-        {"name": "метательные ножи", "reach": "ranged", "attack": "dex", "damage": "1d4+dex"}
-      ]
-    }
-  },
   "locations": [
     {
       "id": "n_shore",

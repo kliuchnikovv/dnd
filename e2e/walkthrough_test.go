@@ -21,7 +21,7 @@ func newGame(t *testing.T, seed int64) *core.Game {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
-	return core.NewGame(*cfg)
+	return core.NewGame(*withActorCharacter(cfg))
 }
 
 func TestWalkthroughReachesCorrectAccusation(t *testing.T) {

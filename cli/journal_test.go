@@ -34,7 +34,7 @@ func journalSession(t *testing.T, script string, spy core.RuleSystem) (*store.DB
 		cfg.Rules = spy
 	}
 	cfg.Dice = dice.NewSource(3).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	var out bytes.Buffer
 	s := NewSession(g, strings.NewReader(script), &out).
@@ -70,7 +70,7 @@ func TestCommandIsPendingBeforeCoreApplies(t *testing.T) {
 	spy := &beforeApply{inner: threshold.New()}
 	cfg.Rules = spy
 	cfg.Dice = dice.NewSource(3).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 	spy.db = g.DB
 
 	var out bytes.Buffer
@@ -257,7 +257,7 @@ func TestSessionWithoutJournalWritesNothing(t *testing.T) {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(3).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	var out bytes.Buffer
 	if err := NewSession(g, strings.NewReader("examine body\nquit\n"), &out).Run(); err != nil {
@@ -295,7 +295,7 @@ func journalGame(t *testing.T, script string) *core.Game {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(3).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	var out bytes.Buffer
 	s := NewSession(g, strings.NewReader(script), &out).
@@ -318,7 +318,7 @@ func sessionOver(t *testing.T, db *store.DB, snapshot string, seed int64) *Sessi
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
 	cfg.DB = db
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 	return NewSession(g, strings.NewReader(""), &bytes.Buffer{}).
 		WithJournal(NewJournal(db, "s1", snapshot, seed))
 }

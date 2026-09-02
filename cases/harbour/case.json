@@ -3,36 +3,6 @@
   "archetype": "murder",
   "start": "n_quay",
   "actor": "pc",
-  "character": {
-    "id": "pc",
-    "grit": 3,
-    "sheet": {
-      "archetype": "inspector",
-      "attrs": {
-        "body": 0,
-        "edge": 1,
-        "mind": 3,
-        "will": 0
-      },
-      "tags": [
-        {
-          "name": "портовый",
-          "verbs": [
-            "question",
-            "search"
-          ]
-        },
-        {
-          "name": "дознаватель",
-          "verbs": [
-            "cross_reference",
-            "examine"
-          ]
-        }
-      ],
-      "abilities": []
-    }
-  },
   "locations": [
     {
       "id": "n_quay",

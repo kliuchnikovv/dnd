@@ -15,39 +15,6 @@
     "n_fort_hospital"
   ],
   "actor": "pc",
-  "character": {
-    "id": "pc",
-    "grit": 3,
-    "harm": 0,
-    "sheet": {
-      "archetype": "inspector",
-      "attrs": {
-        "body": 0,
-        "edge": 1,
-        "mind": 3,
-        "will": 0
-      },
-      "tags": [
-        {
-          "name": "police",
-          "verbs": [
-            "question",
-            "search"
-          ]
-        },
-        {
-          "name": "coroner's eye",
-          "verbs": [
-            "examine",
-            "cross_reference"
-          ]
-        }
-      ],
-      "abilities": [
-        "read_room"
-      ]
-    }
-  },
   "locations": [
     {
       "id": "n_police_office",

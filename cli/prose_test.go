@@ -13,7 +13,7 @@ func proseGame(t *testing.T) *core.Game {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return core.NewGame(*cfg)
+	return core.NewGame(*withActorCharacter(cfg))
 }
 
 // Брифинг не гвардится состоянием: State пуст намеренно, Frame — авторский текст.

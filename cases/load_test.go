@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/kliuchnikovv/dnd/store"
 )
 
 func TestLoadBuildsPlayableConfig(t *testing.T) {
@@ -42,11 +44,16 @@ func TestStartFactsArePrewritten(t *testing.T) {
 	}
 }
 
+// Character больше не приходит из case.json — лист персонажа кладётся тестом
+// напрямую в базу, а проверяется лишь то, что сама база не портит сырые байты.
 func TestSheetSurvivesAsRawBytes(t *testing.T) {
 	cfg, err := Load("testdata/minimal.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	sheet := json.RawMessage(`{"attrs":{"body":0,"edge":1,"mind":3,"will":0}}`)
+	cfg.DB.Characters["pc"] = &store.Character{ID: "pc", Sheet: sheet}
+
 	var probe struct {
 		Attrs map[string]int `json:"attrs"`
 	}

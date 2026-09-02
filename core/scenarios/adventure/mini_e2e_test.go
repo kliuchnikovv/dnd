@@ -6,6 +6,7 @@ package adventure_test
 // работают вместе на одном прогоне.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/kliuchnikovv/dnd/cases"
@@ -28,6 +29,20 @@ func gameFor(t *testing.T, seed int64) *core.Game {
 	}
 	cfg.Rules = dnd5e.New()
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
+	// Character в case.json больше не живёт: лист героя кладёт вызывающий —
+	// тот же лист, что раньше нёс сам мини-кейс.
+	cfg.DB.SaveCharacter(&store.Character{
+		ID:      cfg.Actor,
+		Ruleset: "dnd5e",
+		Sheet: json.RawMessage(`{
+			"str": 14, "dex": 14, "prof": 2,
+			"skills": [], "saves": [],
+			"max_hp": 10, "ac": 10, "speed": 30,
+			"weapons": [
+				{"name": "sword", "reach": "melee", "attack": "str", "damage": "1d6+str"}
+			]
+		}`),
+	})
 	return core.NewGame(*cfg)
 }
 

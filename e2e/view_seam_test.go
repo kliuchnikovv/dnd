@@ -99,7 +99,7 @@ func TestViewCarriesOnlyKnownFacts(t *testing.T) {
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(1).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	tv := view.Build(g, core.TurnResult{}, nil, cli.RefRuleset{}, cli.Detective{}, "")
 	data, err := json.Marshal(tv)

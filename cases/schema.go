@@ -2,8 +2,6 @@
 package cases
 
 import (
-	"encoding/json"
-
 	"github.com/kliuchnikovv/dnd/core"
 	"github.com/kliuchnikovv/dnd/store"
 )
@@ -28,13 +26,6 @@ type File struct {
 		Item store.ItemID `json:"item"`
 		Node store.NodeID `json:"node"`
 	} `json:"victory"`
-
-	Character struct {
-		ID    string          `json:"id"`
-		Grit  int             `json:"grit"`
-		Harm  int             `json:"harm"`
-		Sheet json.RawMessage `json:"sheet"`
-	} `json:"character"`
 
 	Locations      []store.Location      `json:"locations"`
 	Entities       []store.Entity        `json:"entities"`

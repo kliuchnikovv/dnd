@@ -22,7 +22,7 @@ func replayGame(t *testing.T, snapshot string, seed int64) (*Session, *core.Game
 	}
 	cfg.Rules = threshold.New()
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
-	g := core.NewGame(*cfg)
+	g := core.NewGame(*withActorCharacter(cfg))
 
 	var out bytes.Buffer
 	s := NewSession(g, strings.NewReader(""), &out).

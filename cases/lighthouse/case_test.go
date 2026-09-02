@@ -33,6 +33,15 @@ func TestLighthouseLoads(t *testing.T) {
 		t.Fatal("Rules не должен быть nil после подстановки dnd5e")
 	}
 
+	// Character в case.json больше нет: лист героя — забота вызывающего
+	// (сервера или теста), а не дела. Кладём его сюда, чтобы проверить
+	// остальную сборку конфига.
+	cfg.DB.SaveCharacter(&store.Character{
+		ID:      store.CharacterID(cfg.Actor),
+		Ruleset: "dnd5e",
+		Sheet:   []byte(`{"str":12,"dex":16,"con":13,"int":11,"wis":12,"cha":10,"prof":2,"max_hp":12,"ac":14,"speed":30}`),
+		Grit:    3,
+	})
 	if _, ok := cfg.DB.Characters[store.CharacterID(cfg.Actor)]; !ok {
 		t.Fatalf("персонаж-актёр %q не найден", cfg.Actor)
 	}

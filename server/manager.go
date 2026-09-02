@@ -328,6 +328,14 @@ func (m *Manager) buildGame(caseName string, seed int64, rules core.RuleSystem) 
 	}
 	cfg.Rules = rules
 	cfg.Dice = dice.NewSource(seed).Stream("resolve")
+	// Character в case.json больше не живёт (Task 6): его лист негде взять,
+	// кроме отдельного CharacterStore, а этот низкоуровневый путь (Create,
+	// тесты, реконструкция после рестарта) его не знает. Заводим минимального
+	// персонажа по умолчанию — как раньше делал загрузчик кейсов, — чтобы
+	// игра оставалась играбельной без плотной завязки на HTTP-слой.
+	if _, ok := cfg.DB.CharacterByID(cfg.Actor); !ok {
+		cfg.DB.SaveCharacter(&store.Character{ID: cfg.Actor, Grit: 3})
+	}
 	return core.NewGame(*cfg), cfg.CaseID, snapshotID(cfg.CaseID, raw, seed), nil
 }
 
