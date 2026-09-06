@@ -112,6 +112,39 @@ func TestVignetteTrackPlaysAndNeverLeaks(t *testing.T) {
 	}
 }
 
+// Бэкстоп-страж вырезает дословную утечку из черновика Мастера: если нарратор
+// всё же выдаст защищённый факт (напр. эхо инъекции), в игрока он не уйдёт.
+func TestVignetteGuardRedactsVerbatimLeak(t *testing.T) {
+	// Нарратор-«предатель»: возвращает правду сцены дословно.
+	f := llm.NewFake("fake", true).ReplyWith(func(llm.Request) string {
+		return "Мастер проговорился: " + secretTruth
+	})
+	gw := llm.NewGateway(
+		llm.NewRouter().Route(llm.RoleNarrator, llm.Target{Provider: f, Model: "claude-haiku-4-5"}),
+		llm.NewLedger(llm.Caps{}))
+	leaky := master.New(gw)
+
+	spec := holdSpec()
+	scenegen.Repair(spec)
+	sc := vignette.FromSpec(spec)
+	st := vignette.NewState(dice.Fixed(1))
+	rt := newVignetteRuntime("vig-leak", "u", 1, NewMemStore(), leaky, sc, st)
+
+	sub := rt.subscribe()
+	rt.applyInput(context.Background(), 1, inputPayload{Text: "прислушиваюсь к двери"})
+	var prose strings.Builder
+	for _, fr := range collectUntilDone(t, sub) {
+		if fr.Op == OpMessage && fr.Kind == KindData {
+			var d textDelta
+			_ = json.Unmarshal(fr.Payload, &d)
+			prose.WriteString(d.Delta)
+		}
+	}
+	if strings.Contains(prose.String(), secretTruth) {
+		t.Fatalf("страж не вырезал дословную утечку правды: %q", prose.String())
+	}
+}
+
 // Полный путь через сервер: POST /sessions с виньетка-героем и виньетка-делом
 // (cases/nightguest) поднимает виньетка-сессию, и в неё можно сыграть ход.
 func TestVignetteCreateOverHTTP(t *testing.T) {

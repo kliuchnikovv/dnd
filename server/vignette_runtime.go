@@ -35,6 +35,7 @@ type vignetteRuntime struct {
 	scene  *vignette.Scene
 	state  *vignette.State
 	judge  vignette.Judge
+	guard  vignette.Guard
 	turn   int
 	ended  bool
 	subs   map[*subscriber]struct{}
@@ -59,7 +60,7 @@ func newVignetteRuntime(chatID, userID string, seed int64, st Store, narrator *m
 	sc *vignette.Scene, state *vignette.State) *vignetteRuntime {
 	return &vignetteRuntime{
 		chatID: chatID, userID: userID, seed: seed, store: st, narrator: narrator,
-		scene: sc, state: state, judge: vignette.KeywordJudge{},
+		scene: sc, state: state, judge: vignette.KeywordJudge{}, guard: vignette.KeywordGuard{},
 		subs: map[*subscriber]struct{}{},
 	}
 }
@@ -193,6 +194,17 @@ func (rt *vignetteRuntime) narrateLocked(ctx context.Context, res vignette.Resul
 	}
 	if strings.TrimSpace(text) == "" {
 		text = strings.Join(outcome, " ")
+	}
+	// Страж-редактор (ADR-0008): бэкстоп против дословного эха защищённого факта.
+	// Держит правду + закрытые тиры; на ended раскрытая развязка идёт в allowed
+	// (карваут финала) и не режется.
+	if rt.guard != nil {
+		var allowed []string
+		if res.Ended && res.EndText != "" {
+			allowed = []string{res.EndText}
+		}
+		text = rt.guard.Check(text, vignette.ProtectedFacts(rt.scene, rt.state),
+			vignette.StateFacts(rt.scene, rt.state), allowed).Clean
 	}
 	if strings.TrimSpace(text) == "" {
 		return

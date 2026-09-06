@@ -85,6 +85,20 @@ func TestKeywordJudgeImprovise(t *testing.T) {
 	}
 }
 
+// improvise: анахронизм/чужеродная вещь → deny (не пускаем в сцену).
+func TestKeywordJudgeDeniesAnachronism(t *testing.T) {
+	j := KeywordJudge{}
+	for _, s := range []string{"достаю револьвер", "хватаю телефон", "беру гранату"} {
+		r := j.Rule(s, jview())
+		if r.Kind != "improvise" || r.Admit != "deny" {
+			t.Errorf("анахронизм %q дал %q/%q, ожидался improvise/deny", s, r.Kind, r.Admit)
+		}
+	}
+	if r := j.Rule("беру кочергу", jview()); r.Admit != "grant" {
+		t.Errorf("бытовая вещь не пущена: %q", r.Admit)
+	}
+}
+
 // Судья + движок вместе доигрывают сцену: игрок осматривается и выжидает, не
 // впуская, — hold доходит до победы за Goal ходов. Мета/мусор на пути не роняет.
 func TestJudgeDrivesHoldToVictory(t *testing.T) {
@@ -106,6 +120,31 @@ func TestJudgeDrivesHoldToVictory(t *testing.T) {
 		t.Fatalf("судья+движок не довели hold до победы: %+v", res)
 	}
 }
+
+// improvise в игровом пути: судья→движок. Бытовая вещь входит в инвентарь ядра,
+// анахронизм — нет, факта ни в каком случае (знание — только осмотром).
+func TestImproviseThroughJudgeAndEngine(t *testing.T) {
+	j := KeywordJudge{}
+	sc := guestScene()
+
+	st := NewState(dice.Fixed(10))
+	before := len(st.Items)
+	res := st.Adjudicate(sc, j.Rule("беру кочергу у очага", BuildJudgeView(sc, st)))
+	if len(st.Items) != before+1 {
+		t.Fatalf("бытовая вещь не вошла в инвентарь: %v", st.Items)
+	}
+	if len(res.Revealed) != 0 {
+		t.Fatalf("improvise отдал факт: %v", res.Revealed)
+	}
+
+	st2 := NewState(dice.Fixed(10))
+	n := len(st2.Items)
+	st2.Adjudicate(sc, j.Rule("достаю револьвер", BuildJudgeView(sc, st2)))
+	if len(st2.Items) != n {
+		t.Fatalf("анахронизм вошёл в инвентарь: %v", st2.Items)
+	}
+}
+
 func TestKeywordJudgeDCOnCanonicalScale(t *testing.T) {
 	j := KeywordJudge{}
 	r := j.Rule("иду вперёд по гати", jview())
