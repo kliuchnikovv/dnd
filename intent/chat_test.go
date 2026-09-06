@@ -140,7 +140,7 @@ func TestChatLandsAProbe(t *testing.T) {
 		`"target":"","topic":"","item":"","reply":"Вы наклоняетесь к сырой клёпке."}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
 
-	in, reply, probe, clarify, err := gi.InterpretChat(context.Background(),
+	in, reply, probe, clarify, _, err := gi.InterpretChat(context.Background(),
 		"чем тут пахнет за бочками", "", "")
 	if err != nil {
 		t.Fatal(err)

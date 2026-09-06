@@ -18,6 +18,10 @@ const (
 	ObservedAccepted Observed = iota
 	ObservedRejected
 	ObservedProbe
+	// ObservedIdle — ввод-мусор/мета: не действие и не узость словаря. В
+	// знаменатель отказов не идёт (как и проба): считать инъекцию провалом
+	// словаря значило бы мерить не то.
+	ObservedIdle
 )
 
 // Metrics — intent rejection rate по классу глагола. Метрика продуктовая:
@@ -34,6 +38,10 @@ type Metrics struct {
 	// счётчиком, а не внутри classless: проба и непонятое — разные вещи, и
 	// сложенные вместе они не измеряют ни одну из них.
 	probes int
+	// idles — сколько вводов оказались не-действием (мета/мусор/инъекция).
+	// Отдельно от probes и classless: idle — это не узость словаря и не
+	// исследование, а мусор, и в долю отказов он не входит.
+	idles int
 }
 
 func NewMetrics() *Metrics {
@@ -54,6 +62,10 @@ func (m *Metrics) Observe(class core.VerbClass, out Observed) {
 	defer m.mu.Unlock()
 	if out == ObservedProbe {
 		m.probes++
+		return
+	}
+	if out == ObservedIdle {
+		m.idles++
 		return
 	}
 	if class == "" {

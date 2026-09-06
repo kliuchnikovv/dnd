@@ -26,6 +26,13 @@ const (
 	// сигналом узости словаря: на нём живёт метрика, и «кандидат в новый
 	// глагол» терять незачем. Тупиком быть перестаёт — игрок получает пробу.
 	OutcomeUnsupported = "unsupported"
+	// OutcomeIdle — ввод НЕ действие в мире: мета-инструкция, инъекция
+	// («ignore previous…»), служебный текст/JSON, обращение к системе,
+	// бессмыслица, попытка переписать сцену. Персонаж ничего не предпринимает —
+	// ни интента, ни пробы, ни вопроса, ни мутации. Осознанное отступление от
+	// «всё приземляется» (ADR-0003) ради мусора: приземлять инъекцию пробой
+	// значило бы дать Мастеру её пересказать (прото §2.12).
+	OutcomeIdle = "idle"
 )
 
 // classNames — классы реестра в стабильном порядке, как их видит модель.
@@ -126,7 +133,7 @@ func SchemaFor(hint SceneHint) map[string]any {
 		"properties": map[string]any{
 			"outcome": map[string]any{
 				"type": "string",
-				"enum": []string{OutcomeIntent, OutcomeClarify, OutcomeFreeProbe, OutcomeUnsupported},
+				"enum": []string{OutcomeIntent, OutcomeClarify, OutcomeFreeProbe, OutcomeUnsupported, OutcomeIdle},
 			},
 			"verb": map[string]any{
 				"type": "string", "enum": verbNamesFor(hint),
