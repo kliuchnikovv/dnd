@@ -35,7 +35,7 @@ func digestGame() *Game {
 		Segments: 6, Filled: 2, TickPolicy: "on_cost"}
 
 	return NewGame(Config{
-		DB: db, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{out: OutcomeSuccess}, Dice: nilDice{},
 		// Правда дела — маркерные строки: если хоть одна всплывёт в дайджесте,
 		// это утечка, а не совпадение.
 		Truth:   accusation.NewTruth("ВИНОВНЫЙ_ПИСАРЬ", "УДАВКА", "ПОЛНОЧЬ", "РАСТРАТА"),

@@ -32,7 +32,7 @@ func probeGame() *Game {
 	}}
 	db.Clocks["c_suspicion"] = &store.Clock{ID: "c_suspicion", Segments: 6, TickPolicy: "on_cost"}
 	return NewGame(Config{
-		DB: db, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{out: OutcomeSuccess}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("bern", "cord", "night", "debt"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})

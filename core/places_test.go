@@ -22,7 +22,7 @@ func placesGame(start ...store.NodeID) *Game {
 		{FactID: "f_ledger", UnlocksKind: "node", UnlocksID: "n_tavern"},
 	}
 	return NewGame(Config{DB: db, CaseID: "harbour", Start: "n_quay",
-		StartPlaces: start, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{}})
+		StartPlaces: start, Rules: fixedRules{out: OutcomeSuccess}, Dice: nilDice{}})
 }
 
 // Место, где игрок стоит, известно всегда: иначе он не знает, где он.

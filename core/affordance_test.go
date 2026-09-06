@@ -32,7 +32,7 @@ func affordGame() *Game {
 	}}
 	db.Items["i_writ"] = store.Item{ID: "i_writ", Name: "Предписание магистрата", Kind: "writ"}
 	g := NewGame(Config{
-		DB: db, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{out: OutcomeSuccess}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("bern", "cord", "night", "debt"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 		StartPlaces: []store.NodeID{"n_forge"},
@@ -144,7 +144,7 @@ func TestPoorNodeGivesFewerAffordances(t *testing.T) {
 	db.Locations["n_empty"] = store.Location{ID: "n_empty", Name: "Пустырь"}
 	db.Characters["pc"] = &store.Character{ID: "pc", Grit: 3}
 	g := NewGame(Config{
-		DB: db, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{out: OutcomeSuccess}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("a", "b", "c", "d"),
 		Flavour: map[string]string{}, Start: "n_empty", Actor: "pc",
 	})

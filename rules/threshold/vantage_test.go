@@ -35,6 +35,31 @@ func TestVantageFromEnvironment(t *testing.T) {
 	}
 }
 
+// Пассивное внимание (D&D passive check; прото §5): 10 + модификатор внимания
+// (edge), +5 за преимущество обстановки, −5 за помеху. Кости нет — сравнивается
+// с порогом тира напрямую.
+func TestPassiveScoreIsTenPlusEdgePlusVantage(t *testing.T) {
+	edge2 := []byte(`{"attrs":{"edge":2}}`)
+	cases := []struct {
+		name string
+		view core.SceneView
+		want int
+	}{
+		{"ровно: 10+edge", core.SceneView{Sheet: edge2}, 12},
+		{"помеха среды −5", core.SceneView{Sheet: edge2, NodeTags: []string{"dark"}}, 7},
+		{"преимущество +5", core.SceneView{Sheet: edge2, Exposed: true}, 17},
+		{"инструмент снимает помеху среды", core.SceneView{Sheet: edge2, NodeTags: []string{"dark"}, Tools: []string{"фонарь"}}, 12},
+		{"без листа — базовые 10", core.SceneView{}, 10},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := New().PassiveScore(c.view); got != c.want {
+				t.Errorf("PassiveScore = %d, ожидалось %d", got, c.want)
+			}
+		})
+	}
+}
+
 // Преимущество кидает 2d20 и берёт БОЛЬШИЙ.
 func TestAdvantageTakesHigherOf2d20(t *testing.T) {
 	view := core.SceneView{Exposed: true, Sheet: []byte(`{"attrs":{"mind":0}}`)}
