@@ -19,7 +19,7 @@ import (
 // (LLM), в тестах — фейк. Отдаёт интент (обычный ход), пробу (мир отвечает без
 // хода), уточнение (встречный вопрос) — ровно то, чем ветвится interpretFreeLocked.
 type chatInterpreter interface {
-	InterpretChat(ctx context.Context, text string, with store.EntityID, pending string) (*core.Intent, string, core.Probe, string, bool, error)
+	InterpretChat(ctx context.Context, text string, with store.EntityID, pending string) (*core.Intent, string, core.Probe, string, error)
 }
 
 // turnViewVersion — версия формы turn-view, которую отдаёт сервер. Совпадает с
@@ -202,7 +202,7 @@ func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, s
 	rt.pending = "" // вопрос задан один раз: ответ на него уже пришёл
 	// reply — подводка Мастера (безоценочная, заземлена на слова игрока): станет
 	// leadIn'ом разговорного хода вместо выдумывающего обрамления.
-	inp, reply, probe, clarify, idle, err := rt.interp.InterpretChat(context.Background(), text, rt.spokenTo, pending)
+	inp, reply, probe, clarify, err := rt.interp.InterpretChat(context.Background(), text, rt.spokenTo, pending)
 
 	switch {
 	case err != nil:
@@ -210,15 +210,6 @@ func (rt *sessionRuntime) interpretFreeLocked(frameID int, text string) (bool, s
 		rt.narrating = false
 		rt.broadcastLocked(errorFrame(rt.nextOutIDLocked(), rt.chatID,
 			"переводчик недоступен: "+err.Error()))
-		return true, ""
-	case idle:
-		// Ввод не действие персонажа (мета/инъекция/мусор): состояние не меняется,
-		// ход не тратится. Эхо игрока + диегетическая строка «медлит», без реплики
-		// Мастера (пересказывать нечего) и без броска.
-		rt.narrating = false
-		rt.appendTranscriptLocked(TranscriptEntry{Role: RolePlayer, Text: text})
-		rt.appendTranscriptLocked(TranscriptEntry{Role: RoleGM, Text: "Ты медлишь, ничего не предпринимая."})
-		rt.broadcastLocked(rt.snapshotViewLocked())
 		return true, ""
 	case probe.Text != "":
 		// Авторский контент достижим словами: если проба назвала цель, за которой

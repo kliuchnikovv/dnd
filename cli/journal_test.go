@@ -59,8 +59,6 @@ func (b *beforeApply) Resolve(in core.Intent, v core.SceneView, d core.Dice) cor
 	return b.inner.Resolve(in, v, d)
 }
 
-func (b *beforeApply) PassiveScore(v core.SceneView) int { return b.inner.PassiveScore(v) }
-
 // Главный инвариант фазы: команда лежит в журнале как pending раньше, чем
 // ядро её обработало. Падение между «записал» и «применил» лечится реплеем
 // хвоста — но только если хвост успел появиться.

@@ -1,8 +1,9 @@
 // Package vignette — движок хоррор-виньетки: свой State/Scene/turn-loop (порт
-// проверенного прототипа), переиспользующий d20-механику rules/threshold на
-// уровне броска (каноничная DC-шкала) и scenegen для генерации сцен. Отдельный
-// движок, а не core.Scenario: у виньетки своё состояние (Progress/OffPath/
-// MireDepth/hold-turn/Beats) и свой ход (move_off/climb/bandwidth-reveal),
+// проверенного прототипа) и своя каноничная DC-шкала (см. dc.go); scenegen —
+// для генерации сцен. Самодостаточен (ADR-0009): из ядра берётся только честная
+// кость core.Dice, измерительный M1a-рулсет rules/threshold НЕ импортируется.
+// Отдельный движок, а не core.Scenario: у виньетки своё состояние (Progress/
+// OffPath/MireDepth/hold-turn/Beats) и свой ход (move_off/climb/bandwidth-reveal),
 // которые не ложатся в M1a-ядро (FactHolder/Knowledge/turn). M1a не трогается.
 //
 // Анти-утечка (ADR-0008) сохранена конструкцией: правда сцены (Scene.Truth) живёт

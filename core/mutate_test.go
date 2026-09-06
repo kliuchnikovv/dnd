@@ -10,7 +10,6 @@ import (
 type nilRules struct{}
 
 func (nilRules) Resolve(Intent, SceneView, Dice) Resolution { return Resolution{} }
-func (nilRules) PassiveScore(SceneView) int                  { return 10 }
 
 type nilDice struct{}
 

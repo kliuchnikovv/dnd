@@ -139,7 +139,6 @@ type tickingRules struct{}
 func (tickingRules) Resolve(Intent, SceneView, Dice) Resolution {
 	return Resolution{Class: OutcomePartial, Margin: -2, Costs: []CostKind{CostTickClock}}
 }
-func (tickingRules) PassiveScore(SceneView) int { return 10 }
 
 func TestClockConsequenceAppliesOnce(t *testing.T) {
 	// Цена провала и трата времени бьют по одним и тем же часам в одном ходу.

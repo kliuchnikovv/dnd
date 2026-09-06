@@ -7,10 +7,7 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 )
 
-type fixedRules struct {
-	out     Outcome
-	passive int
-}
+type fixedRules struct{ out Outcome }
 
 func (r fixedRules) Resolve(in Intent, _ SceneView, _ Dice) Resolution {
 	res := Resolution{Class: r.out, Margin: 0}
@@ -20,8 +17,6 @@ func (r fixedRules) Resolve(in Intent, _ SceneView, _ Dice) Resolution {
 	}
 	return res
 }
-
-func (r fixedRules) PassiveScore(SceneView) int { return r.passive }
 
 func turnGame(out Outcome) *Game {
 	db := store.NewDB()
@@ -43,7 +38,7 @@ func turnGame(out Outcome) *Game {
 	}}
 	db.Clocks["c_suspicion"] = &store.Clock{ID: "c_suspicion", Segments: 6, TickPolicy: "on_cost"}
 	return NewGame(Config{
-		DB: db, Rules: fixedRules{out: out}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{out}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})

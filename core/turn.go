@@ -164,25 +164,6 @@ func (g *Game) applyOne(in Intent) TurnResult {
 
 	holder, found := g.holderFor(in)
 
-	// Пассивный tell (D&D passive check; прото §5): держатель с Gate.Passive
-	// открывается БЕЗ кости — сравнением внимания (Rules.PassiveScore = 10+mod±5)
-	// с порогом. Так ключевой намёк гарантирован осмотром и не теряется на плохом
-	// броске. Не хватило внимания — не открылось, но это НЕ лок: знание не
-	// записано, повтор (и активный подход) остаются возможны. Идёт до ветки
-	// броска, чтобы перехватить и несудимый look, и судимый examine.
-	if found && holder.Gate.Passive > 0 {
-		res := TurnResult{FlavourKey: g.flavourKeyFor(in, holder, found)}
-		if g.Rules.PassiveScore(g.SceneView(in)) >= holder.Gate.Passive {
-			if g.learn(holder.FactID, holder.HolderID) {
-				res.Learned = append(res.Learned, Learned{holder.FactID, holder.HolderID})
-				res.SpokenBy = g.spokenBy(holder.HolderID)
-				g.applyUnlocksFor(holder.FactID)
-			}
-		}
-		g.noteTurn(def, len(res.Learned))
-		return res
-	}
-
 	// Шаг 2: ветка без броска.
 	if !def.Rolls || (found && holder.Mandatory) {
 		res := TurnResult{FlavourKey: g.flavourKeyFor(in, holder, found)}

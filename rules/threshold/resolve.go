@@ -30,7 +30,6 @@ func (s *System) Resolve(in core.Intent, view core.SceneView, d core.Dice) core.
 	tag := sheet.TagBonus(in.Verb, view)
 	sit := Situational(in, view)
 	th := ThresholdFor(DifficultyFor(in, view))
-	adv := Vantage(in, view)
 
 	// push — заявка игрока: одно очко grit за +2. Решение принимается до
 	// броска, и в этом вся его цена.
@@ -39,13 +38,17 @@ func (s *System) Resolve(in core.Intent, view core.SceneView, d core.Dice) core.
 		push = PushValue
 	}
 
-	// Обстановка — преимуществом/помехой: 2d20 бери больший/меньший (D&D adv/dis).
-	// Нат-1 и нат-20 на проверках характеристик НЕ особые (RAW; прото §10): класс
-	// определяется только маржой — крит по марже ≥+5, сетбэк по марже ≤−10 (в cost).
-	die := rollVantage(d, adv)
+	die := d.Roll(1, 20)
 	total := die + attr + tag + sit + push
 	margin := total - th
 	class := classify(margin)
+
+	switch die {
+	case 20:
+		class = class.Up()
+	case 1:
+		class = class.Down()
+	}
 
 	res := core.Resolution{
 		Class:  class,
@@ -68,21 +71,6 @@ func (s *System) Resolve(in core.Intent, view core.SceneView, d core.Dice) core.
 
 	res.Costs = costFor(def.Class, res.Class, res.Margin)
 	return res
-}
-
-// rollVantage кидает честный d20 с преимуществом/помехой: adv>0 — 2d20 берём
-// больший, adv<0 — меньший, 0 — один бросок (второй d20 НЕ тратится, чтобы не
-// сдвигать seed-поток на ровных проверках).
-func rollVantage(d core.Dice, adv int) int {
-	die := d.Roll(1, 20)
-	if adv == 0 {
-		return die
-	}
-	other := d.Roll(1, 20)
-	if (adv > 0 && other > die) || (adv < 0 && other < die) {
-		return other
-	}
-	return die
 }
 
 func classify(margin int) core.Outcome {

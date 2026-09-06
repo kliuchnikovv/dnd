@@ -6,18 +6,8 @@ import (
 	"github.com/kliuchnikovv/dnd/core"
 )
 
-// Каноничная D&D-шкала (SRD: Ability Checks) — 5/10/15/20/25/30. Автор-банды
-// easy/normal/hard ложатся на 10/15/20; very_easy/medium/very_hard/extreme —
-// для судьи и генератора. Всё незнакомое — «medium» (15).
 func TestThresholdIsClosedSet(t *testing.T) {
-	cases := map[string]int{
-		"very_easy": 5, "trivial": 5,
-		"easy":   10,
-		"normal": 15, "medium": 15, "": 15, "нечто": 15,
-		"hard":      20,
-		"very_hard": 25,
-		"extreme":   30, "impossible": 30, "nearly_impossible": 30,
-	}
+	cases := map[string]int{"easy": 10, "normal": 14, "hard": 18, "": 14, "нечто": 14}
 	for in, want := range cases {
 		if got := ThresholdFor(in); got != want {
 			t.Errorf("ThresholdFor(%q) = %d, ожидалось %d", in, got, want)
@@ -45,21 +35,22 @@ func TestSituationalCountsFactorsAndClamps(t *testing.T) {
 		{"нет противостояния при большом отряде", core.Intent{}, core.SceneView{Allies: 5, Foes: 0}, 0},
 		{"меньшинство", core.Intent{}, core.SceneView{Allies: 1, Foes: 3}, -2},
 		{"паритет", core.Intent{}, core.SceneView{Allies: 2, Foes: 2}, 0},
-		// Среда (adverse-теги) слагаемым БОЛЬШЕ не считается — она ушла в vantage
-		// (см. TestVantageFromEnvironment). Здесь ситуативная сумма её игнорирует.
-		{"темнота слагаемым не считается — она в vantage", core.Intent{},
-			core.SceneView{NodeTags: []string{"dark"}}, 0},
-		{"темнота и дождь — тоже 0 в слагаемом", core.Intent{},
-			core.SceneView{NodeTags: []string{"dark", "rain"}}, 0},
+		{"темнота", core.Intent{}, core.SceneView{NodeTags: []string{"dark"}}, -2},
+		{"темнота и дождь считаются один раз", core.Intent{},
+			core.SceneView{NodeTags: []string{"dark", "rain"}}, -2},
 		{"ранения", core.Intent{}, core.SceneView{Harm: 2}, -4},
 		{"tier выше", core.Intent{}, core.SceneView{ActorTier: 2, TargetTier: 1}, 2},
 		{"tier ниже", core.Intent{}, core.SceneView{ActorTier: 1, TargetTier: 2}, -2},
-		{"инструмент в слагаемом ничего не даёт (его дело — vantage)", core.Intent{},
+		{"инструмент отменяет штраф среды", core.Intent{},
 			core.SceneView{NodeTags: []string{"dark"}, Tools: []string{"p_lantern"}}, 0},
+		{"инструмент без штрафа среды не даёт ничего", core.Intent{},
+			core.SceneView{Tools: []string{"p_lantern"}}, 0},
+		{"без инструмента штраф остаётся", core.Intent{},
+			core.SceneView{NodeTags: []string{"dark"}}, -2},
 		{"верхний кламп", core.Intent{Verb: "sneak"},
 			core.SceneView{Cover: true, Undetected: true, Allies: 3, Foes: 1, ActorTier: 2}, 4},
-		{"нижний кламп (ранения+меньшинство)", core.Intent{},
-			core.SceneView{Harm: 3, Allies: 1, Foes: 4}, -4},
+		{"нижний кламп", core.Intent{},
+			core.SceneView{Harm: 3, NodeTags: []string{"dark"}, Allies: 1, Foes: 4}, -4},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

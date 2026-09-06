@@ -26,20 +26,26 @@ func TestDifficultyFor(t *testing.T) {
 			core.SceneView{GateThreshold: "normal", NodeTags: []string{"dark"}}, DifficultyNormal},
 
 		{"нейтральная позиция — норма", core.SceneView{}, DifficultyNormal},
+		{"противодействие — ступень вверх",
+			core.SceneView{Opposed: true}, DifficultyHard},
+		{"открытая цель — ступень вниз",
+			core.SceneView{Exposed: true}, DifficultyEasy},
 
-		// Обстановка порог БОЛЬШЕ не двигает — она идёт в vantage (2d20), не в DC
-		// (см. TestVantageFromEnvironment). Любая позиция без авторского гейта =
-		// medium.
-		{"сопротивление порог не двигает (→ vantage)",
-			core.SceneView{Opposed: true}, DifficultyNormal},
-		{"открытость порог не двигает (→ vantage)",
-			core.SceneView{Exposed: true}, DifficultyNormal},
-		{"темнота порог не двигает (→ vantage)",
+		// Среда порог не двигает: она уже оплачена ситуативным слагаемым, и
+		// вторая цена за тот же факт — те же две ступени, только размазанные по
+		// двум механизмам. Мерой это подтверждено: adverse стоит в половине
+		// узлов и как ступень срабатывал в 50.9% несудимых бросков.
+		{"темнота порог не двигает — она уже в слагаемом",
 			core.SceneView{NodeTags: []string{"dark"}}, DifficultyNormal},
-		{"открытость+темнота — всё равно medium (в DC ничего)",
-			core.SceneView{NodeTags: []string{"dark"}, Exposed: true}, DifficultyNormal},
-		{"сопротивление в темноте — всё равно medium",
-			core.SceneView{Opposed: true, NodeTags: []string{"dark"}}, DifficultyNormal},
+		{"темнота не отменяет открытости цели",
+			core.SceneView{NodeTags: []string{"dark"}, Exposed: true}, DifficultyEasy},
+
+		// Сигналы противоречат друг другу: связанный, но злой противник. Ни
+		// один не отбрасывается молча — ступени просто нет.
+		{"противодействие и открытость гасят друг друга",
+			core.SceneView{Opposed: true, Exposed: true}, DifficultyNormal},
+		{"противодействие в темноте — всё та же одна ступень",
+			core.SceneView{Opposed: true, NodeTags: []string{"dark"}}, DifficultyHard},
 	}
 
 	for _, c := range cases {
@@ -51,16 +57,18 @@ func TestDifficultyFor(t *testing.T) {
 	}
 }
 
-// Авторский гейт ложится на каноничную шкалу DC (5..30). Позиция порог не
-// двигает вовсе — это ушло в vantage.
-func TestAuthorGateMapsToCanonicalThreshold(t *testing.T) {
-	for band, want := range map[string]int{
-		"very_easy": 5, "easy": 10, "normal": 15, "hard": 20, "very_hard": 25, "extreme": 30,
-	} {
-		got := ThresholdFor(DifficultyFor(core.Intent{}, core.SceneView{GateThreshold: band}))
-		if got != want {
-			t.Errorf("гейт %q → порог %d, ожидался %d", band, got, want)
-		}
+// Ступень ровно одна и в обе стороны одинаковая. Две ступени вниз сделали бы
+// попадание автоматическим, две вверх — невозможным.
+func TestDifficultyMovesByExactlyOneStep(t *testing.T) {
+	base := ThresholdFor(DifficultyNormal)
+	up := ThresholdFor(DifficultyFor(core.Intent{}, core.SceneView{Opposed: true}))
+	down := ThresholdFor(DifficultyFor(core.Intent{}, core.SceneView{Exposed: true}))
+
+	if up-base != ThresholdHard-ThresholdNormal {
+		t.Errorf("ступень вверх = %d, ожидалась %d", up-base, ThresholdHard-ThresholdNormal)
+	}
+	if base-down != ThresholdNormal-ThresholdEasy {
+		t.Errorf("ступень вниз = %d, ожидалась %d", base-down, ThresholdNormal-ThresholdEasy)
 	}
 }
 
@@ -82,28 +90,27 @@ func TestDifficultyIgnoresTheIntent(t *testing.T) {
 	}
 }
 
-// Resolve обязан брать порог через функцию (DifficultyFor→ThresholdFor), а не из
-// гейта напрямую. Без этого теста связка тихо разъедется: функция останется
-// правильной и неиспользуемой. Позиция порог не трогает (она в vantage), но
-// авторский гейт — задаёт.
-func TestResolveTakesThresholdViaFunction(t *testing.T) {
+// Resolve обязан брать порог через функцию, а не из гейта напрямую. Без этого
+// теста связка тихо разъедется: функция останется правильной и неиспользуемой.
+func TestResolveTakesThresholdFromPosition(t *testing.T) {
 	sheet := []byte(`{"attrs":{"mind":0},"tags":[]}`)
 
-	// Авторский гейт hard → порог 20, и позиция (Opposed) его не сдвигает.
-	gated := New().Resolve(core.Intent{Verb: "question"},
-		core.SceneView{GateThreshold: "hard", Opposed: true, Sheet: sheet}, dice.Fixed(10))
-	if gated.Log.Threshold != ThresholdHard {
-		t.Errorf("порог по авторскому гейту %d, ожидался %d", gated.Log.Threshold, ThresholdHard)
+	opposed := New().Resolve(core.Intent{Verb: "question"},
+		core.SceneView{Opposed: true, Sheet: sheet}, dice.Fixed(10))
+	if opposed.Log.Threshold != ThresholdHard {
+		t.Errorf("порог против сопротивления %d, ожидался %d", opposed.Log.Threshold, ThresholdHard)
 	}
 
-	// Без гейта позиция даёт medium — среда ушла в vantage, порог не двигает.
-	for _, v := range []core.SceneView{
-		{Opposed: true, Sheet: sheet},
-		{Exposed: true, Sheet: sheet},
-	} {
-		got := New().Resolve(core.Intent{Verb: "question"}, v, dice.Fixed(10))
-		if got.Log.Threshold != ThresholdNormal {
-			t.Errorf("позиция сдвинула порог до %d, ожидался medium %d", got.Log.Threshold, ThresholdNormal)
-		}
+	exposed := New().Resolve(core.Intent{Verb: "question"},
+		core.SceneView{Exposed: true, Sheet: sheet}, dice.Fixed(10))
+	if exposed.Log.Threshold != ThresholdEasy {
+		t.Errorf("порог по открытой цели %d, ожидался %d", exposed.Log.Threshold, ThresholdEasy)
+	}
+
+	// Судимое авторским гейтом действие не изменилось ни на пункт.
+	gated := New().Resolve(core.Intent{Verb: "question"},
+		core.SceneView{GateThreshold: "normal", Opposed: true, Sheet: sheet}, dice.Fixed(10))
+	if gated.Log.Threshold != ThresholdNormal {
+		t.Errorf("гейт сдвинулся позицией: порог %d, ожидался %d", gated.Log.Threshold, ThresholdNormal)
 	}
 }

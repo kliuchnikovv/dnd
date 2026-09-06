@@ -3,8 +3,6 @@ package vignette
 import (
 	"fmt"
 	"strings"
-
-	"github.com/kliuchnikovv/dnd/rules/threshold"
 )
 
 // Result — что ядро отдаёт наружу за ход. Мастеру уходят только Revealed +
@@ -165,16 +163,16 @@ func perceptionAspect(obj *Object, kind string) string {
 	return ""
 }
 
-// climbDC — сложность выбраться, ФУНКЦИЯ ПОЗИЦИИ (каноничная шкала threshold):
+// climbDC — сложность выбраться, ФУНКЦИЯ ПОЗИЦИИ (своя каноничная шкала):
 // по колено easy(10), по пояс medium(15), по грудь hard(20).
 func climbDC(mire int) int {
 	switch mire {
 	case 1:
-		return threshold.ThresholdEasy
+		return DCEasy
 	case 2:
-		return threshold.ThresholdNormal
+		return DCMedium
 	default:
-		return threshold.ThresholdHard
+		return DCHard
 	}
 }
 

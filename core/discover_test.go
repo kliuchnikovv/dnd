@@ -43,7 +43,7 @@ func discoverGame(out Outcome) *Game {
 
 	db.Clocks["c_suspicion"] = &store.Clock{ID: "c_suspicion", Segments: 6, TickPolicy: "on_cost"}
 	return NewGame(Config{
-		DB: db, Rules: fixedRules{out: out}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{out}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})
@@ -157,7 +157,7 @@ func factHolderGame(holder store.EntityID, kind store.EntityKind, node store.Nod
 		Gate: store.Gate{Verbs: []string{"examine"}, Threshold: "normal"},
 	}}
 	return NewGame(Config{
-		DB: db, Rules: fixedRules{out: OutcomeSuccess}, Dice: nilDice{},
+		DB: db, Rules: fixedRules{OutcomeSuccess}, Dice: nilDice{},
 		Truth:   accusation.NewTruth("toke", "cord", "night", "audit"),
 		Flavour: map[string]string{}, Start: "n_quay", Actor: "pc",
 	})

@@ -162,9 +162,4 @@ type Dice interface {
 // RuleSystem — шов. Единственная точка, где ядро обращается к правилам.
 type RuleSystem interface {
 	Resolve(Intent, SceneView, Dice) Resolution
-	// PassiveScore — пассивное внимание персонажа (10+модификатор±5) для данной
-	// позиции, без кости. Ядро сравнивает его с Gate.Passive держателя и
-	// открывает пассивный tell детерминированно. Живёт в системе правил, потому
-	// что только она читает лист (модификатор внимания) и обстановку (±5).
-	PassiveScore(SceneView) int
 }

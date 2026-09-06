@@ -28,18 +28,6 @@ func (s *System) Resolve(in core.Intent, view core.SceneView, d core.Dice) core.
 	}
 }
 
-// PassiveScore — пассивная внимательность по D&D: 10 + модификатор Wisdom (+
-// бонус мастерства, если персонаж владеет Perception). Кости нет — ядро сравнит
-// это с пассивным порогом держателя.
-func (s *System) PassiveScore(view core.SceneView) int {
-	sheet, _ := ParseSheet(view.Sheet)
-	score := 10 + sheet.Mod("wis")
-	if sheet.Proficient("perception") {
-		score += sheet.Prof
-	}
-	return score
-}
-
 // rollD20 бросает 1d20 через шов core.Dice: Roll(n, sides) с n=1.
 func rollD20(d core.Dice) int { return d.Roll(1, 20) }
 

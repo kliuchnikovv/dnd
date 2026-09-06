@@ -20,4 +20,3 @@ func TestRulesetRegistryReturnsRegistered(t *testing.T) {
 type stubRules struct{}
 
 func (stubRules) Resolve(Intent, SceneView, Dice) Resolution { return Resolution{} }
-func (stubRules) PassiveScore(SceneView) int                  { return 10 }

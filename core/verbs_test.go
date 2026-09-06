@@ -61,23 +61,6 @@ func TestFlavourAndSoftVerbsNeverRoll(t *testing.T) {
 	}
 }
 
-// Perception ↔ Investigation развод (прото §2.10, rules-reference §4): look —
-// заметить (Perception, без кости, бросается в глаза); examine/search —
-// обыскать и вывести из улик (Investigation, по броску). Разные вещи, и ядро их
-// не смешивает: look не катит кость, investigate — катит.
-func TestPerceptionAndInvestigationAreDistinct(t *testing.T) {
-	look := Verbs["look"]
-	if look.Class != ClassNone || look.Rolls {
-		t.Errorf("look должен быть перцепцией без броска (notice), получено %+v", look)
-	}
-	for _, v := range []Verb{"examine", "search"} {
-		d := Verbs[v]
-		if d.Class != ClassInvestigate || !d.Rolls {
-			t.Errorf("%q должен быть Investigation по броску (deduce), получено %+v", v, d)
-		}
-	}
-}
-
 func TestLookupVerbRejectsUnknown(t *testing.T) {
 	if _, ok := LookupVerb("hack_the_gibson"); ok {
 		t.Error("неизвестный глагол опознан как известный")

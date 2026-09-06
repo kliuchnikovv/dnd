@@ -14,10 +14,9 @@ func TestOutcomeDistributionMatchesSpec(t *testing.T) {
 		gate                            string
 		successPlus, partial, cleanFail int // из 20 граней
 	}{
-		// Каноничная шкала: medium 15, hard 20. Окно «частично» — 4 пункта.
-		{4, "normal", 10, 4, 6}, // 50% / 20% / 30%
-		{6, "normal", 12, 4, 4}, // 60% / 20% / 20%
-		{4, "hard", 5, 4, 11},   // 25% / 20% / 55%
+		{4, "normal", 11, 4, 5}, // 55% / 20% / 25%
+		{6, "normal", 13, 4, 3}, // 65% / 20% / 15%
+		{4, "hard", 7, 4, 9},    // 35% / 20% / 45%
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("mod%+d_%s", c.mod, c.gate), func(t *testing.T) {

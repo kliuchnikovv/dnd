@@ -16,19 +16,19 @@ func sheetRaw(t *testing.T) core.SceneView {
 }
 
 func TestMarginBoundsPickClass(t *testing.T) {
-	// Порог medium 15, mind +4: маржа = d20 - 11.
+	// Порог 14, mind +4: маржа = d20 - 10.
 	cases := []struct {
 		die    int
 		want   core.Outcome
 		margin int
 	}{
-		{16, core.OutcomeCrit, 5},
-		{15, core.OutcomeSuccess, 4},
-		{11, core.OutcomeSuccess, 0},
-		{10, core.OutcomePartial, -1},
-		{7, core.OutcomePartial, -4},
-		{6, core.OutcomeFail, -5},
-		{2, core.OutcomeFail, -9},
+		{15, core.OutcomeCrit, 5},
+		{14, core.OutcomeSuccess, 4},
+		{10, core.OutcomeSuccess, 0},
+		{9, core.OutcomePartial, -1},
+		{6, core.OutcomePartial, -4},
+		{5, core.OutcomeFail, -5},
+		{2, core.OutcomeFail, -8},
 	}
 	for _, c := range cases {
 		got := New().Resolve(core.Intent{Verb: "question"}, sheetRaw(t), dice.Fixed(c.die))
@@ -41,9 +41,30 @@ func TestMarginBoundsPickClass(t *testing.T) {
 	}
 }
 
-// Нат-1/нат-20 на проверках характеристик больше НЕ особые (RAW; прото §10) —
-// см. TestNoNaturalDieSpecialOnAbilityChecks в vantage_test.go. Прежние тесты
-// ступени по числу удалены вместе с самой ступенью.
+func TestNat20StepsUpAndNat1StepsDown(t *testing.T) {
+	view := sheetRaw(t)
+	view.GateThreshold = "hard" // порог 18, маржа = d20 - 14
+
+	// d20=20 даёт маржу +6 (крит) и остаётся критом: выше ступени нет.
+	if got := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(20)); got.Class != core.OutcomeCrit {
+		t.Errorf("нат-20: класс %v, ожидался КРИТ", got.Class)
+	}
+	// d20=1 даёт маржу -13 (провал) и остаётся провалом: ниже ступени нет.
+	if got := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(1)); got.Class != core.OutcomeFail {
+		t.Errorf("нат-1: класс %v, ожидался ПРОВАЛ", got.Class)
+	}
+}
+
+func TestNat20LiftsSuccessToCrit(t *testing.T) {
+	// Порог 18, mind +4: d20=20 даёт маржу +6, уже крит. Нужен случай, где
+	// нат-20 действительно поднимает: mind 0, порог 18 -> маржа +2 = успех.
+	view := core.SceneView{GateThreshold: "hard",
+		Sheet: []byte(`{"attrs":{"mind":0},"tags":[]}`)}
+	got := New().Resolve(core.Intent{Verb: "question"}, view, dice.Fixed(20))
+	if got.Class != core.OutcomeCrit {
+		t.Errorf("нат-20 не поднял УСПЕХ до КРИТА: %v (маржа %d)", got.Class, got.Margin)
+	}
+}
 
 // grit — единственное место, где игрок принимает решение о риске. Тратится он
 // заявкой ДО броска: автоматическое списание на каждом провале решением не
@@ -101,7 +122,7 @@ func TestNonRollingVerbSucceedsWithoutDice(t *testing.T) {
 
 func TestLogCarriesNamedTerms(t *testing.T) {
 	got := New().Resolve(core.Intent{Verb: "question"}, sheetRaw(t), dice.Fixed(11))
-	if got.Log.Die != 11 || got.Log.Threshold != 15 {
+	if got.Log.Die != 11 || got.Log.Threshold != 14 {
 		t.Errorf("лог броска неполон: %+v", got.Log)
 	}
 	names := map[string]int{}

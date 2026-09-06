@@ -25,7 +25,7 @@ type Interpreter interface {
 	// вопрос: «рукой» после «чем именно?» читается как новое действие, и игра
 	// спрашивает то же самое по кругу.
 	Interpret(ctx context.Context, text string, with store.EntityID,
-		pending string) (in *core.Intent, probe core.Probe, clarify string, idle bool, err error)
+		pending string) (in *core.Intent, probe core.Probe, clarify string, err error)
 }
 
 // ChatInterpreter — переводчик чат-режима: тем же вызовом, которым разобрал
@@ -41,7 +41,7 @@ type ChatInterpreter interface {
 	// InterpretChat возвращает интент, безоценочную реплику Мастера, свободную
 	// пробу и вопрос игроку. Ошибка означает сбой канала, а не непонятый ввод.
 	InterpretChat(ctx context.Context, text string, with store.EntityID,
-		pending string) (in *core.Intent, reply string, probe core.Probe, clarify string, idle bool, err error)
+		pending string) (in *core.Intent, reply string, probe core.Probe, clarify string, err error)
 }
 
 // WithChat включает чат-режим. Он идёт ВМЕСТО перевода свободного текста, а не
@@ -111,7 +111,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		s.emit(EventRefusal, "нельзя: %v\n", parseErr)
 		return false
 	}
-	in, probe, clarify, idle, err := s.interp.Interpret(s.turnContext(), text, s.spokenTo, s.pending)
+	in, probe, clarify, err := s.interp.Interpret(s.turnContext(), text, s.spokenTo, s.pending)
 	// Вопрос задан один раз: ответ на него уже пришёл, и тащить его дальше
 	// значит навязывать модели старый контекст.
 	s.pending = ""
@@ -121,13 +121,6 @@ func (s *Session) interpret(text string, parseErr error) bool {
 		// понимать, что дело в инструменте, а не в его замысле.
 		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
 		return false
-	case idle:
-		// Ввод не действие персонажа (мета/инъекция/мусор): персонаж ничего не
-		// предпринимает. Ядру ничего не уходит, вопроса не задаём. Инъекция
-		// живёт ровно здесь и дальше не идёт.
-		s.emit(EventSystem, "Ты медлишь, ничего не предпринимая.\n")
-		s.journalAudit("")
-		return true
 	case in != nil:
 		s.noteProposal(llm.RoleIntentParser, llmProposal{Intent: in})
 		s.applyIntent(*in)
@@ -154,7 +147,7 @@ func (s *Session) interpret(text string, parseErr error) bool {
 // ядро разрешило. Показать подводку к действию, которого не будет, значит
 // соврать игроку — а ядро над Мастером, а не наоборот.
 func (s *Session) interpretChat(text string, parseErr error) bool {
-	in, reply, probe, clarify, idle, err := s.chat.InterpretChat(s.turnContext(), text, s.spokenTo, s.pending)
+	in, reply, probe, clarify, err := s.chat.InterpretChat(s.turnContext(), text, s.spokenTo, s.pending)
 	// Вопрос задан один раз: ответ на него уже пришёл.
 	s.pending = ""
 	switch {
@@ -163,12 +156,6 @@ func (s *Session) interpretChat(text string, parseErr error) bool {
 		// понимать, что дело в инструменте, а не в его замысле.
 		s.emit(EventRefusal, "переводчик недоступен: %v\nнельзя: %v\n", err, parseErr)
 		return false
-	case idle:
-		// Не действие персонажа (мета/инъекция/мусор): ничего не делаем, реплики
-		// нет — Мастеру пересказывать нечего.
-		s.emit(EventSystem, "Ты медлишь, ничего не предпринимая.\n")
-		s.journalAudit("")
-		return true
 	case probe.Text != "":
 		// Реплика чат-режима подводкой к пробе быть не может: подводка
 		// предваряет действие, а у пробы отклик и есть весь её текст. Показать

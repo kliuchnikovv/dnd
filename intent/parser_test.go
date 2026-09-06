@@ -557,7 +557,7 @@ func TestRepairCountsOnceInMetrics(t *testing.T) {
 func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"talk_to","target":"e_bern"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, _, _, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном", "", "")
+	in, _, _, err := gi.Interpret(context.Background(), "Поздороваться с Берном", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,7 +574,7 @@ func TestPlayerWordsSurviveIntoSocialIntent(t *testing.T) {
 func TestParsedTextWinsWhereItIsTheContent(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"intent","verb":"theorize","text":"Токе лжёт про ночь"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, _, _, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь", "", "")
+	in, _, _, err := gi.Interpret(context.Background(), "запишу-ка мысль: Токе лжёт про ночь", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1072,7 +1072,7 @@ func TestBareNameTurnsToThatPerson(t *testing.T) {
 	p, f := parserWith(t, `{"outcome":"clarify"}`)
 	gi := &GameInterpreter{Parser: p, Game: g}
 
-	in, _, clarify, _, err := gi.Interpret(context.Background(), "Берн", "", "")
+	in, _, clarify, err := gi.Interpret(context.Background(), "Берн", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1094,7 +1094,7 @@ func TestNameWithWordsGoesToTheModel(t *testing.T) {
 	p, f := parserWith(t, `{"outcome":"intent","verb":"say","text":"что слышно?"}`)
 	gi := &GameInterpreter{Parser: p, Game: g}
 
-	if _, _, _, _, err := gi.Interpret(context.Background(), "Берн, что слышно?", "", ""); err != nil {
+	if _, _, _, err := gi.Interpret(context.Background(), "Берн, что слышно?", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Calls()) != 1 {
@@ -1108,7 +1108,7 @@ func TestBareWordThatNamesNobodyGoesToTheModel(t *testing.T) {
 	p, f := parserWith(t, `{"outcome":"intent","verb":"look"}`)
 	gi := &GameInterpreter{Parser: p, Game: g}
 
-	if _, _, _, _, err := gi.Interpret(context.Background(), "осмотреться", "", ""); err != nil {
+	if _, _, _, err := gi.Interpret(context.Background(), "осмотреться", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Calls()) != 1 {
@@ -1446,7 +1446,7 @@ func TestUnsupportedLandsAsProbeAndKeepsTheSignal(t *testing.T) {
 func TestInterpretReturnsProbeSeparatelyFromClarify(t *testing.T) {
 	p, _ := parserWith(t, `{"outcome":"free_probe","probe":"пробует расшатать доску"}`)
 	gi := &GameInterpreter{Parser: p, Game: interpGame(t)}
-	in, probe, clarify, _, err := gi.Interpret(context.Background(), "расшатываю доску", "", "")
+	in, probe, clarify, err := gi.Interpret(context.Background(), "расшатываю доску", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

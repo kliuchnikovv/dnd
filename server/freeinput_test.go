@@ -16,12 +16,11 @@ type fakeInterp struct {
 	reply   string
 	probe   core.Probe
 	clarify string
-	idle    bool
 	err     error
 }
 
-func (f fakeInterp) InterpretChat(_ context.Context, _ string, _ store.EntityID, _ string) (*core.Intent, string, core.Probe, string, bool, error) {
-	return f.intent, f.reply, f.probe, f.clarify, f.idle, f.err
+func (f fakeInterp) InterpretChat(_ context.Context, _ string, _ store.EntityID, _ string) (*core.Intent, string, core.Probe, string, error) {
+	return f.intent, f.reply, f.probe, f.clarify, f.err
 }
 
 // freeSession поднимает сессию с прозой и подставным разбором свободного ввода.
