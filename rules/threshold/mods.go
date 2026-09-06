@@ -2,25 +2,38 @@ package threshold
 
 import "github.com/kliuchnikovv/dnd/core"
 
+// Каноничная D&D-шкала DC (SRD: Ability Checks): very_easy 5 · easy 10 ·
+// medium 15 · hard 20 · very_hard 25 · extreme 30. Автор-банды дела
+// (easy/normal/hard) ложатся на 10/15/20; крайние ступени — для судьи и
+// генератора.
 const (
-	ThresholdEasy   = 10
-	ThresholdNormal = 14
-	ThresholdHard   = 18
+	ThresholdVeryEasy = 5
+	ThresholdEasy     = 10
+	ThresholdNormal   = 15 // = medium
+	ThresholdHard     = 20
+	ThresholdVeryHard = 25
+	ThresholdExtreme  = 30
 
 	TagValue       = 2
 	PushValue      = 2
 	SituationalCap = 4
 )
 
-// ThresholdFor переводит сложность из данных дела в число. Множество закрыто:
-// всё незнакомое — «Норма».
+// ThresholdFor переводит сложность из данных дела в число по каноничной шкале.
+// Множество закрыто: всё незнакомое — «medium» (15).
 func ThresholdFor(gate string) int {
 	switch gate {
+	case "very_easy", "trivial":
+		return ThresholdVeryEasy
 	case "easy":
 		return ThresholdEasy
 	case "hard":
 		return ThresholdHard
-	default:
+	case "very_hard":
+		return ThresholdVeryHard
+	case "extreme", "impossible", "nearly_impossible":
+		return ThresholdExtreme
+	default: // normal, medium, "", неизвестное
 		return ThresholdNormal
 	}
 }
@@ -39,11 +52,12 @@ var stealthVerbs = map[core.Verb]bool{
 	"move_zone": true, "flee": true, "strike": true,
 }
 
-// FactorNames — все ситуативные факторы в стабильном порядке. Существует ради
-// теста частоты срабатывания: фактор, который срабатывает почти всегда, — это
-// неверно назначенный порог, и найти такой надо до, а не после.
+// FactorNames — все ситуативные (АДДИТИВНЫЕ) факторы в стабильном порядке.
+// Существует ради теста частоты срабатывания. Обстановка (adverse-среда, инструмент)
+// сюда больше не входит: она ушла в advantage/disadvantage (см. Vantage) — по D&D
+// помехи среды идут через 2d20, а не через слагаемое к броску.
 func FactorNames() []string {
-	return []string{"numbers", "cover", "undetected", "adverse", "harm", "tier", "tool"}
+	return []string{"numbers", "cover", "undetected", "harm", "tier"}
 }
 
 // SituationalFactors раскладывает ситуативные модификаторы по факторам, до
@@ -73,18 +87,10 @@ func SituationalFactors(in core.Intent, view core.SceneView) map[string]int {
 		f["undetected"] = 2
 	}
 
-	for _, tag := range adverseTags {
-		if view.HasTag(tag) {
-			f["adverse"] = -2
-			break
-		}
-	}
-	// Инструмент не поднимает базу, а отменяет штраф среды: фонарь в тёмном
-	// подвале возвращает к норме, а не делает лучше нормы. Он стоит игроку
-	// хода, и в этом вся плата за него.
-	if f["adverse"] < 0 && len(view.Tools) > 0 {
-		f["tool"] = -f["adverse"]
-	}
+	// Обстановка (adverse-среда) и инструмент, её отменяющий, здесь больше НЕ
+	// учитываются: они ушли в advantage/disadvantage (см. Vantage). По D&D помеха
+	// среды — это 2d20-помеха, а не -2 к сумме, иначе за один и тот же факт платили
+	// бы дважды (и слагаемым, и ступенью).
 
 	if view.Harm > 0 {
 		f["harm"] = -2 * view.Harm
