@@ -30,6 +30,9 @@ func (m *Manager) CreateVignette(spec *scenegen.SceneSpec, seed int64, userID st
 
 	chatID := fmt.Sprintf("vig-%s", randToken())
 	rt := newVignetteRuntime(chatID, userID, seed, m.store, m.narrator, sc, st)
+	if m.vignetteJudge != nil {
+		rt.judge = m.vignetteJudge // с ключом — LLMJudge (сам откатится на keyword)
+	}
 
 	m.mu.Lock()
 	m.vignettes[chatID] = rt

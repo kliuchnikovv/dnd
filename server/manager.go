@@ -24,7 +24,15 @@ import (
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/store"
+	"github.com/kliuchnikovv/dnd/vignette"
 )
+
+// WithVignetteJudge ставит судью виньетка-трека (обычно LLMJudge на шлюзе). Без
+// него виньетка играет офлайн-судьёй KeywordJudge.
+func (m *Manager) WithVignetteJudge(j vignette.Judge) *Manager {
+	m.vignetteJudge = j
+	return m
+}
 
 // sessionRuntime — живая игра одной сессии в памяти вместе с её сокет-
 // подписчиками. Генерация хода не привязана к живому сокету: механику применяет
@@ -106,6 +114,9 @@ type Manager struct {
 	// vignettes — живые сессии виньетка-трека (ADR-0009), рядом с sessions.
 	// Отдельная карта, потому что у виньетки свой движок (не core.Game).
 	vignettes map[string]*vignetteRuntime
+	// vignetteJudge — судья виньетки. nil → рантайм берёт офлайн KeywordJudge;
+	// с ключом cmd/server ставит LLMJudge (тот сам откатывается на keyword при сбое).
+	vignetteJudge vignette.Judge
 }
 
 // WithNarrator включает стрим прозы: сессии получат Мастера. Без него сервер

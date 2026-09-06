@@ -10,6 +10,7 @@ import (
 	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
+	"github.com/kliuchnikovv/dnd/vignette"
 )
 
 // buildNarrator собирает Мастера для стрима прозы из окружения. Прозы нет без
@@ -25,26 +26,26 @@ import (
 //	PRICE_IN_CHEAP/OUT_CHEAP  то же для дешёвой модели
 //	GUARD_LINES     проверять прозу гвардом (по умолчанию true)
 //	OPENROUTER_API_KEY / ANTHROPIC_API_KEY  читают провайдеры сами
-func buildNarrator() (*master.Master, *intent.Parser, error) {
+func buildNarrator() (*master.Master, *intent.Parser, vignette.Judge, error) {
 	model := os.Getenv("MODEL")
 	if model == "" {
 		log.Printf("проза: выключена (MODEL не задан) — сервер отдаёт только механику")
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	provider := env("PROVIDER", "openrouter")
 	target, err := resolveProvider(provider, model)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := ensurePrice(target.Model, envFloat("PRICE_IN", 0), envFloat("PRICE_OUT", 0)); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	var cheap llm.Target
 	if mc := os.Getenv("MODEL_CHEAP"); mc != "" {
 		cheap = llm.Target{Provider: target.Provider, Model: mc}
 		if err := ensurePrice(mc, envFloat("PRICE_IN_CHEAP", 0), envFloat("PRICE_OUT_CHEAP", 0)); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
@@ -56,7 +57,8 @@ func buildNarrator() (*master.Master, *intent.Parser, error) {
 		Route(llm.RoleNarrator, target).
 		Route(llm.RoleCanonGuard, target).
 		Route(llm.RoleChatMaster, target).
-		Route(llm.RoleIntentParser, target)
+		Route(llm.RoleIntentParser, target).
+		Route(llm.RoleWorldsmith, target) // генератор сцен виньетки
 	if cheap.Provider != nil && cheap.Model != "" {
 		router.RouteCheap(llm.RoleNarrator, cheap)
 	}
@@ -72,9 +74,13 @@ func buildNarrator() (*master.Master, *intent.Parser, error) {
 	}
 	// Чат-парсер: один вызов даёт и разбор текста, и реплику (для свободного ввода).
 	parser := intent.NewChatParser(gw)
-	log.Printf("проза: включена (provider=%s model=%s guard=%v); свободный ввод: включён",
+	// Судья виньетки на том же шлюзе: разбирает свободный ввод в Ruling холодно и
+	// truth-blind (RoleIntentParser), сам откатывается на keyword при сбое.
+	vjudge := vignette.NewLLMJudge(gw)
+
+	log.Printf("проза: включена (provider=%s model=%s guard=%v); свободный ввод: включён; судья виньетки: LLM",
 		provider, model, envBool("GUARD_LINES", true))
-	return ms, parser, nil
+	return ms, parser, vjudge, nil
 }
 
 // resolveProvider — тот же выбор, что в cmd/dnd. Ключ провайдер читает из
