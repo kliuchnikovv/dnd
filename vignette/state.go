@@ -66,7 +66,8 @@ func looksLikeMeta(text string) bool {
 	s := strings.ToLower(text)
 	for _, k := range []string{"ignore previous", "ignore all", "previous instruction",
 		"забудь", "инструкц", "system", "verdict", "kind=", "admit=", "\"kind\"",
-		"переписыв", "ты ассистент", "ты обычный", "prompt"} {
+		"переписыв", "ты ассистент", "ты обычный", "prompt",
+		"системн", "разработчик", "раскрой", "признайся", "хоть кивни", "ты ведь знаешь"} {
 		if strings.Contains(s, k) {
 			return true
 		}
