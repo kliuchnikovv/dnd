@@ -49,12 +49,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chatID := q.Get("chat_id")
-	rt, ok := s.mgr.Get(chatID)
+	rt, ok := s.mgr.GetLive(chatID)
 	if !ok {
 		http.Error(w, "нет такой сессии", http.StatusNotFound)
 		return
 	}
-	if s.auth != nil && rt.userID != uid {
+	if s.auth != nil && rt.UserID() != uid {
 		http.Error(w, "чужая сессия", http.StatusForbidden)
 		return
 	}
@@ -117,7 +117,7 @@ func writePump(ctx context.Context, cancel context.CancelFunc, conn *websocket.C
 
 // readLoop разбирает ввод игрока. Невалидный ход — error-кадр, а не разрыв:
 // сессия живёт, игрок пробует другой вариант.
-func readLoop(ctx context.Context, conn *websocket.Conn, rt *sessionRuntime, sub *subscriber) {
+func readLoop(ctx context.Context, conn *websocket.Conn, rt liveSession, sub *subscriber) {
 	for {
 		var f Frame
 		if err := wsjson.Read(ctx, conn, &f); err != nil {
@@ -131,13 +131,10 @@ func readLoop(ctx context.Context, conn *websocket.Conn, rt *sessionRuntime, sub
 			}
 			ok, msg := rt.applyInput(ctx, f.ID, in)
 			if !ok {
-				send(ctx, sub, errorFrame(f.ID, rt.chatID, msg))
+				send(ctx, sub, errorFrame(f.ID, rt.ChatID(), msg))
 			}
 		case OpPing:
-			rt.mu.Lock()
-			id := rt.nextOutIDLocked()
-			rt.mu.Unlock()
-			send(ctx, sub, newFrame(id, rt.chatID, ChannelChat, KindSignal, OpPing, nil))
+			send(ctx, sub, newFrame(rt.nextOutID(), rt.ChatID(), ChannelChat, KindSignal, OpPing, nil))
 		case OpStop:
 			// Отмена генерации прозы текущего хода. Механику не трогает: она
 			// уже применена ядром и ушла в session_state.

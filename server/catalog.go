@@ -64,6 +64,10 @@ func (c *CaseCatalog) HandleList(w http.ResponseWriter, r *http.Request) {
 // достаточно — трогать схему дела не нужно.
 type rawRules struct {
 	Rules string `json:"rules"`
+	// ID/Blurb читаются только для виньетка-дел (они не идут через cases.Load,
+	// у которого свой разбор id/брифинга). Для M1a-дел эти поля игнорируются.
+	ID    string `json:"id"`
+	Blurb string `json:"blurb"`
 }
 
 // LoadCatalog обходит директорию dir в поисках case.json, разбирает каждое
@@ -80,11 +84,6 @@ func LoadCatalog(dir string) (*CaseCatalog, error) {
 			return nil
 		}
 
-		cfg, err := cases.Load(path)
-		if err != nil {
-			return fmt.Errorf("catalog: %s: %w", path, err)
-		}
-
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("catalog: %s: %w", path, err)
@@ -98,6 +97,24 @@ func LoadCatalog(dir string) (*CaseCatalog, error) {
 			rules = defaultRulesKind
 		}
 
+		// Виньетка-дело (ADR-0009) не идёт через M1a-loader: у него другая модель
+		// сцены (scene.json), а cases.Load ждёт локации/сущности M1a. Списываем
+		// его в каталог по полю-анонсу, не парся как M1a-дело.
+		if rules == VignetteRulesKind {
+			entries = append(entries, CaseSummary{
+				ID:       rr.ID,
+				Name:     filepath.Base(filepath.Dir(path)),
+				Rules:    rules,
+				Scenario: VignetteRulesKind,
+				Blurb:    blurb(rr.Blurb),
+			})
+			return nil
+		}
+
+		cfg, err := cases.Load(path)
+		if err != nil {
+			return fmt.Errorf("catalog: %s: %w", path, err)
+		}
 		entries = append(entries, CaseSummary{
 			ID:       string(cfg.CaseID),
 			Name:     filepath.Base(filepath.Dir(path)),

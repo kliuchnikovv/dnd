@@ -103,6 +103,9 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions map[string]*sessionRuntime
+	// vignettes — живые сессии виньетка-трека (ADR-0009), рядом с sessions.
+	// Отдельная карта, потому что у виньетки свой движок (не core.Game).
+	vignettes map[string]*vignetteRuntime
 }
 
 // WithNarrator включает стрим прозы: сессии получат Мастера. Без него сервер
@@ -145,6 +148,7 @@ func NewManagerWithStore(casesRoot string, st Store) *Manager {
 		casesRoot: casesRoot,
 		store:     st,
 		sessions:  make(map[string]*sessionRuntime),
+		vignettes: make(map[string]*vignetteRuntime),
 	}
 }
 

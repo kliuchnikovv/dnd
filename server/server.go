@@ -156,6 +156,19 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// Виньетка-трек (ADR-0009): у неё свой движок, не core.Game, поэтому ветка
+	// уходит ДО LookupRuleset (в реестре core.RuleSystem виньетки нет и не будет).
+	// Сцену читаем из scene.json дела; персонаж — гейт (его лист виньетке не нужен).
+	if caseRules == VignetteRulesKind {
+		chatID, err := s.mgr.CreateVignetteFromCase(caseName, seed, userID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"chat_id": chatID})
+		return
+	}
+
 	rules, ok := core.LookupRuleset(core.RulesetKind(characterRules))
 	if !ok {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("неизвестная система правил %q", characterRules))
