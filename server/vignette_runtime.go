@@ -162,49 +162,27 @@ func (rt *vignetteRuntime) applyInput(ctx context.Context, frameID int, in input
 	return true, ""
 }
 
-// narrateLocked печатает прозу хода. КЛЮЧЕВОЕ: Мастеру уходит ТОЛЬКО revealed
-// (+ нейтральные положение/беат/развязка) — правды и закрытых тиров он не видит.
-// narrator==nil — офлайн без ключа: revealed печатается напрямую.
-func (rt *vignetteRuntime) narrateLocked(ctx context.Context, res vignette.Result) {
-	// outcome — только то, что ядро ОТКРЫЛО: revealed-строки, нейтральное
-	// положение, беат-событие и (на конце) раскрытая развязка. Ни Scene.Truth,
-	// ни закрытого тира здесь нет.
-	outcome := append([]string{}, res.Revealed...)
-	if res.StateNote != "" {
-		outcome = append(outcome, res.StateNote)
-	}
-	if res.Beat != "" {
-		outcome = append(outcome, res.Beat)
-	}
-	if res.Ended && res.EndText != "" {
-		outcome = append(outcome, res.EndText)
-	}
+// masterNarrator адаптирует *master.Master к vignette.Narrator: строит World из
+// нейтральных поверхностей и зовёт Narrate с ТОЛЬКО revealed (анти-лик ADR-0008).
+type masterNarrator struct{ m *master.Master }
 
-	var text string
+func (mn masterNarrator) Narrate(ctx context.Context, ambient string, surfaces, revealed []string, frame string) (string, error) {
+	return mn.m.Narrate(ctx, master.KindOutcome, frame,
+		master.World{Setting: ambient, Scene: surfaces}, revealed, "", nil, llm.Request{})
+}
+
+// narrateLocked печатает прозу хода. Пер-ходовая проза+страж — ТОТ ЖЕ код, что у
+// CLI: vignette.Narrate (Мастеру уходит ТОЛЬКО revealed; страж с карваутом финала).
+// narrator==nil — офлайн без ключа: revealed печатается напрямую (adapter не строим).
+func (rt *vignetteRuntime) narrateLocked(ctx context.Context, res vignette.Result) {
+	var n vignette.Narrator
 	if rt.narrator != nil {
-		frame := firstNonEmptyStr(res.Beat, res.EndText, res.StateNote, "Опиши, чем кончился ход.")
-		out, err := rt.narrator.Narrate(ctx, master.KindOutcome, frame,
-			master.World{Setting: rt.scene.Ambient, Scene: rt.scene.Surfaces()},
-			res.Revealed, "", nil, llm.Request{})
-		if err != nil {
-			rt.broadcastLocked(errorFrame(rt.nextOutIDLocked(), rt.chatID, "проза хода не удалась: "+err.Error()))
-			return
-		}
-		text = out
+		n = masterNarrator{rt.narrator}
 	}
-	if strings.TrimSpace(text) == "" {
-		text = strings.Join(outcome, " ")
-	}
-	// Страж-редактор (ADR-0008): бэкстоп против дословного эха защищённого факта.
-	// Держит правду + закрытые тиры; на ended раскрытая развязка идёт в allowed
-	// (карваут финала) и не режется.
-	if rt.guard != nil {
-		var allowed []string
-		if res.Ended && res.EndText != "" {
-			allowed = []string{res.EndText}
-		}
-		text = rt.guard.Check(text, vignette.ProtectedFacts(rt.scene, rt.state),
-			vignette.StateFacts(rt.scene, rt.state), allowed).Clean
+	text, err := vignette.Narrate(ctx, rt.scene, rt.state, res, n, rt.guard)
+	if err != nil {
+		rt.broadcastLocked(errorFrame(rt.nextOutIDLocked(), rt.chatID, "проза хода не удалась: "+err.Error()))
+		return
 	}
 	if strings.TrimSpace(text) == "" {
 		return
@@ -229,12 +207,3 @@ func (rt *vignetteRuntime) appendTranscript(e TranscriptEntry) {
 // stopProse — отмена прозы. Проза виньетки синхронна и однократна, отменять
 // нечего; метод есть для симметрии с sessionRuntime (WS-слой).
 func (rt *vignetteRuntime) stopProse() {}
-
-func firstNonEmptyStr(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
