@@ -21,6 +21,7 @@ import (
 	// Регистрирует системы правил в реестре (см. core/ruleset.go).
 	_ "github.com/kliuchnikovv/dnd/rules/threshold"
 	_ "github.com/kliuchnikovv/dnd/rules/dnd5e"
+	_ "github.com/kliuchnikovv/dnd/rules/cyberpunk"
 	"github.com/kliuchnikovv/dnd/server"
 )
 

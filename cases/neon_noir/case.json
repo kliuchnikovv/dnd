@@ -1,0 +1,95 @@
+{
+  "id": "c_neon_noir",
+  "archetype": "adventure",
+  "scenario": "adventure",
+  "rules": "cyberpunk",
+  "start": "n_alley",
+  "actor": "chr_v",
+  "locations": [
+    {"id": "n_alley", "name": "Переулок под неоном", "adjacent": ["n_lobby"], "tags": ["rain", "dark"]},
+    {"id": "n_lobby", "name": "Холл корпоративного дома", "adjacent": ["n_alley", "n_server"], "tags": ["indoors"]},
+    {"id": "n_server", "name": "Серверная", "adjacent": ["n_lobby"], "tags": ["indoors", "dark"]}
+  ],
+  "entities": [
+    {"id": "chr_v", "name": "V", "kind": "npc", "node": "n_alley", "hp": 40, "max_hp": 40, "ac": 11},
+    {"id": "e_fixer", "name": "Роджес, фикстер", "kind": "npc", "node": "n_alley"},
+    {"id": "e_guard", "name": "Корп-охранник", "kind": "npc", "node": "n_lobby", "hp": 30, "max_hp": 30, "ac": 11},
+    {"id": "e_terminal", "name": "Служебный терминал", "kind": "thing", "node": "n_server"}
+  ],
+  "facts": [
+    {
+      "id": "f_job",
+      "key": "Заказ фиксера",
+      "kind": "concept",
+      "summation_clause": "…и фиксер отправил тебя вытащить дата-чип из серверной под неоном, пока Корпо не сменили ключи."
+    },
+    {
+      "id": "f_datachip",
+      "key": "Дата-чип на терминале",
+      "kind": "concept",
+      "grants_item": "i_datachip",
+      "summation_clause": "На терминале серверной лежит дата-чип — тот самый, за который платит фиксер."
+    }
+  ],
+  "fact_holders": [
+    {
+      "fact_id": "f_job",
+      "holder_id": "e_fixer",
+      "mandatory": true,
+      "gate": {"verbs": ["talk_to"], "threshold": "easy"}
+    },
+    {
+      "fact_id": "f_datachip",
+      "holder_id": "e_terminal",
+      "mandatory": true,
+      "gate": {"verbs": ["hack"], "threshold": "normal"}
+    }
+  ],
+  "items": [
+    {"id": "i_datachip", "kind": "evidence", "name": "Дата-чип", "text": "Матовый чип с логотипом Корпо, ещё тёплый от разъёма."}
+  ],
+  "clocks": [
+    {"id": "heat", "name": "Heat", "segments": 6, "filled": 0}
+  ],
+  "accusation_tokens": [
+    {"slot": "who", "token": "runner", "fact": "f_job"},
+    {"slot": "how", "token": "hack", "fact": "f_job"},
+    {"slot": "when", "token": "night", "fact": "f_job"},
+    {"slot": "why", "token": "eddies", "fact": "f_job"}
+  ],
+  "truth": {"who": "runner", "how": "hack", "when": "night", "why": "eddies"},
+  "start_facts": [
+    {"fact": "f_job", "from": "e_fixer"}
+  ],
+  "start_places": ["n_lobby"],
+  "dossiers": [
+    {
+      "entity": "e_fixer",
+      "disposition": 1,
+      "talks_about": [
+        "заказ от Корпо-конкурента: вытащить дата-чип из серверной под неоном",
+        "ключи меняют в полночь — успеваешь до, или потом хакай уже полдня"
+      ],
+      "wants": ["Дата-чип на стол, чистая работа, никакого шума."]
+    }
+  ],
+  "hints": {
+    "f_datachip": "Пройди в серверную и взломай терминал — чип должен лежать там."
+  },
+  "briefing": "Ты — V, наёмный ранер под неоном ночного города. Фиксер Роджес поймал тебя в переулке под дождём: у него заказ — вытащить дата-чип из серверной корпоративного дома напротив, пока Корпо не сменили ключи. Плата — звонкими эдди на счёт, из тех, за которыми не приходят с вопросами. От переулка ведёт вход в холл; за холлом — та самая серверная. Возьми чип, вернись в переулок к фиксеру.",
+  "aftermath": "Чип уходит с рук в перчатках Роджеса, эдди — на твой счёт без вопросов. Улица помнит короче, чем Корпо; Heat спадёт за пару смен. До следующего заказа — тишина под неоном.",
+  "cold_case_text": "Серверная осталась закрытой, чип — на терминале, фиксер в переулке ждёт напрасно. Улица к утру забудет, но эдди не заплатят.",
+  "victory": {"type": "return_with", "item": "i_datachip", "node": "n_alley"},
+  "setting": "Ночь под неоном: дождь, отражения красного и синего в лужах, дым из-под решёток. Корпо держит квартал сверху, фиксеры — снизу, и оба круга платят одному и тому же — ранерам вроде тебя.",
+  "flavour": {
+    "talk_to": "Ты заговариваешь.",
+    "talk_to.e_fixer.f_job": "Роджес затягивается сигаретой: «Серверная, дата-чип, до полуночи. Эдди — на счёт, как всегда».",
+    "hack": "Ты вгрызаешься в систему.",
+    "hack.e_terminal.f_datachip": "Терминал сдаётся раньше, чем сменят ключи: дата-чип выскальзывает из разъёма в твою руку.",
+    "attack.e_guard": "Ты идёшь на охранника.",
+    "examine": "Ты присматриваешься.",
+    "move_zone.n_alley": "Ты возвращаешься в переулок под неоном.",
+    "move_zone.n_lobby": "Ты входишь в холл корпоративного дома.",
+    "move_zone.n_server": "Ты проскальзываешь в серверную."
+  }
+}
