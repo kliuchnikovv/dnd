@@ -25,6 +25,7 @@ import (
 	// спека 2). Импорт разведён с механикой (rules/dnd5e), чтобы ядро и
 	// сценарий-приключение не тянули view в свой транзитивный граф.
 	_ "github.com/kliuchnikovv/dnd/rules/dnd5e/view5e"
+	_ "github.com/kliuchnikovv/dnd/rules/cyberpunk"
 	"github.com/kliuchnikovv/dnd/server"
 )
 
