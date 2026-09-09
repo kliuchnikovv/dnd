@@ -21,6 +21,10 @@ import (
 	// Регистрирует системы правил в реестре (см. core/ruleset.go).
 	_ "github.com/kliuchnikovv/dnd/rules/threshold"
 	_ "github.com/kliuchnikovv/dnd/rules/dnd5e"
+	// Регистрирует view-меры dnd5e в реестре view-правил (ADR-0010,
+	// спека 2). Импорт разведён с механикой (rules/dnd5e), чтобы ядро и
+	// сценарий-приключение не тянули view в свой транзитивный граф.
+	_ "github.com/kliuchnikovv/dnd/rules/dnd5e/view5e"
 	"github.com/kliuchnikovv/dnd/server"
 )
 

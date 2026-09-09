@@ -35,6 +35,9 @@ import (
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	// Регистрирует системы правил в реестре (см. core/ruleset.go).
 	_ "github.com/kliuchnikovv/dnd/rules/dnd5e"
+	// Регистрирует view-меры dnd5e (ADR-0010, спека 2). Разведён с
+	// механикой пакетом-соседом: см. rules/dnd5e/view5e.
+	_ "github.com/kliuchnikovv/dnd/rules/dnd5e/view5e"
 	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/tui"
 	"golang.org/x/term"
