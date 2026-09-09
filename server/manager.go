@@ -23,9 +23,17 @@ import (
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
 	"github.com/kliuchnikovv/dnd/rules/threshold"
+	"github.com/kliuchnikovv/dnd/scenegen"
 	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/vignette"
 )
+
+// SceneGenerator — продуктовый путь «тема → SceneSpec» (core-способность
+// scenegen, а не приложение к виньеточному треку). Manager принимает его
+// колбэком, чтобы не тянуть llm.Gateway в свой конструктор — проводку из
+// шлюза даёт cmd/server (см. WithSceneGenerator). Виньетка — первый (и пока
+// единственный) потребитель через CreateVignetteFromTheme.
+type SceneGenerator func(ctx context.Context, theme, mode string) (*scenegen.SceneSpec, error)
 
 // WithVignetteJudge ставит судью виньетка-трека (обычно LLMJudge на шлюзе). Без
 // него виньетка играет офлайн-судьёй KeywordJudge.
@@ -117,6 +125,41 @@ type Manager struct {
 	// vignetteJudge — судья виньетки. nil → рантайм берёт офлайн KeywordJudge;
 	// с ключом cmd/server ставит LLMJudge (тот сам откатывается на keyword при сбое).
 	vignetteJudge vignette.Judge
+	// sceneGen — генератор сцен из темы (scenegen поверх llm.Gateway); nil в
+	// офлайн-сервере без ключа. Продуктовый путь «тема → сцена → виньетка»
+	// доступен только если он задан (см. CreateVignetteFromTheme и
+	// server.handleCreateVignetteFromTheme).
+	sceneGen SceneGenerator
+}
+
+// WithSceneGenerator подключает scenegen-путь: сервер сможет принять тему,
+// сгенерировать сцену и поднять виньетка-сессию из неё (POST
+// /vignette/from-theme). Без него POST /vignette/from-theme отвечает 501:
+// генератор — core-способность и доступен только когда шлюз с ключом собран.
+func (m *Manager) WithSceneGenerator(g SceneGenerator) *Manager {
+	m.sceneGen = g
+	return m
+}
+
+// SceneGeneratorAvailable — есть ли подключённый scenegen. Транспорту нужно,
+// чтобы отдать 501 без похода в Manager (см. handleCreateVignetteFromTheme).
+func (m *Manager) SceneGeneratorAvailable() bool { return m.sceneGen != nil }
+
+// CreateVignetteFromTheme — продуктовый core-путь: тема → scenegen.Generate
+// (через колбэк) → Repair+Validate → CreateVignette. Ошибка отделяет «нет
+// генератора» (клиент увидит 501) от «генерация сорвалась/сцена невалидна»
+// (400). Именно этот путь — то, что просит §1.4 хендоффа
+// 2026-09-09-vignette-into-mvp: генератор доступен из продукта, а не только из
+// CLI cmd/vignette.
+func (m *Manager) CreateVignetteFromTheme(ctx context.Context, theme, mode string, seed int64, userID string) (string, error) {
+	if m.sceneGen == nil {
+		return "", fmt.Errorf("scenegen не подключён")
+	}
+	spec, err := m.sceneGen(ctx, theme, mode)
+	if err != nil {
+		return "", fmt.Errorf("генерация сцены: %w", err)
+	}
+	return m.CreateVignette(spec, seed, userID)
 }
 
 // WithNarrator включает стрим прозы: сессии получат Мастера. Без него сервер

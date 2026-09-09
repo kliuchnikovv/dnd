@@ -1,8 +1,8 @@
-import { rulesets, thresholdCreation, dnd5eCreation } from '../app';
+import { rulesets, thresholdCreation, dnd5eCreation, vignetteCreation } from '../app';
 
 describe('rulesets', () => {
-  it('содержит оба ruleset и в ожидаемом порядке', () => {
-    expect(rulesets).toEqual([thresholdCreation, dnd5eCreation]);
+  it('содержит все три ruleset и в ожидаемом порядке', () => {
+    expect(rulesets).toEqual([thresholdCreation, dnd5eCreation, vignetteCreation]);
   });
 
   it('каждый ruleset и каждый архетип имеют валидную форму', () => {
@@ -15,7 +15,11 @@ describe('rulesets', () => {
         expect(archetype.name.length).toBeGreaterThan(0);
         expect(archetype.id.length).toBeGreaterThan(0);
         expect(archetype.blurb.length).toBeGreaterThan(0);
-        expect(archetype.stats.length).toBeGreaterThan(0);
+        // Виньетка — единственный ruleset без статов (лист не читается,
+        // мерка идёт по действию, ADR-0009). Для остальных проверяем.
+        if (ruleset !== vignetteCreation) {
+          expect(archetype.stats.length).toBeGreaterThan(0);
+        }
         expect(archetype.tags.length).toBeGreaterThan(0);
         expect(archetype.token.length).toBeGreaterThan(0);
       }

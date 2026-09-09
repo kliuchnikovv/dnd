@@ -42,6 +42,18 @@ type vignetteRuntime struct {
 	outSeq int
 
 	lastAppliedID int
+
+	// introText — предварительно нарисованная вступительная проза Мастера
+	// (холодный вход: только поверхности и Intro, без перцепции). Пусто, если
+	// не рендерилась (нет narrator и нет scene.Intro) или ещё не пре-считана.
+	// Идея: сгенерировать один раз при Create и отдавать первому подписчику ДО
+	// snapshotFrameLocked, чтобы игрок открывал сцену уже с интро (§2.1
+	// хендоффа 2026-09-09-vignette-into-mvp).
+	introText string
+	// introSent — уже отдали интро в out хотя бы одному подписчику. Второй
+	// attach (реконнект) интро не получает — как в приключении: опенинг не
+	// перепечатывается на реконнекте.
+	introSent bool
 }
 
 // vignetteView — тело OpSessionState для виньетки: минимальный снимок сцены и
@@ -95,13 +107,78 @@ func (rt *vignetteRuntime) nextOutIDLocked() int {
 	return rt.outSeq
 }
 
-// attach — (ре)коннект: подписаться и сразу получить текущий снимок.
+// attach — (ре)коннект: подписаться и сразу получить текущий снимок. Первый
+// attach также получает вступительную прозу Мастера (см. introText): интро идёт
+// ДО snapshotFrame, чтобы клиент рисовал прозу первой, а сцену — уже под ней.
 func (rt *vignetteRuntime) attach() *subscriber {
 	sub := rt.subscribe()
 	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if !rt.introSent && strings.TrimSpace(rt.introText) != "" {
+		rt.emitIntroLocked(sub)
+		rt.introSent = true
+	}
 	sub.out <- rt.snapshotFrameLocked()
-	rt.mu.Unlock()
 	return sub
+}
+
+// emitIntroLocked отдаёт вступительную прозу конкретному подписчику как
+// одно-сегментный стрим: OpStart(role=gm) → OpMessage(delta) → OpDone. Пишет в
+// ленту сессии (RoleGM), чтобы в журнале интро было ровно один раз (первый
+// attach; последующие реконнекты берут ленту из истории). Под rt.mu.
+func (rt *vignetteRuntime) emitIntroLocked(sub *subscriber) {
+	sub.out <- newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpStart,
+		proseStart{Role: RoleGM})
+	sub.out <- newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindData, OpMessage,
+		textDelta{Type: "text", Delta: rt.introText, IX: 0})
+	sub.out <- newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpDone, nil)
+	rt.appendTranscript(TranscriptEntry{Role: RoleGM, Text: rt.introText})
+}
+
+// precomputeIntro рисует вступительную прозу через narrator и кладёт её в
+// introText под rt.mu. Идемпотентна: повторный вызов ничего не делает. Пустой
+// результат означает «нечего показать» (нет narrator и scene.Intro пуст).
+func (rt *vignetteRuntime) precomputeIntro(ctx context.Context) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.introText != "" || rt.introSent {
+		return
+	}
+	rt.introText = rt.renderIntroLocked(ctx)
+}
+
+// renderIntroLocked собирает холодный вход в сцену: место + Intro в поверхности
+// (прото-паттерн introInput), revealed пусто (перцепции ещё не было). narrator
+// nil (офлайн без ключа) — фолбэк на scene.Intro как есть. Страж применяется
+// всегда — та же защита ADR-0008, что у пер-ходовой прозы. Под rt.mu.
+func (rt *vignetteRuntime) renderIntroLocked(ctx context.Context) string {
+	if rt.scene == nil {
+		return ""
+	}
+	var text string
+	if rt.narrator != nil {
+		n := masterNarrator{rt.narrator}
+		surfaces := rt.scene.Surfaces()
+		introSurfaces := make([]string, 0, len(surfaces)+1)
+		if s := strings.TrimSpace(rt.scene.Intro); s != "" {
+			introSurfaces = append(introSurfaces, s)
+		}
+		introSurfaces = append(introSurfaces, surfaces...)
+		frame := "Опиши холодный вход в сцену: место, положение, атмосферу. Пиши коротко."
+		if out, err := n.Narrate(ctx, rt.scene.Ambient, introSurfaces, nil, frame); err == nil {
+			text = out
+		}
+	}
+	if strings.TrimSpace(text) == "" {
+		text = rt.scene.Intro
+	}
+	if rt.guard != nil && strings.TrimSpace(text) != "" {
+		text = rt.guard.Check(text,
+			vignette.ProtectedFacts(rt.scene, rt.state),
+			vignette.StateFacts(rt.scene, rt.state),
+			nil).Clean
+	}
+	return strings.TrimSpace(text)
 }
 
 func (rt *vignetteRuntime) snapshotFrameLocked() Frame {
@@ -147,17 +224,24 @@ func (rt *vignetteRuntime) applyInput(ctx context.Context, frameID int, in input
 	// Эхо действия игрока в ленту.
 	rt.appendTranscript(TranscriptEntry{Role: RolePlayer, Text: text})
 
-	// Снимок состояния — механика у клиента сразу.
+	// Снимок состояния — механика у клиента сразу. НО на завершающем ходу
+	// ended/end_text ПРОПУСКАЕМ здесь: клиент не должен видеть занавес до того,
+	// как приедет финальная проза Мастера (см. §2.2 хендоффа
+	// 2026-09-09-vignette-into-mvp — гонка порядка кадров). Ended уходит после
+	// narrateLocked отдельным финальным session_state.
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindData, OpSessionState,
 		vignetteView{
 			Scene: rt.scene.Title, Surfaces: rt.scene.Surfaces(),
 			Revealed: res.Revealed, StateNote: res.StateNote, Beat: res.Beat,
-			Ended: res.Ended, EndText: res.EndText,
 		}))
 
 	if res.Ended {
 		rt.ended = true
 	}
+	// narrateLocked сам вставит финальный ended-кадр между OpMessage и OpDone,
+	// если res.Ended — так гарантируется порядок «проза → занавес» на одном
+	// потоке (OpDone идёт последним, и тесты, читающие «до op:done», ловят
+	// финальный session_state).
 	rt.narrateLocked(ctx, res)
 	return true, ""
 }
@@ -188,11 +272,22 @@ func (rt *vignetteRuntime) narrateLocked(ctx context.Context, res vignette.Resul
 		return
 	}
 
-	// Простой одно-сегментный стрим: start → одна дельта → done.
+	// Простой одно-сегментный стрим: start → одна дельта → [ended?] → done.
+	// Финальный session_state{ended,end_text} вклинивается МЕЖДУ дельтой и
+	// done: OpDone остаётся последним кадром хода (тесты читают до op:done),
+	// а занавес всегда после прозы (§2.2 хендоффа 2026-09-09-vignette-into-mvp).
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpStart,
 		proseStart{Role: RoleGM}))
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindData, OpMessage,
 		textDelta{Type: "text", Delta: text, IX: 0}))
+	if res.Ended {
+		rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindData, OpSessionState,
+			vignetteView{
+				Scene: rt.scene.Title, Surfaces: rt.scene.Surfaces(),
+				Revealed: res.Revealed, StateNote: res.StateNote, Beat: res.Beat,
+				Ended: true, EndText: res.EndText,
+			}))
+	}
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat, KindMeta, OpDone, nil))
 	rt.appendTranscript(TranscriptEntry{Role: RoleGM, Text: text})
 }

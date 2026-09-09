@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"github.com/kliuchnikovv/dnd/intent"
 	"github.com/kliuchnikovv/dnd/llm"
 	"github.com/kliuchnikovv/dnd/master"
+	"github.com/kliuchnikovv/dnd/scenegen"
+	"github.com/kliuchnikovv/dnd/server"
 	"github.com/kliuchnikovv/dnd/vignette"
 )
 
@@ -26,26 +29,26 @@ import (
 //	PRICE_IN_CHEAP/OUT_CHEAP  то же для дешёвой модели
 //	GUARD_LINES     проверять прозу гвардом (по умолчанию true)
 //	OPENROUTER_API_KEY / ANTHROPIC_API_KEY  читают провайдеры сами
-func buildNarrator() (*master.Master, *intent.Parser, vignette.Judge, error) {
+func buildNarrator() (*master.Master, *intent.Parser, vignette.Judge, server.SceneGenerator, error) {
 	model := os.Getenv("MODEL")
 	if model == "" {
 		log.Printf("проза: выключена (MODEL не задан) — сервер отдаёт только механику")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	provider := env("PROVIDER", "openrouter")
 	target, err := resolveProvider(provider, model)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if err := ensurePrice(target.Model, envFloat("PRICE_IN", 0), envFloat("PRICE_OUT", 0)); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var cheap llm.Target
 	if mc := os.Getenv("MODEL_CHEAP"); mc != "" {
 		cheap = llm.Target{Provider: target.Provider, Model: mc}
 		if err := ensurePrice(mc, envFloat("PRICE_IN_CHEAP", 0), envFloat("PRICE_OUT_CHEAP", 0)); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
@@ -78,9 +81,18 @@ func buildNarrator() (*master.Master, *intent.Parser, vignette.Judge, error) {
 	// truth-blind (RoleIntentParser), сам откатывается на keyword при сбое.
 	vjudge := vignette.NewLLMJudge(gw)
 
-	log.Printf("проза: включена (provider=%s model=%s guard=%v); свободный ввод: включён; судья виньетки: LLM",
+	// Генератор сцен виньетки: тот же шлюз, что и у прозы (RoleWorldsmith
+	// заведён выше). Продуктовый путь «тема → SceneSpec → CreateVignette»
+	// (см. server.CreateVignetteFromTheme и POST /vignette/from-theme):
+	// генератор — core-способность, а не приватная деталь CLI cmd/vignette.
+	sceneGen := server.SceneGenerator(func(ctx context.Context, theme, mode string) (*scenegen.SceneSpec, error) {
+		spec, _, err := scenegen.Generate(ctx, gw, theme, mode)
+		return spec, err
+	})
+
+	log.Printf("проза: включена (provider=%s model=%s guard=%v); свободный ввод: включён; судья виньетки: LLM; scenegen: включён",
 		provider, model, envBool("GUARD_LINES", true))
-	return ms, parser, vjudge, nil
+	return ms, parser, vjudge, sceneGen, nil
 }
 
 // resolveProvider — тот же выбор, что в cmd/dnd. Ключ провайдер читает из

@@ -10,6 +10,13 @@ import { listSessions, createSession } from '../../net/sessionsClient';
 import { listCases, CaseSummary } from '../../net/cases';
 import { CharacterRecord, useCharacters } from '../../state/characters';
 import { toSessionRows, SessionRow } from './sessionSelect';
+import { SessionKind, sessionKindOf, kindForResumedSession } from './sessionKind';
+
+// SessionPick — что открывать в App.tsx после выбора: chatId + kind. Kind
+// нужен ДО первого WS-кадра (см. sessionKind.ts): по нему App.tsx решает,
+// монтировать TurnView (SessionScreen) или VignetteScreen. Экспортируется,
+// чтобы App.tsx мог типизировать состояние.
+export type SessionPick = { chatId: string; kind: SessionKind };
 
 // SessionSelectScreen — продолжить старое дело или начать новое. Старый
 // список сессий (resume по chatId) остаётся как был; новизна — старт нового
@@ -21,7 +28,7 @@ import { toSessionRows, SessionRow } from './sessionSelect';
 // secureTokenStore, тем же хранилищем, которым пользуются restore()/refresh()
 // внутри useAuth.ts. Экран читает его оттуда напрямую вместо расширения
 // публичного интерфейса стора.
-export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }> = ({ onPick }) => {
+export const SessionSelectScreen: React.FC<{ onPick: (p: SessionPick) => void }> = ({ onPick }) => {
     const { descriptor: theme } = useTheme();
     const c = theme.colors;
     const insets = useSafeAreaInsets();
@@ -90,7 +97,7 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
         setError(null);
         try {
             const { chatId } = await createSession(token, pickedCase.id, pickedCharacter.id);
-            onPick(chatId);
+            onPick({ chatId, kind: sessionKindOf(pickedCase) });
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -116,7 +123,7 @@ export const SessionSelectScreen: React.FC<{ onPick: (chatId: string) => void }>
                             theme={theme}
                             title={row.caseId}
                             subtitle={row.subtitle}
-                            onPress={() => onPick(row.chatId)}
+                            onPress={() => onPick({ chatId: row.chatId, kind: kindForResumedSession(row.caseId, cases) })}
                         />
                     ))}
 

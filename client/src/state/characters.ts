@@ -4,7 +4,10 @@ import * as Crypto from 'expo-crypto';
 
 // Ruleset — код правила, которым создан персонаж. Определяет, какой набор
 // архетипов/статов показывать (см. client/src/mocks/app.ts: rulesets).
-export type Ruleset = 'threshold' | 'dnd5e';
+// "vignette" — виньеточный трек (ADR-0009): лист персонажа не читается,
+// ruleset тут — просто гейт совместимости персонаж↔дело на POST /sessions
+// (см. server/server.go: handleCreateSession).
+export type Ruleset = 'threshold' | 'dnd5e' | 'vignette';
 
 // CharacterRecord — минимальная запись персонажа на клиенте: только то, что
 // нужно для выбора при старте сессии (POST /sessions {case_id, character_id}).

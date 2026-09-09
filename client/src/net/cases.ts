@@ -4,9 +4,16 @@ import { apiBaseUrl } from './config';
 // CaseSummary). rules — код системы правил дела ("threshold"/"dnd5e"), тот же
 // код, что и CharacterRecord.ruleset — по нему на SessionSelectScreen
 // фильтруются совместимые дела.
+// kind — вид сессии, который поднимет это дело (см. server/catalog.go:
+// CaseSummary.Kind): "adventure" — приключение (turn-view), "vignette" —
+// виньеточный трек (VignetteScreen). Клиент решает экран по kind, а не по
+// rules: rules — «правила», kind — «какой рантайм это». Для дел витрины,
+// созданных до появления поля (обратная совместимость сервером), kind может
+// прийти пустой строкой — трактуется как "adventure".
 export type CaseSummary = {
   id: string;
   name: string;
+  kind: string;
   rules: string;
   scenario: string;
   blurb: string;

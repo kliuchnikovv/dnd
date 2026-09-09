@@ -21,8 +21,9 @@ jest.mock('../../../net/sessionsClient', () => ({
 }));
 
 const mockListCases = jest.fn().mockResolvedValue([
-    { id: 'harbour', name: 'Гавань', rules: 'threshold', scenario: 'investigation', blurb: 'Дело о контрабанде' },
-    { id: 'lighthouse', name: 'Маяк', rules: 'dnd5e', scenario: 'adventure', blurb: 'Приключение у маяка' },
+    { id: 'harbour', name: 'Гавань', kind: 'adventure', rules: 'threshold', scenario: 'investigation', blurb: 'Дело о контрабанде' },
+    { id: 'lighthouse', name: 'Маяк', kind: 'adventure', rules: 'dnd5e', scenario: 'adventure', blurb: 'Приключение у маяка' },
+    { id: 'nightguest', name: 'Гость к ночи', kind: 'vignette', rules: 'vignette', scenario: 'vignette', blurb: 'Ночная сцена' },
 ]);
 jest.mock('../../../net/cases', () => ({
     listCases: (...args: unknown[]) => mockListCases(...args),
@@ -90,6 +91,33 @@ describe('SessionSelectScreen', () => {
         await fireEvent.press(getByText('Начать'));
 
         await waitFor(() => expect(mockCreateSession).toHaveBeenCalledWith('tok', 'harbour', 'chr_threshold'));
-        expect(onPick).toHaveBeenCalledWith('chat_1');
+        expect(onPick).toHaveBeenCalledWith({ chatId: 'chat_1', kind: 'turn' });
+    });
+
+    it('vignette-персонаж видит виньеточное дело, onPick получает kind=vignette', async () => {
+        mockListCases.mockResolvedValue([
+            { id: 'harbour', name: 'Гавань', kind: 'adventure', rules: 'threshold', scenario: 'investigation', blurb: 'Дело о контрабанде' },
+            { id: 'lighthouse', name: 'Маяк', kind: 'adventure', rules: 'dnd5e', scenario: 'adventure', blurb: 'Приключение у маяка' },
+            { id: 'nightguest', name: 'Гость к ночи', kind: 'vignette', rules: 'vignette', scenario: 'vignette', blurb: 'Ночная сцена' },
+        ]);
+        useCharacters.setState({
+            characters: [
+                { id: 'chr_vig', name: 'Тень', ruleset: 'vignette', archetypeId: 'a.witness' },
+            ],
+        });
+        const onPick = jest.fn();
+        const { getByText, queryByText } = await mount(onPick);
+        await waitFor(() => expect(getByText('Тень')).toBeTruthy());
+
+        await fireEvent.press(getByText('Тень'));
+        await waitFor(() => expect(getByText('Гость к ночи')).toBeTruthy());
+        // Не должен показывать несовместимые.
+        expect(queryByText('Гавань')).toBeNull();
+        expect(queryByText('Маяк')).toBeNull();
+        await fireEvent.press(getByText('Гость к ночи'));
+        await fireEvent.press(getByText('Начать'));
+
+        await waitFor(() => expect(mockCreateSession).toHaveBeenCalledWith('tok', 'nightguest', 'chr_vig'));
+        expect(onPick).toHaveBeenCalledWith({ chatId: 'chat_1', kind: 'vignette' });
     });
 });

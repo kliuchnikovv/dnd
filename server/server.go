@@ -63,12 +63,14 @@ func New(mgr *Manager, opts ...Option) *Server {
 	if s.auth != nil {
 		s.mux.HandleFunc("POST /sessions", s.requireAuth(s.handleCreateSession))
 		s.mux.HandleFunc("GET /sessions", s.requireAuth(s.handleListSessions))
+		s.mux.HandleFunc("POST /vignette/from-theme", s.requireAuth(s.handleCreateVignetteFromTheme))
 		s.mux.HandleFunc("POST /auth/google", s.handleGoogleLogin)
 		s.mux.HandleFunc("POST /auth/refresh", s.handleRefresh)
 		s.mux.HandleFunc("GET /me", s.requireAuth(s.handleMe))
 		s.mux.HandleFunc("POST /auth/dev", s.handleDevLogin)
 	} else {
 		s.mux.HandleFunc("POST /sessions", s.handleCreateSession)
+		s.mux.HandleFunc("POST /vignette/from-theme", s.handleCreateVignetteFromTheme)
 	}
 	if s.catalog != nil {
 		s.mux.HandleFunc("GET /cases", s.catalog.HandleList)
@@ -179,6 +181,52 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Единственная ошибка Create — про дело: не нашли или не разобрали.
 		// Это ошибка запроса, не сервера.
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"chat_id": chatID})
+}
+
+// createVignetteFromThemeRequest — тело POST /vignette/from-theme. Theme
+// обязательно (без темы генератор не идёт); Mode необязателен (по умолчанию
+// "hold" — соответствует cmd/vignette); Seed необязателен (по умолчанию 1 —
+// как у POST /sessions).
+type createVignetteFromThemeRequest struct {
+	Theme string `json:"theme"`
+	Mode  string `json:"mode"`
+	Seed  *int64 `json:"seed"`
+}
+
+// handleCreateVignetteFromTheme — продуктовый эндпоинт core-генератора: тема →
+// SceneSpec → CreateVignette. Виньетка — первый потребитель. Если генератор
+// не подключён (офлайн-сервер без ключа) — 501: путь есть, но живого
+// scenegen нет. Игрок не привязан к персонажу: у виньетки лист не читается,
+// character_id гейт не требуется.
+func (s *Server) handleCreateVignetteFromTheme(w http.ResponseWriter, r *http.Request) {
+	if !s.mgr.SceneGeneratorAvailable() {
+		writeError(w, http.StatusNotImplemented, "scenegen не подключён (сервер без ключа)")
+		return
+	}
+	var req createVignetteFromThemeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "тело запроса не разобрано")
+		return
+	}
+	if req.Theme == "" {
+		writeError(w, http.StatusBadRequest, "theme обязателен")
+		return
+	}
+	mode := req.Mode
+	if mode == "" {
+		mode = "hold"
+	}
+	seed := int64(1)
+	if req.Seed != nil {
+		seed = *req.Seed
+	}
+	userID := userIDFrom(r.Context())
+	chatID, err := s.mgr.CreateVignetteFromTheme(r.Context(), req.Theme, mode, seed, userID)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

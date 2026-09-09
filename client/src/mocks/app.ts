@@ -207,6 +207,26 @@ export const dnd5eCreation: RulesetCreation = {
     ],
 };
 
+// Виньеточный трек (ADR-0009): у виньетки нет листа/статов, ruleset здесь —
+// служебный ярлык для гейта персонаж↔дело на POST /sessions. Архетип
+// «Свидетель» — единственный доступный, потому что мерка идёт не по листу,
+// а по действию игрока в сцене (см. server/vignette_runtime.go).
+export const vignetteCreation: RulesetCreation = {
+    ruleName: 'Виньетка',
+    statBudget: 0,
+    statMax: 0,
+    archetypes: [
+        {
+            id: 'a.witness',
+            name: 'Свидетель',
+            blurb: 'Ты в сцене — и она проверяет тебя. Не листом, а тем, что ты делаешь и на что решаешься.',
+            stats: [],
+            tags: ['виньетка'],
+            token: 'archetype_witness',
+        },
+    ],
+};
+
 // rulesets — каталог правил, доступных при создании персонажа (шаг выбора
 // ruleset перед архетипом). Порядок — в порядке появления в продукте.
-export const rulesets = [thresholdCreation, dnd5eCreation];
+export const rulesets = [thresholdCreation, dnd5eCreation, vignetteCreation];

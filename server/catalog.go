@@ -23,13 +23,26 @@ const blurbLimit = 200
 
 // CaseSummary — сводка о деле для витрины GET /cases. Не полный Config: этого
 // достаточно, чтобы клиент показал список дел и дал выбрать одно.
+//
+// Kind — вид сессии, которую поднимет это дело: "adventure" (приключение через
+// core.Game/CreateWithRuleset) или "vignette" (виньеточный трек, ADR-0009,
+// через CreateVignetteFromCase). Клиент по этому полю решает, каким экраном
+// вести сессию: turn-view для adventure, VignetteScreen для vignette. Rules
+// сохраняет старое значение (система правил дела); Kind — независимая ось
+// «какой рантайм это поднимает».
 type CaseSummary struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
+	Kind     string `json:"kind"`
 	Rules    string `json:"rules"`
 	Scenario string `json:"scenario"`
 	Blurb    string `json:"blurb"`
 }
+
+const (
+	CaseKindAdventure = "adventure"
+	CaseKindVignette  = "vignette"
+)
 
 // CaseCatalog — список загруженных дел, отсортированный по ID. Строится один
 // раз при старте сервера (см. LoadCatalog) и раздаётся как есть — дела не
@@ -104,6 +117,7 @@ func LoadCatalog(dir string) (*CaseCatalog, error) {
 			entries = append(entries, CaseSummary{
 				ID:       rr.ID,
 				Name:     filepath.Base(filepath.Dir(path)),
+				Kind:     CaseKindVignette,
 				Rules:    rules,
 				Scenario: VignetteRulesKind,
 				Blurb:    blurb(rr.Blurb),
@@ -118,6 +132,7 @@ func LoadCatalog(dir string) (*CaseCatalog, error) {
 		entries = append(entries, CaseSummary{
 			ID:       string(cfg.CaseID),
 			Name:     filepath.Base(filepath.Dir(path)),
+			Kind:     CaseKindAdventure,
 			Rules:    rules,
 			Scenario: string(cfg.Scenario.Kind()),
 			Blurb:    blurb(cfg.Briefing),

@@ -11,23 +11,25 @@ import { nightDetectiveTheme } from './src/theme/nightDetective';
 import { authStore } from './src/state/useAuth';
 import { screenFor } from './src/state/gate';
 import { SignInScreen } from './src/screens/auth/SignInScreen';
-import { SessionSelectScreen } from './src/screens/session/SessionSelectScreen';
+import { SessionSelectScreen, SessionPick } from './src/screens/session/SessionSelectScreen';
 import { SessionScreen } from './src/screens/session/SessionScreen';
+import { VignetteScreen } from './src/components/vignette/VignetteScreen';
 
 export default function App() {
     const fontsLoaded = useAppFonts();
     const status = useStore(authStore, (s) => s.status);
-    // chatId выбранной/созданной сессии — держим локально: гейт signedIn →
+    // pick — какая сессия открыта и по какому виду её вести (turn|vignette,
+    // см. screens/session/sessionKind.ts). Держим локально: гейт signedIn →
     // выбор сессии → сама игра не завязан на постоянное состояние, при выходе
     // (signedOut) сбрасывается автоматически ниже.
-    const [chatId, setChatId] = useState<string | null>(null);
+    const [pick, setPick] = useState<SessionPick | null>(null);
 
     useEffect(() => {
         authStore.getState().restore();
     }, []);
 
     useEffect(() => {
-        if (status !== 'signedIn') setChatId(null);
+        if (status !== 'signedIn') setPick(null);
     }, [status]);
 
     const screen = screenFor(status);
@@ -38,10 +40,14 @@ export default function App() {
                 <ThemeProvider>
                     <View style={[styles.root, { backgroundColor: nightDetectiveTheme.colors.background }]}>
                         {fontsLoaded && screen === 'app' ? (
-                            chatId ? (
-                                <SessionScreen chatId={chatId} />
+                            pick ? (
+                                pick.kind === 'vignette' ? (
+                                    <VignetteScreen chatId={pick.chatId} />
+                                ) : (
+                                    <SessionScreen chatId={pick.chatId} />
+                                )
                             ) : (
-                                <SessionSelectScreen onPick={setChatId} />
+                                <SessionSelectScreen onPick={setPick} />
                             )
                         ) : fontsLoaded && screen === 'signin' ? (
                             <SignInScreen />

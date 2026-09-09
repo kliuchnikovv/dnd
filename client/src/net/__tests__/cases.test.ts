@@ -12,7 +12,7 @@ test('listCases GET /cases и шлёт Bearer', async () => {
   let seenAuth = '';
   mockFetch(
     200,
-    [{ id: 'harbour', name: 'Гавань', rules: 'threshold', scenario: 'investigation', blurb: '...' }],
+    [{ id: 'harbour', name: 'Гавань', kind: 'adventure', rules: 'threshold', scenario: 'investigation', blurb: '...' }],
     (u, o) => {
       seenUrl = u;
       seenAuth = o.headers.Authorization;
@@ -21,7 +21,7 @@ test('listCases GET /cases и шлёт Bearer', async () => {
   const out = await listCases('tok');
   expect(seenUrl).toMatch(/\/cases$/);
   expect(seenAuth).toBe('Bearer tok');
-  expect(out).toEqual([{ id: 'harbour', name: 'Гавань', rules: 'threshold', scenario: 'investigation', blurb: '...' }]);
+  expect(out).toEqual([{ id: 'harbour', name: 'Гавань', kind: 'adventure', rules: 'threshold', scenario: 'investigation', blurb: '...' }]);
 });
 
 test('non-2xx throws with status', async () => {

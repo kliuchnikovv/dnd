@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,6 +38,13 @@ func (m *Manager) CreateVignette(spec *scenegen.SceneSpec, seed int64, userID st
 	m.mu.Lock()
 	m.vignettes[chatID] = rt
 	m.mu.Unlock()
+
+	// Пре-считать вступительную прозу СИНХРОННО на общем контексте: подписчиков
+	// ещё нет, broadcast был бы потерян; первый attach отдаст введение из
+	// буфера. Синхронно — чтобы к моменту возврата chat_id клиенту интро уже
+	// было. Для fake/offline это мгновенно (см. renderIntroLocked); в живом
+	// режиме — один LLM-вызов на Create (см. §2.1 хендоффа).
+	rt.precomputeIntro(context.Background())
 	return chatID, nil
 }
 

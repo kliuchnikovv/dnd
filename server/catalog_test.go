@@ -36,22 +36,26 @@ func TestLoadCatalogReadsRealCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCatalog: %v", err)
 	}
-	want := map[string]string{
-		"harbour":      "threshold",
-		"forte_merlo":  "threshold",
-		"c_lighthouse": "dnd5e",
+	want := map[string]struct{ rules, kind string }{
+		"harbour":      {"threshold", CaseKindAdventure},
+		"forte_merlo":  {"threshold", CaseKindAdventure},
+		"c_lighthouse": {"dnd5e", CaseKindAdventure},
+		"nightguest":   {VignetteRulesKind, CaseKindVignette},
 	}
 	got := map[string]CaseSummary{}
 	for _, e := range cat.entries {
 		got[e.ID] = e
 	}
-	for id, rules := range want {
+	for id, w := range want {
 		e, ok := got[id]
 		if !ok {
 			t.Fatalf("дело %q не попало в каталог: %+v", id, cat.entries)
 		}
-		if e.Rules != rules {
-			t.Errorf("%s: rules = %q, ожидалось %q", id, e.Rules, rules)
+		if e.Rules != w.rules {
+			t.Errorf("%s: rules = %q, ожидалось %q", id, e.Rules, w.rules)
+		}
+		if e.Kind != w.kind {
+			t.Errorf("%s: kind = %q, ожидалось %q", id, e.Kind, w.kind)
 		}
 	}
 }

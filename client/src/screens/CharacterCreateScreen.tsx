@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, Card, Text } from '@genie/ds';
 import { useTheme } from '../theme/ThemeContext';
-import { Archetype, RulesetCreation, dnd5eCreation, rulesets } from '../mocks/app';
+import { Archetype, RulesetCreation, dnd5eCreation, rulesets, vignetteCreation } from '../mocks/app';
 import { Ruleset, useCharacters } from '../state/characters';
 
 // Создание персонажа (14a, визард) — тёплый онбординг, не «лист D&D». Теперь трёхшаговый:
@@ -37,7 +37,12 @@ export const CharacterCreateScreen: React.FC = () => {
         try {
             // RulesetCreation не несёт машинный код правила (только витринное ruleName) —
             // код выводим по ссылке на сам объект каталога, без парсинга текста.
-            const rulesetCode: Ruleset = pickedRuleset === dnd5eCreation ? 'dnd5e' : 'threshold';
+            const rulesetCode: Ruleset =
+                pickedRuleset === dnd5eCreation
+                    ? 'dnd5e'
+                    : pickedRuleset === vignetteCreation
+                        ? 'vignette'
+                        : 'threshold';
             await add(name.trim(), rulesetCode, pickedArchetype);
         } finally {
             setSaving(false);

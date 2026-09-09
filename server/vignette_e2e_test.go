@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kliuchnikovv/dnd/dice"
 	"github.com/kliuchnikovv/dnd/llm"
@@ -176,6 +177,144 @@ func TestVignetteCreateOverHTTP(t *testing.T) {
 	if ok, msg := rt.applyInput(context.Background(), 1, inputPayload{Text: "прислушиваюсь к двери"}); !ok {
 		t.Fatalf("ход в виньетке через сервер не прошёл: %s", msg)
 	}
+}
+
+// TestVignetteIntroDeliveredOnAttach — регрессия §2.1 хендоффа
+// 2026-09-09-vignette-into-mvp: интро сцены доезжает до клиента ДО первого
+// ввода. CreateVignette пре-считывает вводную прозу, первый attach отдаёт её
+// как одно-сегментный стрим (start→delta→done) вместе со snapshot.
+func TestVignetteIntroDeliveredOnAttach(t *testing.T) {
+	spec := holdSpec()
+	m := NewManager(casesRoot).WithNarrator(echoNarrator())
+	id, err := m.CreateVignette(spec, 1, "u")
+	if err != nil {
+		t.Fatalf("CreateVignette: %v", err)
+	}
+	rt, ok := m.GetVignette(id)
+	if !ok {
+		t.Fatalf("рантайм виньетки не найден: %s", id)
+	}
+
+	sub := rt.attach()
+	frames := collectUntilDone(t, sub)
+
+	// Ожидаем OpStart(role=gm) → OpMessage(text) → OpDone (одно-сегментный
+	// стрим интро). snapshotFrameLocked приходит после (snapshotFrame — это
+	// OpSessionState, кадр вне интро-потока).
+	if len(frames) < 3 {
+		t.Fatalf("мало кадров интро: %d", len(frames))
+	}
+	if frames[0].Op != OpStart {
+		t.Fatalf("первый кадр — %q, ждали start (интро)", frames[0].Op)
+	}
+	var intro strings.Builder
+	sawEnded := false
+	for _, f := range frames {
+		if f.Op == OpMessage && f.Kind == KindData {
+			var d textDelta
+			_ = json.Unmarshal(f.Payload, &d)
+			intro.WriteString(d.Delta)
+		}
+		if f.Op == OpSessionState {
+			var v vignetteView
+			_ = json.Unmarshal(f.Payload, &v)
+			if v.Ended {
+				sawEnded = true
+			}
+		}
+	}
+	if strings.TrimSpace(intro.String()) == "" {
+		t.Fatalf("интро пустое — Мастеру ничего не ушло/страж вырезал всё:\nкадры: %+v", frames)
+	}
+	if sawEnded {
+		t.Fatalf("на attach сцена не могла закончиться, но ended=true был:\nкадры: %+v", frames)
+	}
+
+	// Второй attach интро НЕ получает (introSent однократно).
+	sub2 := rt.attach()
+	// Только snapshotFrame: ждём один session_state и всё.
+	select {
+	case f := <-sub2.out:
+		if f.Op != OpSessionState {
+			t.Fatalf("второй attach: первый кадр %q, ждали session_state (интро только первому)", f.Op)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("второй attach: не пришёл snapshot")
+	}
+}
+
+// TestVignetteFinalProseArrivesBeforeCurtain — регрессия §2.2 хендоффа
+// 2026-09-09-vignette-into-mvp: гонка порядка кадров. На завершающем ходу
+// session_state{ended:true,end_text} строго ПОСЛЕ OpMessage прозы (иначе
+// клиент рисует занавес до развязки).
+func TestVignetteFinalProseArrivesBeforeCurtain(t *testing.T) {
+	spec := holdSpec()
+	scenegen.Repair(spec)
+	sc := vignette.FromSpec(spec)
+	st := vignette.NewState(dice.Fixed(1))
+	rt := newVignetteRuntime("vig-order", "u", 1, NewMemStore(), echoNarrator(), sc, st)
+
+	sub := rt.subscribe()
+	// Три хода бездействия у очага — hold доходит до победы (Goal=3).
+	var frames []Frame
+	for i, text := range []string{"жду у очага", "жду у очага", "жду у очага"} {
+		ok, msg := rt.applyInput(context.Background(), i+1, inputPayload{Text: text})
+		if !ok {
+			t.Fatalf("ход %q не применился: %s", text, msg)
+		}
+		frames = append(frames, collectUntilDone(t, sub)...)
+	}
+
+	// Найти первый OpSessionState с ended=true и убедиться, что перед ним был
+	// хотя бы один OpMessage (проза Мастера) в ЭТОМ же ходу — т.е. после
+	// последнего OpStart и до финального OpDone.
+	endIdx := -1
+	var endedView vignetteView
+	for i, f := range frames {
+		if f.Op == OpSessionState {
+			var v vignetteView
+			_ = json.Unmarshal(f.Payload, &v)
+			if v.Ended {
+				endIdx = i
+				endedView = v
+				break
+			}
+		}
+	}
+	if endIdx < 0 {
+		t.Fatalf("не встретил session_state{ended:true} среди %d кадров", len(frames))
+	}
+	if endedView.EndText != spec.WinText {
+		t.Errorf("end_text = %q, ждали %q", endedView.EndText, spec.WinText)
+	}
+	// Перед ended-кадром обязан быть OpMessage той же прозы — иначе гонка.
+	sawProse := false
+	for i := endIdx - 1; i >= 0; i-- {
+		if frames[i].Op == OpStart {
+			break // достигли начала последнего сегмента прозы
+		}
+		if frames[i].Op == OpMessage && frames[i].Kind == KindData {
+			sawProse = true
+		}
+	}
+	if !sawProse {
+		t.Fatalf("занавес пришёл ДО прозы (гонка): порядок кадров:\n%s", opsList(frames))
+	}
+	// И OpDone — после ended-кадра (проза-стрим закрывается ПОСЛЕ занавеса
+	// внутри того же хода: клиент не увидит session_state после op:done).
+	if endIdx+1 >= len(frames) || frames[endIdx+1].Op != OpDone {
+		t.Fatalf("после ended-кадра ждали op:done, встретил: %+v",
+			frames[endIdx+1:min(endIdx+3, len(frames))])
+	}
+}
+
+func opsList(fs []Frame) string {
+	var sb strings.Builder
+	for _, f := range fs {
+		sb.WriteString(f.Op)
+		sb.WriteString(" ")
+	}
+	return sb.String()
 }
 
 // CreateVignette прогоняет спек через repair+validate+map и поднимает живую
