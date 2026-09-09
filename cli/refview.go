@@ -25,6 +25,14 @@ var (
 	_ view.Scenario = Detective{}
 )
 
+// init регистрирует view-фабрику Порога в общем реестре view. Реестр — точка
+// выбора view-правила по имени сессии (server/CLI); сама реализация остаётся
+// здесь, в презентации. Импорт cli тянет регистрацию side-effect'ом, поэтому
+// «известность» правила равна «пакет-презентация в графе».
+func init() {
+	view.RegisterRuleset(core.RulesetThreshold, func() view.Ruleset { return RefRuleset{} })
+}
+
 // RefRuleset — ось ПРАВИЛА «Порог». Называет свои меры и решает по состоянию,
 // какую сейчас поднять.
 type RefRuleset struct{}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 
@@ -10,6 +11,22 @@ import (
 	"github.com/kliuchnikovv/dnd/store"
 	"github.com/kliuchnikovv/dnd/view"
 )
+
+// resolveRuleset — тонкий шов над view.LookupRuleset для CLI: пустое имя
+// правила (нет rules у дела / низкоуровневый путь без character-owned ruleset)
+// молча падает в Порог; известное имя ищется в реестре; неизвестное — тоже
+// Порог, но с предупреждением (это уже сбой конфигурации, а не легаси). Так
+// презентация не ссылается на RefRuleset напрямую в turn-пути.
+func resolveRuleset(k core.RulesetKind) view.Ruleset {
+	if k != "" {
+		if rs, ok := view.LookupRuleset(k); ok {
+			return rs
+		}
+		log.Printf("view: неизвестное правило %q — фолбэк на %q", k, core.RulesetThreshold)
+	}
+	rs, _ := view.LookupRuleset(core.RulesetThreshold)
+	return rs
+}
 
 // surfacedMeters печатает ТОЛЬКО всплывшие меры, «Метка: значение[/потолок]».
 // Скрытая мера на экран не идёт: что показать сейчас, решил флаг Surface
@@ -86,6 +103,10 @@ type Render struct {
 	// Структура остаётся кодовой: заголовок, цели, выходы, бросок и «узнали»
 	// печатает презентация, а не модель.
 	Narrate func(Prose) string
+	// Ruleset — имя правила текущей сессии (совпадает с core.RulesetKind дела).
+	// Пусто — низкоуровневый путь (тесты, легаси без character-owned ruleset):
+	// State падает в Порог через resolveRuleset без предупреждения.
+	Ruleset core.RulesetKind
 }
 
 // prose — авторский текст либо его оживлённая версия.
@@ -325,13 +346,17 @@ func (Render) Facts(g *core.Game) string {
 	return b.String()
 }
 
-func (Render) State(g *core.Game) string {
+func (r Render) State(g *core.Game) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "узел: %s\n", g.Node)
 	// Меры печатаются из дескрипторов правила и ТОЛЬКО всплывшие: здоровый
 	// персонаж не видит строки ран. Минимализм держит правило флагом Surface, а
 	// не презентация по своему усмотрению — тот же surfacing уйдёт и клиенту.
-	b.WriteString(surfacedMeters(RefRuleset{}.Meters(g)))
+	// Меры берём из view-реестра по правилу дела: у threshold-сессии это Порог,
+	// у dnd5e — свои меры (спека 2). Прямая ссылка на RefRuleset{} осталась бы
+	// хардкодом Порога и в CLI, поэтому идём через LookupRuleset и падаем в
+	// Порог только по фолбэку (с предупреждением).
+	b.WriteString(surfacedMeters(resolveRuleset(r.Ruleset).Meters(g)))
 	fmt.Fprintf(&b, "попыток обвинения: %d\n", g.Attempts)
 	if g.Incapacitated() {
 		b.WriteString("выведен из строя: доступны только осмотр и отдых\n")

@@ -25,13 +25,23 @@ type chatInterpreter interface {
 // turnViewVersion — версия формы turn-view, которую отдаёт сервер. Совпадает с
 // той, что проставляет view.Build; сервер лишь пересылает.
 
-// Ruleset/Scenario серверного вида — референсные реализации из cli: меры от
-// правила порога, панель цели детективного досье. Гейм-логики в них нет, это
-// проекция состояния ядра; сервер берёт их как есть, чтобы вид совпадал с CLI.
-var (
-	serverRuleset  view.Ruleset  = cli.RefRuleset{}
-	serverScenario view.Scenario = cli.Detective{}
-)
+// Scenario серверного вида — референсная реализация из cli: панель цели
+// детективного досье. Ось scenario пока едина; ось ruleset выбирается по имени
+// правила сессии (см. sessionRuntime.viewRuleset).
+var serverScenario view.Scenario = cli.Detective{}
+
+// resolveViewRuleset — фолбэк-политика view-правила сервера: известное имя
+// поднимается из реестра; неизвестное или пустое — Порог с предупреждением.
+// Спека ADR-0010: обратная совместимость M1a-дел без rules и защита от
+// неизвестных kind'ов от одной точки, а не рассыпанной по turn-пути.
+func resolveViewRuleset(k core.RulesetKind) view.Ruleset {
+	if rs, ok := view.LookupRuleset(k); ok {
+		return rs
+	}
+	log.Printf("server: неизвестное view-правило %q — фолбэк на %q", k, core.RulesetThreshold)
+	rs, _ := view.LookupRuleset(core.RulesetThreshold)
+	return rs
+}
 
 // subscribe регистрирует сокет и возвращает его. Вызывается при (ре)коннекте.
 func (rt *sessionRuntime) subscribe() *subscriber {
@@ -72,7 +82,7 @@ func (rt *sessionRuntime) nextOutIDLocked() int {
 func (rt *sessionRuntime) snapshotView() Frame {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	tv := view.Build(rt.game, core.TurnResult{}, nil, serverRuleset, serverScenario, rt.spokenTo)
+	tv := view.Build(rt.game, core.TurnResult{}, nil, rt.viewRuleset, serverScenario, rt.spokenTo)
 	return newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
 		KindData, OpSessionState, tv)
 }
@@ -163,7 +173,7 @@ func (rt *sessionRuntime) applyIntentLocked(ctx context.Context, frameID int, in
 	// ошибку записи не эскалируем в отказ применённого хода, но делаем слышимой.
 	rt.appendTranscriptLocked(TranscriptEntry{Role: RolePlayer, Text: actionLabel})
 
-	tv := view.Build(rt.game, res, nil, serverRuleset, serverScenario, rt.spokenTo)
+	tv := view.Build(rt.game, res, nil, rt.viewRuleset, serverScenario, rt.spokenTo)
 	rt.broadcastLocked(newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
 		KindData, OpSessionState, tv))
 
@@ -287,7 +297,7 @@ func idempotencyKey(s store.SessionID, d store.DiceCtx, payload []byte) string {
 
 // snapshotViewLocked — как snapshotView, но под уже взятым rt.mu.
 func (rt *sessionRuntime) snapshotViewLocked() Frame {
-	tv := view.Build(rt.game, core.TurnResult{}, nil, serverRuleset, serverScenario, rt.spokenTo)
+	tv := view.Build(rt.game, core.TurnResult{}, nil, rt.viewRuleset, serverScenario, rt.spokenTo)
 	return newFrame(rt.nextOutIDLocked(), rt.chatID, ChannelChat,
 		KindData, OpSessionState, tv)
 }

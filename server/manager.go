@@ -25,6 +25,7 @@ import (
 	"github.com/kliuchnikovv/dnd/rules/threshold"
 	"github.com/kliuchnikovv/dnd/scenegen"
 	"github.com/kliuchnikovv/dnd/store"
+	"github.com/kliuchnikovv/dnd/view"
 	"github.com/kliuchnikovv/dnd/vignette"
 )
 
@@ -66,6 +67,11 @@ type sessionRuntime struct {
 
 	mu   sync.Mutex
 	game *core.Game
+	// viewRuleset — презентация правила сессии для view.Build. Резолвится один
+	// раз при создании/реконструкции по имени правила дела через реестр
+	// view.RegisterRuleset (ADR-0010). Хранится готовым инстансом, чтобы turn-
+	// путь не звал реестр на каждом кадре и не логировал фолбэк по 3 раза за ход.
+	viewRuleset view.Ruleset
 	// turn — номер применённого хода. Входит в DiceCtx и ключ идемпотентности
 	// журнала; растёт на каждый состоявшийся ход.
 	turn int
@@ -213,7 +219,7 @@ func NewManagerWithStore(casesRoot string, st Store) *Manager {
 // реконструкция после рестарта; см. CreateWithRuleset для сессий с явным
 // character_id и настоящим листом).
 func (m *Manager) Create(caseName string, seed int64, userID string) (string, error) {
-	return m.create(caseName, seed, userID, threshold.New(), nil)
+	return m.create(caseName, seed, userID, core.RulesetThreshold, threshold.New(), nil)
 }
 
 // CreateWithRuleset — как Create, но система правил и персонаж задаются
@@ -223,11 +229,11 @@ func (m *Manager) Create(caseName string, seed int64, userID string) (string, er
 // взять внутри buildGame, и игра стартовала бы на дефолтной заглушке вместо
 // настоящего листа (найдено ревью Task 6: character.Ruleset сверялся, но сам
 // character в игру не попадал).
-func (m *Manager) CreateWithRuleset(caseName string, seed int64, userID string, rules core.RuleSystem, character *store.Character) (string, error) {
-	return m.create(caseName, seed, userID, rules, character)
+func (m *Manager) CreateWithRuleset(caseName string, seed int64, userID string, kind core.RulesetKind, rules core.RuleSystem, character *store.Character) (string, error) {
+	return m.create(caseName, seed, userID, kind, rules, character)
 }
 
-func (m *Manager) create(caseName string, seed int64, userID string, rules core.RuleSystem, character *store.Character) (string, error) {
+func (m *Manager) create(caseName string, seed int64, userID string, kind core.RulesetKind, rules core.RuleSystem, character *store.Character) (string, error) {
 	game, caseID, snapshot, err := m.buildGame(caseName, seed, rules, character)
 	if err != nil {
 		return "", err
@@ -246,16 +252,17 @@ func (m *Manager) create(caseName string, seed int64, userID string, rules core.
 	}
 
 	rt := &sessionRuntime{
-		chatID:   chatID,
-		caseID:   caseID,
-		seed:     seed,
-		snapshot: snapshot,
-		store:    m.store,
-		userID:   userID,
-		narrator: m.narrator,
-		interp:   m.newInterp(game),
-		game:     game,
-		subs:     make(map[*subscriber]struct{}),
+		chatID:      chatID,
+		caseID:      caseID,
+		seed:        seed,
+		snapshot:    snapshot,
+		store:       m.store,
+		userID:      userID,
+		narrator:    m.narrator,
+		interp:      m.newInterp(game),
+		game:        game,
+		viewRuleset: resolveViewRuleset(kind),
+		subs:        make(map[*subscriber]struct{}),
 	}
 	m.mu.Lock()
 	m.sessions[chatID] = rt
@@ -315,16 +322,17 @@ func (m *Manager) reconstruct(chatID string) (*sessionRuntime, bool) {
 		return nil, false
 	}
 	rt := &sessionRuntime{
-		chatID:   chatID,
-		caseID:   caseID,
-		seed:     rec.Seed,
-		snapshot: snapshot,
-		store:    m.store,
-		userID:   rec.UserID,
-		narrator: m.narrator,
-		interp:   m.newInterp(game),
-		game:     game,
-		subs:     make(map[*subscriber]struct{}),
+		chatID:      chatID,
+		caseID:      caseID,
+		seed:        rec.Seed,
+		snapshot:    snapshot,
+		store:       m.store,
+		userID:      rec.UserID,
+		narrator:    m.narrator,
+		interp:      m.newInterp(game),
+		game:        game,
+		viewRuleset: resolveViewRuleset(core.RulesetThreshold),
+		subs:        make(map[*subscriber]struct{}),
 	}
 
 	cmds, err := m.store.Commands(ctx, store.SessionID(chatID))

@@ -177,7 +177,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chatID, err := s.mgr.CreateWithRuleset(caseName, seed, userID, rules, character)
+	chatID, err := s.mgr.CreateWithRuleset(caseName, seed, userID, core.RulesetKind(characterRules), rules, character)
 	if err != nil {
 		// Единственная ошибка Create — про дело: не нашли или не разобрали.
 		// Это ошибка запроса, не сервера.
