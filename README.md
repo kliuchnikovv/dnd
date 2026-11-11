@@ -3,6 +3,10 @@
 **A console detective role-playing game in which the rules engine is deterministic and
 the narrator is a language model.**
 
+[![CI](https://github.com/kliuchnikovv/dnd/actions/workflows/ci.yml/badge.svg)](https://github.com/kliuchnikovv/dnd/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go&logoColor=white)](go.mod)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+
 The investigation — who knew what, when, and how the facts connect — is resolved by a Go
 core that never calls a model. Language models only narrate what the core has already
 decided: the **Master** describes a scene, an **Actor** speaks a character's line, and a
