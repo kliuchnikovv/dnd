@@ -11,3 +11,7 @@ runs/
 # GOMODCACHE/GOCACHE, указывающими на эти каталоги.
 .gocache/
 .gomodcache/
+
+# Claude local worktrees (duplicate checkouts) and OS cruft
+.claude/worktrees/
+.DS_Store
