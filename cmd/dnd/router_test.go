@@ -63,8 +63,9 @@ func TestGuardHasNoCheapRoute(t *testing.T) {
 // не сломав ни одного теста. Теперь новая роль обязана попасть либо в
 // проводку, либо сюда — с причиной.
 var notUsed = map[llm.Role]string{
-	llm.RoleModeration: "модерация не подключена",
-	llm.RoleWorldsmith: "генерации дел ещё нет",
+	llm.RoleModeration:  "модерация не подключена",
+	llm.RoleWorldsmith:  "генерации дел ещё нет",
+	llm.RoleRubricJudge: "только для оценки (cmd/eval), игрой не вызывается",
 }
 
 func TestEveryDeclaredRoleIsEitherRoutedOrDeliberatelyUnused(t *testing.T) {
