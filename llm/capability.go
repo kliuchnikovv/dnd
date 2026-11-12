@@ -133,4 +133,16 @@ var Capabilities = map[Role]Capability{
 		Reads:    []ReadScope{ReadWorldCanon, ReadScenePublic},
 		Proposes: []ProposalKind{ProposeCanonAmbient, ProposeWorldMutation},
 	},
+	// RoleRubricJudge — судья Эталона Мастера по мягким пунктам
+	// (eval/rubric). Ничего не предлагает ядру (только судит чужую прозу),
+	// правды дела в scope не получает (D13 держится структурной проверкой в
+	// AutoJudge по TurnRecord.SceneTruth — судья её видеть не должен).
+	RoleRubricJudge: {
+		Reads: []ReadScope{
+			ReadCandidateLine,     // проза Мастера, которая оценивается
+			ReadPlayerInput,       // ввод игрока (для A1, C8 — был ли приземлён)
+			ReadScenePublic,       // нейтральная сцена (контекст)
+			ReadMechanicalOutcome, // бросок/маржа (для B5, B7, A2.b cross-check)
+		},
+	},
 }

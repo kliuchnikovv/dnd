@@ -18,6 +18,7 @@ var wantStrict = map[Role]bool{
 	RoleCanonGuard:   false, // вердикт-совет
 	RoleModeration:   false, // вердикт-совет
 	RoleOptions:      false, // её выход не доходит до состояния
+	RoleRubricJudge:  false, // судья мягких пунктов Эталона: вердикт-совет
 }
 
 func TestRequiresStrictOutputFollowsRegistry(t *testing.T) {

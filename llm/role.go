@@ -32,6 +32,12 @@ const (
 	// и тиринг идут по роли: назвать четыре строки словами игрока стоит иначе,
 	// чем описать сцену, и выбирать модель для этого надо отдельно.
 	RoleOptions Role = "options"
+	// RoleRubricJudge — судья мягких пунктов Эталона Мастера
+	// (docs/design/2026-09-02-master-reference-standard.md, A1, B5-B7,
+	// C8-C12). Роль своя, потому что scope у неё узкий и статичный: она
+	// НЕ читает правду дела и НЕ предлагает ядру изменений — только
+	// оценивает чужую прозу по рубрике.
+	RoleRubricJudge Role = "rubric_judge"
 )
 
 // AllRoles — все объявленные роли в стабильном порядке. Нужен, чтобы
@@ -48,6 +54,7 @@ func AllRoles() []Role {
 		RoleCanonGuard,
 		RoleModeration,
 		RoleWorldsmith,
+		RoleRubricJudge,
 	}
 }
 

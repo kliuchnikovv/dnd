@@ -5,3 +5,13 @@
 
 # Прогоны виньетки (vignette.Recorder) — генерируемые, не в репозиторий.
 runs/
+
+# Локальные Go кэши — когда рабочая директория read-only и нужно обходить
+# `~/Library/Caches/go-build` (например, в песочнице), go запускается с
+# GOMODCACHE/GOCACHE, указывающими на эти каталоги.
+.gocache/
+.gomodcache/
+
+# Claude local worktrees (duplicate checkouts) and OS cruft
+.claude/worktrees/
+.DS_Store
